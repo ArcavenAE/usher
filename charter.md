@@ -4,8 +4,29 @@ Last updated: 2026-07-12 (seeded; prior-art probe complete — finding-001)
 
 ## Bedrock
 
-*Nothing committed yet. Seeded 2026-07-12; design/elicitation via bmad
-is the next step, now with evidence: finding-001 / 
+### B1: Reporting is off by default — enabling it is the user's act
+
+Telemetry/central reporting ships disabled. Usher's contract is a
+developer-user compact: the tool exists to help the user, so the user
+— and only the user — turns reporting on. If an employer requires an
+employee to enable it, that arrangement is between employer and
+employee; it is not usher's contract to implement. Usher ships no
+hidden or default-on reporting path of its own (orgs that want
+force-enable act through their own visible channels — MDM, managed
+settings — and that act is theirs, not usher's).
+
+Rationale: SOUL.md §1 user sovereignty (no phone-home). Software in
+this category requires trust, or users will not accept the benefits
+for fear of hidden traps. Independently corroborated by finding-001:
+the consent patterns that survived community scrutiny (Kolide honest
+security, loud disclosure, DO_NOT_TRACK) versus the one that burned
+trust (Homebrew's silent opt-out analytics).
+
+Decided: 2026-07-12, user ratification.
+
+*Everything else: nothing committed yet. Seeded 2026-07-12;
+design/elicitation via bmad is the next step, now with evidence:
+finding-001 / 
 `docs/research/prior-art-landscape-20260712.md` gives each frontier
 question below an evidence-backed starting direction (research doc
 Part 3) — architecture convergence (usherd daemon + signed-catalog
@@ -31,15 +52,19 @@ correct initial settings, updates, bootstrap via sideshow or eos, git
 hand-holding for repository access. Where is the boundary with sideshow
 (pack distribution) and the fleet-bootstrap packs?
 
-### F3: Telemetry shape
+### F3: Telemetry shape [consent model RESOLVED → B1]
 
 Metrics-only vs OTEL. What is reported: harness configuration, versions,
 projects, tool calls, token counts (if possible), options set, errors.
-Privacy/consent model — usher is a helper and a tattletale of the
-benign, runner/messenger kind; it must not become a creepy peephole.
-How does this square with SOUL.md user sovereignty (no phone-home) —
-enterprise opt-in context is different from BYOA personal use, and the
-boundary needs explicit design.
+Usher is a helper and a tattletale of the benign, runner/messenger
+kind; it must not become a creepy peephole.
+
+The consent model is decided (B1): off by default, user-enabled,
+employer-forced enablement is employer-employee business outside
+usher's compact. Remaining open: the wire shape (metrics-only vs
+OTEL), the collected-signal inventory and its "we do NOT collect"
+complement, first-run disclosure UX, and how the user sees their own
+data (honest-security personal page per finding-001).
 
 ### F4: Cloud-side compliance and recommendations
 
