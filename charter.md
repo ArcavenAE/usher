@@ -1,11 +1,18 @@
 # usher Charter
 
-Last updated: 2026-07-12 (seeded — no probes run yet)
+Last updated: 2026-07-12 (seeded; prior-art probe complete — finding-001)
 
 ## Bedrock
 
 *Nothing committed yet. Seeded 2026-07-12; design/elicitation via bmad
-is the next step.*
+is the next step, now with evidence: finding-001 / 
+`docs/research/prior-art-landscape-20260712.md` gives each frontier
+question below an evidence-backed starting direction (research doc
+Part 3) — architecture convergence (usherd daemon + signed-catalog
+cloud + MCP surface), posture constraints (honest security, consent
+stack, never-sole-authority, advise-don't-judge), and ranked failure
+modes (Boxen conformity death, Homebrew-analytics backlash, bootstrap
+rot, catalog burden, the two pennyfarthing seams).*
 
 ## Frontier
 
