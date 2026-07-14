@@ -1,0 +1,33 @@
+id: val-reporting-off-by-default
+type: value
+confidence: bedrock
+title: "Reporting is off by default — enabling it is the user's act"
+tags:
+  - usher
+  - privacy
+  - consent
+content: |
+  Telemetry/central reporting ships disabled. Usher's contract is a
+  developer-user compact: the tool exists to help the user, so the
+  user — and only the user — turns reporting on. If an employer
+  requires an employee to enable it, that arrangement is between
+  employer and employee; it is not usher's contract to implement.
+  Usher ships no hidden or default-on reporting path of its own (orgs
+  that want force-enable act through their own visible channels —
+  MDM, managed settings — and that act is theirs, not usher's).
+
+  Rationale: SOUL.md §1 user sovereignty (no phone-home). "Software
+  requires trust there, or users will not accept the benefits for
+  fear of the hidden traps." Corroborated by finding-001: consent
+  patterns that survived scrutiny (Kolide honest security, loud
+  disclosure, DO_NOT_TRACK) vs the one that burned trust (Homebrew's
+  silent opt-out analytics).
+
+  Charter projection: B1. Resolves the consent portion of F3.
+provenance:
+  created_by: human
+  session: usher-seeding-2026-07-12
+  created_at: "2026-07-12"
+  derived_from:
+    - _kos/findings/finding-001-prior-art-landscape.md
+    - charter.md
