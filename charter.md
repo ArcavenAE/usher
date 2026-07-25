@@ -1,6 +1,6 @@
 # usher Charter
 
-Last updated: 2026-07-12 (seeded; prior-art probe complete — finding-001)
+Last updated: 2026-07-25 (F6 instance model ratified in direction; usher-doctor probe brief filed)
 
 ## Bedrock
 
@@ -81,6 +81,29 @@ the overlap needs resolving (beadle tends issues; usher tends humans
 and harnesses). Backronym candidates (undecided):
 - **U**sage, **S**ettings & **H**arness **E**nvironment **R**eporter
 - **U**ser **S**etup, **H**arness **E**nrollment & **R**eporting
+
+### F6: The instance model — usher serves any fleet; the repo is not the instance
+
+Direction ratified 2026-07-25 (party-mode session; design open).
+Usher works for **any fleet**: it is deployed by an org or team,
+customized by that team for their fleet, and it serves the individual
+person by contributing to — and being supported by — that team's
+collective knowledge. The repo and the tools it deploys are NOT its
+instance.
+
+Consequence: there must be a **bare-org deployment approach** that
+(a) associates a usher installation with its service instance, and
+(b) collects the instructions/customizations belonging to that
+instance/team. Open questions: what is the minimal bare-org artifact
+(a repo template? an org-level config? a signed manifest)? How does
+an individual's usher find its team instance? How does team
+customization layer over shipped defaults (echoes sideshow's
+user-install + orc-declared split, and bmad-extras' scope-classified
+learning — same shape, third instance)? How does this reframe F2's
+onboarding boundary and F4's cloud side (the "cloud service" may be
+per-team, not central)?
+
+Feeds the elicitation (`aae-orc-0mmn.1`) as its scoping input.
 
 ## Graveyard
 
