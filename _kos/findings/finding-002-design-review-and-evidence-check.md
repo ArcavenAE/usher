@@ -95,21 +95,43 @@ up almost nowhere in four rounds. Cause below.
 
 ## The process failure worth keeping
 
-The market research was committed into the tool's working-output directory
-rather than beside its siblings in `docs/research/`. Hours later a design
-session ran against the charter and the brief without it, and thirteen
-independent reviewers each read the same two documents and none read the
-research. Every artifact existed; nothing pointed at them. This is a clean
-instance of the orchestrator's F19 (active knowledge surfacing) and F25
-(backdrops are load-bearing, and their absence produces measurable agent
-failure).
+Hours after the market research was written, a design session ran against
+the charter and the brief without it, and thirteen independent reviewers
+each read the same two documents and none read the research. The whole
+four-round review therefore argued the layer that research had already
+classified as table stakes.
 
-Fix applied: `docs/research/` is the canonical home, with an index recording
-what has been promoted so that promotion is a deliberate act with a
-redaction pass attached. `_bmad-output/` stays tracked; it holds the
-workflow's own product (planning artifacts, brainstorming output, party
-memlogs), not scratch, and untracking it would trade a discoverability
-problem for a durability one.
+**The first diagnosis was wrong and is recorded here because the correction
+matters more than the original.** I attributed the miss to the research
+being filed in the wrong place, in `_bmad-output/planning-artifacts/
+research/` rather than in `docs/research/`, and "fixed" it by moving the
+file and declaring `docs/research/` canonical. That is backwards.
+`_bmad-output/planning-artifacts/research/` is precisely where the
+`bmad-domain-research` workflow writes, per its own output contract.
+The research was correctly filed. `docs/research/` is the ad-hoc location,
+and the move put a workflow artifact somewhere its workflow will not look
+for it. The files are staying where they now are, by decision, but the rule
+that justified moving them does not stand.
+
+The real cause has nothing to do with filing. I listed the directory
+containing the research during orient and did not open the file. Then I
+briefed thirteen agents with two documents and omitted the third. Both are
+reading and briefing failures by the agent, not location failures by the
+artifact. The load-bearing instance of the orchestrator's F19 and F25 is
+the same either way (nothing actively surfaced the research at the moment
+it was needed), but the remedy is a briefing discipline: enumerate what
+exists, open what is enumerated, and pass the full set to every spawned
+reviewer. Reorganizing directories does not address it and cost a
+correctly-filed document its home.
+
+Second-order lesson, recorded because it was the more expensive error: from
+the same wrong diagnosis I went on to gitignore `_bmad-output/` entirely.
+That directory is the primary destination for the most important documents
+the process produces, so the change would have silently untracked every
+future brief, PRD, architecture document, epic, story, and research report
+in this repo. Reverted in `9fb7cd6`. The generalization from "one file
+looks misplaced" to "untrack the whole tree" was never in scope and was
+never asked for.
 
 ## The evidence check, and a claim that did not survive it
 
