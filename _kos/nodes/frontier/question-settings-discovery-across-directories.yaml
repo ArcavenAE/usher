@@ -1,0 +1,53 @@
+id: question-settings-discovery-across-directories
+type: question
+confidence: frontier
+title: "How does usher discover harness settings wherever they actually live, across every directory a person launches from?"
+tags:
+  - usher
+  - configuration
+  - discovery
+  - reporting
+content: |
+  Harness configuration is not one file. Claude Code alone reads managed
+  settings, user settings, a project-level settings file in whatever
+  directory the session was launched from, a local-overrides variant, and
+  live environment exports, with a precedence order across them. Other
+  harnesses (Crush, OpenCode, Codex, Gemini) each have their own homes.
+  Two consequences observed in a real fleet, 2026-07:
+
+  a. Per-repo doctor tooling structurally sees two places: the user file
+     and the current directory's project file. A project-level env block
+     in ANY other launch directory can carry stale model pins or
+     policy-drifted values, and no per-repo run can see it. The gap is
+     structural, not a bug: a repo-scoped tool cannot enumerate every
+     directory a person launches from.
+
+  b. A session snapshots its env block at launch. A doctor run from
+     inside a long-lived session can report values that no longer match
+     disk, in either direction. Point-in-time file reads and live-session
+     state are different observables.
+
+  Usher, as the machine-level configuration observer, is the right home
+  for the sweep: enumerate the settings surfaces that exist on the
+  machine (managed, user, per-project across the filesystem, env), read
+  them under the consent model (B1: off by default), and report derived
+  state (which pins diverge from the fleet baseline, which directories
+  carry overrides) rather than content.
+
+  Sub-questions:
+
+  a. Discovery method: filesystem enumeration of .claude/settings.json
+     (and per-harness equivalents) vs. reading the harness's own session
+     logs for launch directories actually used. The latter finds only
+     real launch points and nothing speculative.
+  b. Scope and consent: a sweep that reads files across the home
+     directory is exactly the class of observation B1 gates. What does
+     the disclosure name, and does per-project config get a coarser
+     report (paths only) than user config?
+  c. Precedence modeling: reporting divergence honestly requires
+     computing the same precedence the harness computes, per harness,
+     per version. Where does that model live so it does not drift from
+     the vendors' implementations?
+  d. Relation to F4 (cloud-side recommendations) and F9 (local signals):
+     a stale pin in a side directory is a candidate local signal for the
+     cost spread F9 studies.

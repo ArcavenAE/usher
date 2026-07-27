@@ -151,6 +151,21 @@ returns here.
 
 Node: `_kos/nodes/frontier/question-local-signal-validity.yaml`
 
+### F10: Settings discovery across directories
+
+Harness settings live in more places than any per-repo tool can see:
+managed, user, per-project in every directory a person launches from, and
+the live environment, each with harness-specific precedence. A per-repo
+doctor reads the user file plus its own directory, so stale model pins and
+policy drift survive indefinitely in side directories; and a long-lived
+session snapshots its env at launch, so point-in-time file reads and live
+session state are different observables. Usher, as the machine-level
+configuration observer, is the natural home for the sweep — under the B1
+consent model, reporting derived state (what diverges, where) rather than
+content.
+
+Node: `_kos/nodes/frontier/question-settings-discovery-across-directories.yaml`
+
 ## Graveyard
 
 *Empty.*
