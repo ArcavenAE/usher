@@ -126,12 +126,27 @@ correctly-filed document its home.
 
 Second-order lesson, recorded because it was the more expensive error: from
 the same wrong diagnosis I went on to gitignore `_bmad-output/` entirely.
-That directory is the primary destination for the most important documents
-the process produces, so the change would have silently untracked every
-future brief, PRD, architecture document, epic, story, and research report
-in this repo. Reverted in `9fb7cd6`. The generalization from "one file
-looks misplaced" to "untrack the whole tree" was never in scope and was
-never asked for.
+`bmm/config.yaml` resolves `planning_artifacts` to
+`{project-root}/_bmad-output/planning-artifacts`, so that directory is the
+configured destination for briefs, PRDs, architecture documents, epics,
+stories, and research. The change would have silently untracked every one
+of them from that point forward. Reverted in `9fb7cd6`. The generalization
+from "one file looks misplaced" to "untrack the whole tree" was never in
+scope and was never asked for.
+
+The mechanism of that error is worth naming, because it will recur in
+another costume. The orchestrator does gitignore `_bmad-output/`, and I
+took that as license. But the orchestrator's ignore is a deliberate guard
+added the day before in session-065, for a reason that applies only there:
+the orc root is where a session-close `git add -A` habit meets untracked
+sensitive material, and the orc is a coordinator that holds no planning
+artifacts of its own. In a subrepo the same directory holds the
+deliverables. So the rule is not "ignore `_bmad-output/`" or "never ignore
+it"; it is that a guard's justification does not travel with its pattern.
+Copying a fleet-level ignore into a repo where the directory is the product
+inverts its purpose. I also, before learning the guard was deliberate,
+speculated in conversation that the orc's ignore might be the same mistake
+at larger scale. It was not, and the speculation was unfounded.
 
 ## The evidence check, and a claim that did not survive it
 
@@ -213,10 +228,10 @@ than a queue, and credit is load-bearing rather than decorative.
 
 ## Node changes
 
-- `question-org-admissions-and-locked-settings` — new frontier.
-- `question-contribution-loop-sustainability` — new frontier.
-- `question-local-signal-validity` — new frontier.
-- `val-reporting-off-by-default` — amended: B1 gains a testability
+- `question-org-admissions-and-locked-settings`: new frontier.
+- `question-contribution-loop-sustainability`: new frontier.
+- `question-local-signal-validity`: new frontier.
+- `val-reporting-off-by-default`: amended. B1 gains a testability
   requirement. A control that does not gate the code path is worse than no
   control, because it converts a privacy claim into a discoverable lie.
   Grounded in the Grok Build case rather than in principle.

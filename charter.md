@@ -1,6 +1,8 @@
 # usher Charter
 
-Last updated: 2026-07-25 (F6 instance model ratified in direction; usher-doctor probe brief filed)
+Last updated: 2026-07-27 (design review of the product brief: bet moved to the
+off-baseline contribution loop; F7-F9 opened; B1 amended with a testability
+requirement. See `_kos/findings/finding-002` and `docs/product-brief-20260726.md`.)
 
 ## Bedrock
 
@@ -23,6 +25,14 @@ security, loud disclosure, DO_NOT_TRACK) versus the one that burned
 trust (Homebrew's silent opt-out analytics).
 
 Decided: 2026-07-12, user ratification.
+
+Amended 2026-07-26: the off switch must gate the code path, not just the
+send. A control that does not gate the path is worse than no control,
+because it converts a privacy claim into a discoverable lie. Consent is
+revisable and withdrawable in both directions, consent events are
+recorded, and attention is treated as the scarce resource usher spends.
+Detail: `_kos/nodes/bedrock/val-reporting-off-by-default.yaml`; evidence:
+`docs/research/grok-build-collection-scope-20260726.md`.
 
 *Everything else: nothing committed yet. Seeded 2026-07-12;
 design/elicitation via bmad is the next step, now with evidence:
@@ -104,6 +114,42 @@ onboarding boundary and F4's cloud side (the "cloud service" may be
 per-team, not central)?
 
 Feeds the elicitation (`aae-orc-0mmn.1`) as its scoping input.
+
+Revised 2026-07-26: "enterprise versus individual" was a taxonomy error
+and is retired. The axis is individuals and organizations. A person may
+hold more than one affiliation; a community and an employer are the same
+shape with different admissions rules. That reframe is what exposed F7.
+
+### F7: Admissions and organization-locked settings
+
+What may an organization require of a member, how is the requirement
+surfaced before acceptance, and what does a member see about what is
+shared? Carries a device-management corollary: install may be silent,
+observation may not begin before consent.
+
+Node: `_kos/nodes/frontier/question-org-admissions-and-locked-settings.yaml`
+
+### F8: Does a small team sustain a contribution loop?
+
+The brief's bet is the off-baseline contribution loop. Participation-
+inequality literature says such loops do not emerge on their own at a
+dozen to two dozen people, and no empirical minimum size exists either
+way. Open: whether near-zero authoring cost changes the arithmetic, since
+every documented failure measured loops where contributing meant writing
+something.
+
+Node: `_kos/nodes/frontier/question-contribution-loop-sustainability.yaml`
+
+### F9: Which locally observable signals predict cost efficiency?
+
+Billing-side reporting can show that a spread exists; it cannot show which
+local behavior moves it, because it sits too far from the levers. Candidate
+local signals: cache expiry, model thrashing, image uploads, interaction
+timing. Method constraint: any probe runs against an organization's own
+data inside that organization's own repositories, and only mechanism
+returns here.
+
+Node: `_kos/nodes/frontier/question-local-signal-validity.yaml`
 
 ## Graveyard
 
