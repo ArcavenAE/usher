@@ -1,10 +1,3 @@
 .beads
 .DS_Store
 .claude/settings.local.json
-
-# Tool working output stays local. This repository is bound for public
-# release, and workflow scratch is where proprietary material arrives by
-# accident: raw research, billing exports, per-person figures, client
-# context. Durable artifacts get promoted deliberately into docs/research/
-# after a redaction pass (see docs/research/README.md).
-_bmad-output/

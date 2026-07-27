@@ -104,9 +104,12 @@ instance of the orchestrator's F19 (active knowledge surfacing) and F25
 (backdrops are load-bearing, and their absence produces measurable agent
 failure).
 
-Fix applied: `docs/research/` is the canonical home with an index recording
-what has been promoted, and tool working output is gitignored so that
-promotion is a deliberate act with a redaction pass attached.
+Fix applied: `docs/research/` is the canonical home, with an index recording
+what has been promoted so that promotion is a deliberate act with a
+redaction pass attached. `_bmad-output/` stays tracked; it holds the
+workflow's own product (planning artifacts, brainstorming output, party
+memlogs), not scratch, and untracking it would trade a discoverability
+problem for a durability one.
 
 ## The evidence check, and a claim that did not survive it
 
