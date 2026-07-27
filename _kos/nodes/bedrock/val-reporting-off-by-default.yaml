@@ -23,7 +23,45 @@ content: |
   disclosure, DO_NOT_TRACK) vs the one that burned trust (Homebrew's
   silent opt-out analytics).
 
+  AMENDMENT 2026-07-26 — the default must be testable, not merely
+  stated. A control that does not gate the code path is worse than no
+  control, because it converts a privacy claim into a discoverable
+  lie. Two assertions are therefore part of this value rather than
+  implementation detail: a test proving no egress occurs in the
+  default state, and a test proving that the enabled state sends only
+  what the published inventory names. The published "we do NOT
+  collect" list is a contract, not a trust signal, because a product
+  in this category will be judged against its documentation rather
+  than against a privacy ideal.
+
+  Corollary adopted at the same time: be auditable on purpose. Usher
+  should be trivially inspectable on the wire and should publish its
+  behavioral profile. Being easy to check is a stronger position than
+  asking to be trusted, and the same document lets an endpoint
+  security team allowlist usher deliberately instead of discovering
+  it as an anomaly.
+
+  Grounds for the amendment are empirical rather than principled: a
+  same-category product shipped whole repositories and unredacted
+  secrets while its user-facing privacy control was disabled and its
+  marketing claimed local-first operation. See
+  docs/research/grok-build-collection-scope-20260726.md. Homebrew's
+  failure was a default nobody noticed; this failure was a control
+  that did not work. B1 must be immune to both.
+
+  Also settled 2026-07-26: consent is revisable and inspectable, and
+  the channel is bidirectional. The member may ask usher what it is
+  doing, check consent state, change it, or withdraw it. Consent
+  events are recorded (what was shown, what was accepted, when, and
+  whether an enable was member-chosen or organization-required),
+  which is what makes this value defensible under hostile
+  examination. Attention is the scarce resource rather than the
+  question count: usher may ask, but only when the person can afford
+  it, and it returns more than it takes.
+
   Charter projection: B1. Resolves the consent portion of F3.
+  Multi-organization mechanics are open in
+  question-org-admissions-and-locked-settings.
 provenance:
   created_by: human
   session: usher-seeding-2026-07-12

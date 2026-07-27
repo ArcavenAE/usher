@@ -1,0 +1,78 @@
+id: question-contribution-loop-sustainability
+type: question
+confidence: frontier
+title: "Does a team of twelve to twenty-five sustain an off-baseline contribution loop, and what does near-zero authoring cost change?"
+tags:
+  - usher
+  - contribution-loop
+  - adoption
+  - atelier
+content: |
+  The off-baseline contribution loop is usher's differentiator: an
+  individual deviates from the team baseline in a way that works better, and
+  that deviation is detected, declared, described, assessed, tested,
+  decided, rippled, and credited. Collectors are table stakes; the loop is
+  the moat. So whether the loop sustains at the size of the intended first
+  deployment is load-bearing rather than academic.
+
+  What the literature establishes (see finding-002 for sources):
+
+  - Participation inequality is robust and survives payment. Paid
+    contributors contribute more often, but the distribution stays skewed.
+  - A documented longitudinal case at a large engineering company ran an
+    internal contribution marketplace with paid staff and still reported
+    too few contributions. Proximity, shared tooling, and salary are not
+    sufficient conditions.
+  - Applying the observed power law to twelve to twenty-five people predicts
+    roughly two to five natural contributors, possibly one to three.
+  - The dominant failure mode is return-on-investment misalignment: the
+    contributor bears the cost of making something reusable while others
+    capture the benefit. Then time pressure, learning curve, owner
+    resistance to maintenance burden, poor discoverability, and management
+    treating contribution as off-task.
+  - Named enablers: multi-level recognition programs, lightweight governance
+    rather than heavy process, and a review clock. Two weeks is the named
+    point past which an unreviewed contribution breaks the loop for that
+    contributor.
+
+  What the literature does NOT establish: any minimum-viable-size threshold.
+  No empirical work names a headcount below which an internal contribution
+  loop fails to sustain itself. This is unresolved, not answered either way,
+  and it should not be presented as settled in either direction.
+
+  THE OPEN QUESTION, sharpened: every documented failure was measured
+  against loops where contributing meant AUTHORING something. Usher
+  generates the proposal body from the observed configuration difference and
+  asks the human only for intent. If authoring cost approaches zero, the
+  small-team arithmetic may not apply, because the dominant failure mode is
+  attacked at its root rather than compensated for.
+
+  Sub-questions:
+
+  a. Does near-zero authoring cost measurably change contribution rate, or
+     does ROI misalignment reassert itself at the review and adoption stages
+     instead of the authoring stage?
+  b. What is the minimum governance that works at this scale, and does the
+     two-week review clock hold when the reviewer is one busy person rather
+     than a committee?
+  c. Can credit be made to function without a promotion system to convert it
+     into? The literature associates credit with sustained participation but
+     no study isolates its effect size.
+  d. If only two to five people ever contribute, is that enough for the rest
+     to benefit, and is a loop with three contributors and twenty consumers
+     a success or a failure of the design?
+  e. Cross-organization sharing adds not-invented-here resistance, legal and
+     transfer friction, and discovery overhead on top of every within-team
+     failure mode. It should be architecturally anticipated and treated as
+     upside rather than premise.
+
+  Design consequences already adopted in the brief: the declare step must
+  stay nearly free, the assess step needs a named reviewer and a clock
+  rather than a queue, and credit is load-bearing rather than decorative.
+provenance:
+  created_by: human
+  session: usher-design-review-2026-07-26
+  created_at: "2026-07-26"
+  derived_from:
+    - _kos/findings/finding-002-design-review-and-evidence-check.md
+    - docs/research/market-teams-over-individuals-20260726.md

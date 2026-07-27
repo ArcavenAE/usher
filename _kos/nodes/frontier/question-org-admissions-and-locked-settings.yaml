@@ -1,0 +1,60 @@
+id: question-org-admissions-and-locked-settings
+type: question
+confidence: frontier
+title: "What may an organization require of a member's usher, and how is that surfaced before acceptance?"
+tags:
+  - usher
+  - consent
+  - organizations
+  - atelier
+content: |
+  Usher serves individuals and organizations. An individual may belong to
+  several organizations at once, and an organization may be an employer, a
+  community, a client engagement, or a project. Organizations have an
+  admissions gate, which may be an open door by choice.
+
+  The question this opens: what may an organization legitimately REQUIRE of
+  a member's usher, and what must the member see before they accept?
+
+  Sub-questions:
+
+  a. What classes of setting can be organization-locked, and is that list
+     fixed by usher or declared per organization?
+  b. What must the disclosure show at affiliation time: which features are
+     locked, what telemetry is enabled, what is shared, with whom, and for
+     how long?
+  c. How does a member inspect, change, or withdraw consent later, given
+     that consent is revisable and the relationship is a partnership rather
+     than a one-time gate?
+  d. What happens when two affiliations make incompatible demands on a
+     setting that is a user-wide singleton rather than per-scope? Surfaced
+     as an advisory, never a silent rewrite.
+  e. On a device-management install, the software can arrive before the
+     person has seen anything. Install may be silent; may observation begin
+     before consent? (Proposed answer: no. B1 is violated otherwise.)
+  f. What forensic record proves an enable was organization-required rather
+     than usher-originated, if a member later disputes it?
+
+  Why this was hidden: the earlier enterprise-versus-individual framing
+  smuggled in the assumption that organization settings would be locked, so
+  the question never got asked. Treating an enterprise as one kind of
+  organization rather than a separate product category exposes it.
+
+  Position already settled (see val-reporting-off-by-default): usher is
+  transparent and does not referee the employment relationship. If a member
+  has no practical choice about an organization's requirements, that is
+  between them and that organization. Usher's obligation is that it is never
+  a surprise.
+
+  Charter projection: F6, and a revision to the framing of F3.
+provenance:
+  created_by: human
+  session: usher-design-review-2026-07-26
+  created_at: "2026-07-26"
+  derived_from:
+    - _kos/findings/finding-002-design-review-and-evidence-check.md
+    - docs/product-brief-20260726.md
+edges:
+  - target: val-reporting-off-by-default
+    type: derives
+    note: "The consent compact is bedrock; this question works out its multi-organization mechanics."

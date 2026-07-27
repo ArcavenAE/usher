@@ -1,0 +1,127 @@
+id: question-local-signal-validity
+type: question
+confidence: frontier
+title: "Which locally observable signals actually predict AI cost efficiency?"
+tags:
+  - usher
+  - observation
+  - recommendations
+content: |
+  Usher's analyze-and-recommend core rests on a claim that has not been
+  tested: that cost efficiency varies substantially between people with
+  identical model access, and that the variance is driven by locally
+  observable configuration and habit rather than by entitlement or role.
+
+  The mechanism is public and sound. Prompt caching dominates the cost of
+  agentic work: a cache write costs somewhat more than ordinary input while a
+  read costs a fraction of it, so break-even is a couple of reads per write
+  and sustained reuse is worth an order of magnitude. Candidate drivers, all
+  local and all under the user's control: letting the cache expire between
+  turns, thrashing between models, uploading images and resetting context,
+  interaction timing, and general harness configuration.
+
+  WHAT AN EVIDENCE CHECK FOUND (see finding-002): one fleet's unusually
+  mature cost reporting could neither support nor refute the claim.
+  Per-person partitioning had existed for days rather than months, so there
+  was no variance to read. The largest efficiency swing in the window was a
+  platform quota change that lifted for everyone simultaneously, which is a
+  shared configuration event rather than individual habit. Flat-fee
+  subscription seats are invisible to cloud billing, so the heaviest
+  individual users can be the least measured. And the fleet-level caching
+  figure most often quoted is disclaimed in its own source as an
+  order-of-magnitude indicator.
+
+  The absence is itself the finding: a team with better AI cost reporting
+  than most organizations will ever build cannot see which local behavior
+  moves its own largest cost lever, because nothing collects the deciding
+  signals.
+
+  THE COLLECTOR SPECIFICATION, derived empirically rather than guessed. The
+  split between what a billing surface can supply and what only a local
+  agent can see is clean, and it falls exactly along the line between cost
+  and cause.
+
+  Server-side only, available at daily aggregation from console exports or
+  cloud audit logs, never local: token volumes by class (input, cache-read,
+  cache-write, output), dollar totals, model mix per principal, cache
+  read-to-write ratio per principal, invocation counts.
+
+  Local only, collected nowhere today by anything:
+
+  a. Which model was selected per session, and whether it changed mid-session.
+  b. Inter-turn timing relative to cache lifetime. Cache expires at a known
+     interval per backend (see the cache-TTL research doc), so the question
+     is whether the gap between turns kept it alive. This is the single most
+     actionable local signal, because it is precisely the behavioral gap
+     between someone who knows the TTL and someone who does not, which is
+     the expertise nobody on a team has time to acquire.
+  c. Context reset events: was this turn a continuation or a fresh start? A
+     fresh start forfeits all cached context regardless of intent.
+  d. Cache-invalidating inputs, such as image uploads and large context
+     injections that reset the cache mid-session while the user believes
+     they are continuing.
+  e. System prompt and project-context file size over time. Cache-write
+     volume scales with persistent context, so a large maintained context
+     costs more per write and the payoff depends entirely on reuse
+     frequency. That ratio is invisible from billing data.
+
+  THE FIRST CONCRETE ANALYZE OUTPUT, and a candidate answer to what usher
+  ships first: signals (b) and (c) together are sufficient to compute a
+  per-session cache efficiency score, meaning what fraction of turns were
+  served from cache versus paid at full write cost. That score is not
+  derivable from any billing export at any aggregation level. It requires
+  observation at the point where the API call is made, which is exactly
+  where a local agent sits and nothing else does. It is worth noting that a
+  four-round design review proposed four candidate first features (enroll,
+  change visibility, a local check, spend attribution) and none of them was
+  this.
+
+  TWO REASONS NOT TO TRUST THE BILLING SIDE, both discovered in the same
+  audit and both generalizing to any tool built on spend exports:
+
+  f. A list-price weighting table that lacks an entry for a newly adopted
+     model silently excludes that model's tokens from every estimate
+     downstream. The failure is quiet and the numbers still look plausible.
+     Usher inherits this hazard the moment it builds such a table, so
+     completeness of the price map is a correctness requirement rather than
+     a maintenance chore.
+  g. Failed and throttled invocations are not billed, so a shared quota
+     constraint that suppresses invocations reduces measured spend with no
+     change in anyone's behavior. Billing-side efficiency gains can
+     therefore be artifacts of a constraint rather than evidence of
+     improvement. A local agent sees the throttle errors and can tell the
+     difference; a billing export cannot.
+
+  Sub-questions:
+
+  e. Do those four predict effective cost per unit of work, and with what
+     strength? A four-to-six week read of newly-partitioned per-user data is
+     the minimum viable evidence window.
+  f. Which of the four can be observed while communicating derived state
+     rather than content, and never reading secrets? Any signal that fails
+     this test is out regardless of its predictive value.
+  g. What confounds each signal? A recommendation must declare what it could
+     not observe, because a recommendation built on an unseen variable is
+     misleading in a way the user cannot detect.
+  h. How coarse can the record be and still support the analysis? Daily
+     milestones on key settings are believed sufficient to correlate a
+     change with a billing period; this is a statistical instrument in broad
+     strokes, and the coarseness is a privacy and cost feature.
+  i. Does the per-harness observability map (which settings are
+     directory-scoped, user-wide, or server-side) need to exist before any
+     of this is estimable? Probably yes, which makes it a named research
+     deliverable rather than a design detail.
+
+  METHOD CONSTRAINT, non-negotiable. Any probe against an organization's
+  real usage data runs inside that organization's own repositories.
+  Measurements stay where they were taken; only mechanism returns here. A
+  number lifted from someone else's instrument arrives without its caveats,
+  which is how an unpublishable claim and an untrustworthy claim turn out to
+  be the same sentence.
+provenance:
+  created_by: human
+  session: usher-design-review-2026-07-26
+  created_at: "2026-07-26"
+  derived_from:
+    - _kos/findings/finding-002-design-review-and-evidence-check.md
+    - docs/research/prompt-cache-ttl-by-backend-20260721.md
