@@ -13,6 +13,9 @@ permissions:
 
 jobs:
   dependency-review:
+    # Dependency review needs GitHub Advanced Security on private repos.
+    # Skip cleanly while private; re-activates automatically if public.
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     steps:
       - name: Harden the runner (Audit all outbound calls)
