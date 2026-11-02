@@ -62,3 +62,5 @@ live in the orchestrator's `_kos/`. Follow the orc session protocol:
 orient (charter.md) → ideate (_kos/ideas/) → question → probe →
 finding → harvest. Commits use kos action vocabulary (probe:, finding:,
 harvest:) alongside conventional commits.
+
+Mint a finding id with `kos id finding <slug>`; never hand-allocate a number.
