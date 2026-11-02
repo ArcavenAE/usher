@@ -33,6 +33,7 @@ correction.
 | [prompt-cache-ttl-by-backend-20260721.md](prompt-cache-ttl-by-backend-20260721.md) | 2026-07-21 | Prompt-cache TTL behavior per backend. Input to the analysis side. |
 | [market-teams-over-individuals-20260726.md](market-teams-over-individuals-20260726.md) | 2026-07-26 | Teams-over-individuals thesis supported; the off-baseline contribution loop specified in eight steps; collectors are table stakes, the loop is the moat. |
 | [grok-build-collection-scope-20260726.md](grok-build-collection-scope-20260726.md) | 2026-07-26 | A 2026 same-category consent failure. Gives B1 a testability requirement and the design rule of state-not-content. |
+| [orc-index.md](orc-index.md) | 2026-11-02 | Pointers to aae-orc and bd material that bears on usher but does not name it: install failure modes, settings discovery, spend and telemetry, compliance evidence, the current install path. |
 
 Research written by a BMAD workflow will not be listed here unless someone
 adds a row by hand. Check `_bmad-output/planning-artifacts/research/` too.
