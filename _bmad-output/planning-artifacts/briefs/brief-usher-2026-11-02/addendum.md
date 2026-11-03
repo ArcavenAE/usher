@@ -9,8 +9,8 @@ updated: 2026-11-02
 
 This addendum holds depth that belongs to the PRD and architecture steps,
 or that earned a place but does not fit the brief. Orc paths are relative
-to the aae-orc root. Once `docs/research/orc-index.md` lands, it becomes
-the index for the orc material in section D.
+to the aae-orc root. The orc material is indexed in
+`docs/research/orc-index.md` (section D).
 
 ## A. The contribution loop
 
@@ -85,38 +85,21 @@ Onboards" edge. Both need a decision.
 
 ## D. Evidence pointers (orc)
 
-**Install and update:** `_kos/findings/finding-182-claude-self-update-wedges-running-seat.md`
-(check the update banner and binary change time before blaming config);
-`finding-aae-orc-gntz-installed-copy-drifts-from-merged-script.md` (stamp
-source and hash into output); `finding-221-brew-tap-ambiguity-hides-an-upgrade.md`
-(query by fully qualified tap); aae-orc-9va5 (copy vs symlink; version
-check reads only the installed file).
+The orc index, `docs/research/orc-index.md` (landed in #9), replaces the
+list of pointers that was here. How its sections map to the brief:
 
-**Settings discovery:** `finding-087-cross-harness-discovery-verification.md`
-(per-harness instruction and skill discovery; codex project config ignores
-provider, auth, notify and otel keys); `finding-aae-orc-2w6k-harness-set-beyond-claude-and-codex.md`
-(harness ranking and six adoption criteria; crush hold withdrawn
-2026-10-10).
-
-**Settings evidence:** findings 055-057 (Bedrock context cap; autocompact
-setting safe on 1M variants, not on 200k; delivery via doctor checks); 021
-(permission decisions return only through hooks); 024 (settings hot-reload
-mid-session, kernel sandbox fixed at start); 091 (plugin identity
-`<pack>@<marketplace>` and per-scope enablement).
-
-**Spend and telemetry:** `docs/reports/2026-10-token-audit/` (method:
-dedupe by message id, pinned price table, per-identity reconcile; use the
-method, not the figures); `docs/design/2026-11-01-i100-otel-execution-plan.md`
-(off until on, provably silent, per-cluster collector to an
-operator-owned gateway, consent identity unresolved for seats on another
-person's cluster); finding-145 (meter total session cost at its true
-source, never a proxy); finding-123 (the spawner must stamp agent identity).
-
-**Install path today:** `tools/install.sh`; `wardrobe/README.md`
-"Updating an install"; sideshow findings 025, 027, 076 (filed at the orc).
-
-**Open bd work touching usher, none linked to aae-orc-0mmn:** aae-orc-9fwcr,
-aae-orc-z6y7, aae-orc-1vgfk, aae-orc-lp2pg, aae-orc-k0l75.
+- Sections 1 and 5 (install and update failure modes; the install path
+  usher would drive): the Problem and install and update health.
+- Sections 2 and 4 (settings discovery; settings evidence): the settings
+  map and the drift check.
+- Section 3 (spend and telemetry): the cost-side output. Use the token
+  audit's method, not its figures.
+- Section 6: open bd work touching usher, none linked to aae-orc-0mmn.
+- Section 7 (field notes): the device-management reinstall that dropped
+  custom profiles, and per-host credentials. Both are in the brief's
+  posture.
+- Section 8 (constraints): per-person data never enters git, client names
+  stay out, reporting stays off by default.
 
 ## E. Carried from July
 
@@ -159,3 +142,45 @@ Every check must version-stamp its assumptions.
 - **Harnesses.** Goose added on the strength of finding-aae-orc-2w6k.
 - **Customer split.** The fleet engineer stays the customer; the developer
   is now named the primary user, and non-human seats are a third subject.
+- **Concept type.** Open source, decided 2026-11-03. The repo is private
+  today; going public is open question 11.
+- **Evidence base.** At least one team outside this fleet has the same
+  problem. The operator does not disclose which.
+
+## G. From the harness settings research (2026-11-02)
+
+Source: `_bmad-output/planning-artifacts/research/technical-harness-settings-observability-map-2026-11-02/research.md`
+(43 sources; of 27 tracked claims, 15 verified, 6 unverified, 6 disputed,
+2 overturned).
+
+- **Codex: ask the harness.** The app-server `config/read` call, given
+  `cwd` and `includeLayers`, returns the effective config, every layer with
+  a `disabledReason`, and an `origins` map from each key to the layer that
+  set it. `configRequirements/read` returns admin constraints. Confirmed
+  against installed 0.160.1 by generating the protocol schema.
+- **Claude Code: rebuild, then confirm.** No command names the file behind
+  each key. Usher models the documented stack, reads the server-managed
+  cache (`~/.claude/remote-settings.json`, which may differ from effective
+  state), and confirms against `claude auto-mode config`, `/permissions`
+  and `claude doctor`.
+- **Goose: rebuild from source, not docs.** The stack is
+  `/etc/goose/config.yaml`, then `GOOSE_ADDITIONAL_CONFIG_FILES`, then the
+  user file, with environment variables ahead of files. The docs omit the
+  system layer, and the distro guide names a telemetry variable the code
+  never reads; the kill switch is `GOOSE_TELEMETRY_OFF`.
+- **Resolved over declared.** A file saying X does not mean X is in effect,
+  so the drift check compares the profile with the resolved view wherever
+  one exists.
+- **Two layers of staleness.** Scopes, precedence and paths change slowly;
+  keys and defaults change per release. The fast layer is re-verified per
+  release and keyed to the version install health detects.
+- **Disputed, one cheap test each before the PRD relies on them:** whether
+  omitting `"$defaults"` still drops Claude Code's built-in auto-mode rules
+  on 2.1.317 (this decides the settings-profile idea's structural gate);
+  where codex ranks its device-management config; whether codex loads
+  project skills in untrusted repos; goose's `GOOSE_MODE` default.
+- **Answered:** codex retired `approval_policy = "untrusted"` (PR 39630,
+  2026-08-20), so a profile must not name it. This closes open question 3
+  of `_kos/ideas/fleet-settings-profile.md`.
+- **Unconfirmed:** whether codex warns at startup when it ignores project
+  keys. The brief no longer says it does so silently.

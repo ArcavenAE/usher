@@ -31,8 +31,9 @@ B1). It covers Claude Code, codex and goose.
 
 **Settings are scattered and resolved differently by every harness.**
 Claude Code reads managed, `--settings`, project-local, project and user
-layers, with list merges and managed-only locks. Codex silently ignores
-provider, auth, notify and otel keys in project config. Instruction and
+layers, with list merges and managed-only locks. Codex ignores provider,
+auth, notify and otel keys in project config. Goose reads a system file,
+`/etc/goose/config.yaml`, that its docs do not mention. Instruction and
 skill discovery differs per harness (orc finding-087). A per-repo tool sees
 its own directory and the user file, so stale pins and policy drift survive
 indefinitely in side directories, and a long-lived session holds the
@@ -74,11 +75,15 @@ baseline, which may be an improvement and is the contribution loop's input.
   person launches from: where settings live across managed, user, project
   and live-session layers, and which value is in effect. Usher reads the
   harness's own resolved view where one exists, because the harness's
-  precedence is the truth.
+  precedence is the truth. Codex reports its effective config and the
+  layer behind each key; for Claude Code and goose, usher rebuilds the
+  stack from files and checks it against the harness's own views. Each
+  reading names the harness version it assumes (addendum, section G).
 - **Drift check.** A team declares a versioned settings profile. Usher
-  compares each host's resolved state with it and reports, per entry,
-  present, missing or stale, plus structural hazards such as an allow list
-  that drops the built-in defaults.
+  compares each host's resolved state with it, not the files alone, and
+  reports, per entry, present, missing or stale, plus structural hazards
+  checked per harness version (an allow list that drops the built-in
+  defaults, for one, still to be confirmed on current Claude Code).
 - **Install and update health.** Whether each tool is installed, from which
   source, at which version, and whether that version is behind its source.
   Usher drives the existing installers (mise, brew, sideshow,
@@ -96,15 +101,20 @@ Spend meters, config readers and change detectors exist or can be built in
 an afternoon, and vendor admin consoles deepen monthly. Two things exist
 nowhere: one view of settings across several harnesses and directories,
 and a path that turns one person's better setting into the team's
-baseline. The moat is the cross-harness map plus the loop plus the
+baseline. The value is the cross-harness map plus the loop plus the
 posture, not the collectors. Treating divergence as a possible improvement,
 not as decay to clamp, keeps usher out of the compliance category.
 
+Usher is open source. Its posture claims (read-only, no egress when
+reporting is off, credential presence but never value) can be checked in
+the code by a team's security reviewer, which a closed observer on every
+developer machine cannot offer.
+
 ## Who This Serves
 
-- **Customer: the fleet engineer, the AI advocate.** Owns the team profile,
-  deploys usher, and gains standing when the team's seats work and spend
-  falls.
+- **Customer: the fleet engineer, the AI advocate.** Adopts usher for a
+  team, owns the team profile, and gains standing when the team's seats
+  work and spend falls.
 - **Primary user: the developer.** Finds their seat, re-finds it after an
   update or a new machine, and adopts team settings safely. May install
   usher or receive it through device management; either way the value
@@ -117,6 +127,9 @@ not as decay to clamp, keeps usher out of the compliance category.
 
 Usher serves individuals and organizations; a person may belong to several
 organizations, each with its own consent (charter F6, F7; addendum, section B).
+
+The evidence so far comes from this fleet and from at least one other team
+with the same problem, not named here.
 
 ## Success Criteria
 
@@ -194,8 +207,8 @@ place a person goes to get seated, and the quiet process that keeps the
 house in order afterwards. The team profile becomes a living baseline that
 improves because members feed it. The same loop extends past settings to
 skills, prompts and workflows, where distribution exists but graduation
-does not. Whether usher ends as a product, a protocol or a service is left
-to use.
+does not. Usher is open source, so a team can read what it observes and
+run every part of it themselves.
 
 ## Open Questions for the PRD
 
@@ -204,8 +217,9 @@ to use.
 2. The usher-marvel seam: a profile fragment marvel merges, or role files
    marvel already reads (finding-180: two `--settings` are last-wins).
 3. Discovery method and consent for a home-wide directory sweep (F10).
-4. The per-harness observability map as a named research deliverable,
-   version-stamped, for the three v1 harnesses.
+4. The per-harness observability map: a first cut exists for the three v1
+   harnesses (addendum, section G). Its disputed claims need one test each
+   before the PRD relies on them, and it needs re-checking per release.
 5. Does a team of a dozen to two dozen sustain the contribution loop when
    authoring is nearly free (F8)?
 6. Minimum substrate for aggregate-and-return (F4), self-hosted first.
@@ -216,3 +230,6 @@ to use.
    ADR-009 test for usher-minted keys.
 9. Component decomposition (F1): usherd, MCP surface, CLI, cloud.
 10. Name and backronym (F5), and the overlap with beadle.
+11. Going public. The repo is private today. A release needs a time, a
+    license, and a sweep of the repo for private repository names, client
+    names and per-person data (orc index, section 8).
