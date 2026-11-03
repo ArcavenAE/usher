@@ -19,7 +19,7 @@ It recommends; it does not take over.
 The pressing problem is settings and permissions friction. Every harness
 resolves configuration from its own stack of layers (managed, flag,
 project, user, live session), across every directory a person launches
-from, and each harness changes monthly. Nobody on a team can say which settings
+from, and each harness ships every few days. Nobody on a team can say which settings
 are in use, where, or whether the agreed baseline reached every machine.
 Cost is the second payoff: the same visibility shows the local habits and
 settings behind a team's largest spend lever, prompt caching.
@@ -133,6 +133,8 @@ with the same problem, not named here.
 
 ## Success Criteria
 
+- A team outside this fleet installs usher and reaches a working seat on
+  its own harnesses without our help.
 - A developer on a new or updated machine reaches a working seat on all
   three harnesses without asking anyone.
 - The fleet engineer can answer "which hosts carry entry X of the profile"
@@ -166,6 +168,12 @@ with the same problem, not named here.
   rendering into the user layer is v2. Seat settings are marvel's to write;
   locked settings belong to the organization's device management. Usher is
   never the sole configuration authority.
+- **Asking a harness must not change it.** Before usher relies on a
+  harness's resolved view (`codex app-server`, `claude auto-mode config`,
+  `claude doctor`), each call is shown not to write state, refresh a
+  cache, or trigger a self-update. A self-update can wedge a running seat
+  (orc finding-182), and the observer must not cause the failure it
+  reports.
 - **Coexist with device management.** When MDM also manages an app or
   setting, usher detects and reports the overlap (a reinstall that drops
   custom profiles, for one) rather than fighting it.
