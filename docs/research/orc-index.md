@@ -39,7 +39,7 @@ Relates to the usher frontier node `question-settings-discovery-across-directori
 ## 5. The install path usher would drive
 
 - `tools/install.sh`: puts `aq`, `ax` and `ae` in `~/.local/bin`.
-- `~/.beads/shared-server/client-env.sh`: the bd client env, described in the task-workflow skill (`.claude/skills/task-workflow/SKILL.md`, section "bd server").
+- `~/.beads/shared-server/client-env.sh` (a path under the home directory, not under the aae-orc root): the bd client env, described in the task-workflow skill (`.claude/skills/task-workflow/SKILL.md`, section "bd server").
 - wardrobe `README.md`, section "Updating an install" (in the wardrobe repo).
 - `_kos/findings/finding-025-bmad-6.3.0-sideshow-install-probe.md`, `finding-027-bmad-6.3.0-sideshow-install-end-to-end.md` and `finding-076-sideshow-custom-skill-binding-gap.md`: sideshow install behavior.
 
@@ -47,7 +47,7 @@ Relates to the usher frontier node `question-settings-discovery-across-directori
 
 - `aae-orc-9fwcr`: make usher modular across the ArcavenAE tool set and the harness ecosystem.
 - `aae-orc-z6y7`: long-term AI API key handling, including plaintext-on-disk detection via usher.
-- `aae-orc-1vgfk`: client-side Windows support for sideshow and usher.
+- `aae-orc-1vgfk`: assess impact and level of effort to make sideshow and usher client-side Windows-capable.
 - `aae-orc-lp2pg`: fleet-wide context sweeps per harness runtime, and where they live.
 - `aae-orc-k0l75`: mining the accumulated sim files for lessons.
 
