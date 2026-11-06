@@ -2,7 +2,7 @@
 title: "Product Brief Addendum: usher"
 status: draft
 created: 2026-11-02
-updated: 2026-11-02
+updated: 2026-11-04
 ---
 
 # Addendum: usher brief, 2026-11-02
@@ -31,8 +31,7 @@ that its input is now named **divergence**.
 6. **Decide.** Accept, hold as a sanctioned option, or decline with a
    reason. Baseline changes are human acts.
 7. **Ripple.** The change spreads through the signed catalog or the team
-   profile, offered, never forced. In v1 this is a proposal only; render
-   is v2.
+   profile, offered, never forced, and applied on the person's confirmation.
 8. **Credit.** Attribution rides the proposal.
 
 Literature notes (from `docs/research/market-teams-over-individuals-20260726.md`):
@@ -74,8 +73,8 @@ answered per setting class.
 | sideshow | install and five-layer doctor; signed packs overlap the ripple substrate | orc charter F24; ADR-008; aae-orc-9fwcr, aae-orc-70os |
 | marvel | seat settings via per-session `--settings`; measurement fabric | fleet-settings-profile idea; marvel/docs/design/service-provider/03-probes-and-roadmap.md:42 |
 | wardrobe | `constraints.permissions` and `policy.sh` render | aae-orc-079r8 (closed 2026-10-28) |
-| stagekeeper | read-only session watcher | stagekeeper/charter.md B1; aae-orc-lp2pg |
-| critic | fleet aggregation | aae-orc-lp2pg |
+| stagekeeper | detects faults in running sessions and recovers from them; usher reports the install-side cause | stagekeeper/charter.md B1; aae-orc-lp2pg |
+| critic | measures, compares and judges what runs produce; usher shows differences and leaves judgment to people | aae-orc-lp2pg |
 | beadle | name and persona overlap | repos.yaml:70; usher charter |
 | aq/ax | install and update posture belongs to usher, not a self-updater | aae-orc-9va5 |
 

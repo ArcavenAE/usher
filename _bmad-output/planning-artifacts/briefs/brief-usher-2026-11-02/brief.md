@@ -2,7 +2,7 @@
 title: "Product Brief: usher"
 status: draft
 created: 2026-11-02
-updated: 2026-11-02
+updated: 2026-11-05
 supersedes: docs/product-brief-20260726.md
 ---
 
@@ -10,22 +10,26 @@ supersedes: docs/product-brief-20260726.md
 
 ## Executive Summary
 
-Usher helps a person find their seat across AI harnesses, re-find it when
-the ground moves, and share what works with their team. It shows where a
-person's settings live, which are in effect, how they compare with what the
-team declared, and whether the tools underneath are installed and current.
-It recommends; it does not take over.
+Usher's objective is setup & maintain settings. It helps a person find
+their seat across AI harnesses, re-find it when the ground moves, and share
+what works with their team. It sets up the harnesses and maintains their
+settings: where they live, which are in effect, how they compare with what
+the team declared, and whether the tools underneath are installed and
+current. It changes a person's settings only with their confirmation.
+Think wakatime plus enterprise configuration management: a quiet client on
+each host and a service the team runs, which together install, analyze and
+recommend.
 
 The pressing problem is settings and permissions friction. Every harness
-resolves configuration from its own stack of layers (managed, flag,
-project, user, live session), across every directory a person launches
-from, and each harness ships every few days. Nobody on a team can say which settings
-are in use, where, or whether the agreed baseline reached every machine.
-Cost is the second payoff: the same visibility shows the local habits and
-settings behind a team's largest spend lever, prompt caching.
+resolves configuration from its own stack of layers (managed, flag, project,
+user, live session), across every directory a person launches from, and each
+harness ships every few days. Nobody on a team can say which settings are in
+use, where, or whether the agreed baseline reached every machine. Cost is
+the second payoff: the same visibility shows the local habits and settings
+behind a team's largest spend lever, prompt caching.
 
-V1 is read-only and local-first, with reporting off by default (charter
-B1). It covers Claude Code, codex and goose.
+Usher is local-first, with reporting off by default (charter B1). V1
+covers Claude Code, codex and goose; what ships when is under Scope.
 
 ## The Problem
 
@@ -66,11 +70,16 @@ cannot see it (`_kos/findings/finding-002`).
 
 ## The Solution
 
-Usher is a local observer with a small, honest surface. Two terms stay
+Usher is local-first, with a small, honest surface. Two terms stay
 apart: **drift** is installed or resolved state falling behind what was
 declared, with no upside; **divergence** is a person off the team
 baseline, which may be an improvement and is the contribution loop's input.
 
+- **Settings inventory.** Every settings source on a host for every
+  harness, whether or not anything reads it, plus the parts of the seat
+  around it (MCP registrations, packs, client config, backend and auth
+  route, toolchain). Across a team: who runs what software, at which
+  version, on which projects and hosts.
 - **Settings map.** For each supported harness, in every directory the
   person launches from: where settings live across managed, user, project
   and live-session layers, and which value is in effect. Usher reads the
@@ -84,13 +93,30 @@ baseline, which may be an improvement and is the contribution loop's input.
   reports, per entry, present, missing or stale, plus structural hazards
   checked per harness version (an allow list that drops the built-in
   defaults, for one, still to be confirmed on current Claude Code).
+- **Setup.** Install and update the harnesses, the fleet tools and usher
+  itself on confirmation, in a guided bootstrap that is resumable and
+  gives a visible win in the first session. Attach the supporting services
+  a seat needs, bootstrap method content through sideshow or eos, and get
+  a person into a repository even when they are not fluent in git. Usher
+  drives the existing installers (mise, brew, sideshow, `tools/install.sh`,
+  vendor installers); it does not re-host them.
 - **Install and update health.** Whether each tool is installed, from which
-  source, at which version, and whether that version is behind its source.
-  Usher drives the existing installers (mise, brew, sideshow,
-  `tools/install.sh`, vendor installers); it does not re-host them.
+  source, at which version, and whether that version is behind its source
+  or the team's declared tool set.
+- **Maintain.** Restore a seat after a reinstall, a new machine or time
+  away; catch a person up on what the team changed and why; write settings
+  with a dry run, a diff, a backup and a rollback.
 - **Recommendations.** Proposals drawn from the team profile and from what
   the person's own harness recorded (permission denials, for example). Each
-  declares what it could not observe.
+    declares what it could not observe, and the ones worth acting on are
+  brought to the person rather than waiting to be asked.
+- **Team service.** A self-hosted service carries the shared side: a
+  signed catalog of profiles, compliance templates that check setups and
+  produce recommendations, and an options index that extends every client
+  without a client release.
+- **Surfaces.** A command line, an in-LLM surface (MCP) where an agent can
+  drive onboarding conversationally, an app, and a quiet background
+  service.
 - **Divergence, offered back.** When a person's settings differ from the
   baseline in a way that works better, usher drafts the difference as a
   proposal for the team, with credit (addendum, section A).
@@ -105,10 +131,10 @@ baseline. The value is the cross-harness map plus the loop plus the
 posture, not the collectors. Treating divergence as a possible improvement,
 not as decay to clamp, keeps usher out of the compliance category.
 
-Usher is open source. Its posture claims (read-only, no egress when
-reporting is off, credential presence but never value) can be checked in
-the code by a team's security reviewer, which a closed observer on every
-developer machine cannot offer.
+Usher is open source. Its posture claims (changes only on confirmation, no
+egress when reporting is off, credential presence but never value) can be
+checked in the code by a team's security reviewer, which a closed tool on
+every developer machine cannot offer.
 
 ## Who This Serves
 
@@ -116,14 +142,19 @@ developer machine cannot offer.
   team, owns the team profile, and gains standing when the team's seats
   work and spend falls.
 - **Primary user: the developer.** Finds their seat, re-finds it after an
-  update or a new machine, and adopts team settings safely. May install
+    update or a new machine, and adopts team settings safely, including
+  people who are not fluent in git. May install
   usher or receive it through device management; either way the value
   lands without understanding usher's internals.
 - **Third subject: non-human seats.** Agent sessions launched by marvel
-  receive settings through marvel's per-session projection. Usher reports
-  on them; marvel writes for them.
+  receive settings through marvel's per-session projection. How the
+  settings usher maintains reach them is the usher-marvel seam (open
+  question 2).
 - **Beneficiary: the organization**, which pays less for more and can see
   what is in use without seeing content.
+
+Chat-product users are a later cohort, sequenced and expected to be the
+largest in time.
 
 Usher serves individuals and organizations; a person may belong to several
 organizations, each with its own consent (charter F6, F7; addendum, section B).
@@ -156,18 +187,29 @@ with the same problem, not named here.
 - Claude Code, codex and goose (goose ranked first to add in orc
   finding-aae-orc-2w6k). Other harnesses enter through the per-harness
   observability map.
-- Settings map and drift check, read-only.
+- Settings map and drift check.
 - Install and update health for the harnesses and the ArcavenAE tool set,
   by driving existing installers.
 - Per-session cache efficiency score as the first cost-side output.
+- Configuration writes on the person's confirmation: apply, restore,
+  catch-up adoption and an organization drop-in, on the local host.
+- Settings inventory, guided bootstrap, repository help and local
+  recommendations (proposals the person applies), from the command line
+  and the background service.
 - macOS first. Linux likely. Windows unknown (aae-orc-1vgfk).
 
 **Posture, from the first commit:**
 
-- **Usher writes nothing to harness configuration in v1.** Proposals only;
-  rendering into the user layer is v2. Seat settings are marvel's to write;
-  locked settings belong to the organization's device management. Usher is
-  never the sole configuration authority.
+- **Changes only on confirmation.** Usher shows every change before making
+  it and makes it only when the person confirms. Locked settings
+  belong to the organization's device management; usher is never the sole
+  configuration authority.
+- **Every change can be undone and fails safe.** Each change usher makes
+  (install, update, clone, generated file, settings write) is recorded in a
+  local journal with what it takes to roll it back. It runs under checks
+  that stop an empty or unexpanded variable from widening it, keep a backup
+  so nothing is lost, and write atomically so no file is left half written.
+  This applies to every change usher makes.
 - **Asking a harness must not change it.** Before usher relies on a
   harness's resolved view (`codex app-server`, `claude auto-mode config`,
   `claude doctor`), each call is shown not to write state, refresh a
@@ -188,25 +230,42 @@ with the same problem, not named here.
   a credential per host and never copies one between hosts. Usher holds
   none.
 - **Reporting off by default (B1)**, with tests that prove no egress when
-  off and only the published inventory when on. Any collector is
+  off and only the reported fields when on. Any collector is
   self-hosted first (SOUL section 6).
+- **The person first.** A person sees their own findings and
+  recommendations before anyone else; per-person drill-down needs a
+  recorded team decision; DO_NOT_TRACK is honored; usher records whether
+  reporting was turned on by the person or by the organization's own
+  device management; and a person can ask usher at any time what it is
+  doing and change their consent.
 - **Endpoint security is a design constraint:** signed and notarized
   builds, explicit outbound traffic, and a published behavioral profile.
 
-**Out:**
+**Out for v1** (sequenced, part of the product):
 
-- Configuration writes, remote apply, and enforcement through the daemon.
+- Remote apply to another host, once a trust model is designed.
+- The team service: templates, the signed catalog, the options index and
+  enrollment.
+- Activity effects beyond cache reuse, and reporting levels up to OTEL.
+- The in-LLM surface and the app.
+- The full contribution loop.
+- Chat products.
+
+**Out of the product:**
+
+- Enforcing organization policy; that is device management's objective.
 - Answering prompts (folder trust, consent) on anyone's behalf.
 - Dashboards as the product; a clamp; proxy or gateway spend enforcement.
 - Re-implementing mise, brew, sideshow or vendor installers; managing
   dotfiles.
-- Chat products in v1 (sequenced, not deprioritized).
 
 **Boundaries with sibling components** (each must work without usher, and
-usher without them; the seam is a file format, not a call): sideshow
-(pack install and doctor), marvel (seat settings), wardrobe (role
-permission rendering), stagekeeper (session watching), beadle (name and
-persona overlap), critic (fleet aggregation). Addendum, section C.
+usher without them; boundaries are drawn by objective, not medium: usher
+sets up and maintains settings, critic measures and judges, stagekeeper
+detects and recovers from faults): sideshow (pack install and doctor),
+marvel (seat settings), wardrobe (role permission rendering), stagekeeper
+(detects and recovers from faults), beadle (name and persona overlap),
+critic (measures and judges). Addendum, section C.
 
 ## Vision
 
