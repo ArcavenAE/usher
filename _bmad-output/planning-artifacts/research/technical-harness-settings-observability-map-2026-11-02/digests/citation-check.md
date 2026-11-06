@@ -1,0 +1,38 @@
+# Citation check: harness settings observability map
+
+Checked 2026-11-02 by a fresh-context checker against the live URLs (WebFetch) and the local imports/ files. 10 web sources fetched; [11] read locally. No other file edited.
+
+Caveat: WebFetch reads at most about 100k characters per call. [40], [7] and [12] are longer than that, and the rest was not read. A "not found" on those pages means not found in the part that was read.
+
+| # | Claim excerpt | Cited | Verdict | Note |
+|---|---|---|---|---|
+| 1 | codex `config/read` returns effective config after layering | [40] | supported | Page: "fetch the effective configuration on disk after resolving configuration layering." |
+| 2 | `config/read` takes `cwd`, `includeLayers`; returns `config`, `layers` with `disabledReason`, required `origins` | [11] | supported | imports/probe-codex-app-server-schema.md lines 6-8. `origins` maps a key to ConfigLayerMetadata {name, version}. The cwd, layers and origins detail is not in the part of [40] that was read, so [11] carries it alone. |
+| 3 | `configRequirements/read` returns the admin requirements in force | [40][11] | partly | [40] says "fetch requirements from `requirements.toml` and/or MDM". It does not name cloud requirements, and the report leans on this for cloud (section 2, cloud-delivered layers). |
+| 4 | Claude precedence: managed, `--settings`, local, project, user; four model keys excepted from list merge; `/status` "doesn't show which file supplied each key" | [1] | supported | Order and quote match. `modelSettings` is resolved per model, not "not merged", which is close enough. |
+| 5 | Scope column values; about a dozen security keys where a stricter lower value beats managed; `defaultMode` auto/bypass ignored from project/local | [1] | supported | The exceptions table has 12 rows. The defaultMode line matches, including "Before v2.1.257, `bypassPermissions` took effect from any file." |
+| 6 | autoMode read only from user, managed, `--settings`; entries combine additively | [4] | supported | Scope table and "Entries from each scope are combined ... additive, not a hard policy boundary." |
+| 7 | **disputed** `$defaults`: docs say omitting it replaces the default list | [4] | supported | Caution box: "Setting any of ... without `"$defaults"` replaces the entire default list." |
+| 8 | **disputed** `$defaults`: v2.1.316 says an allow list without it "no longer removes the built-in rule" | [7] | supported | Quoted text matches exactly. The dispute is real, and the changelog wording covers `allow` only, which the report states. |
+| 9 | About ten releases in thirteen days; precedence fixes between 2.1.304 and 2.1.317 | [7][8] | partly | [7] lists 12 versions from 2.1.304 to 2.1.317 (no 313 or 315) but carries no dates, so the 13-day span rests on [8], which was not fetched. Precedence-related entries were found (2.1.304, 2.1.305, 2.1.316). |
+| 10 | `~/.claude/remote-settings.json` cache; withheld env categories, `modelPricing`, `managedMcpServers`; model and OTEL at next launch; non-interactive runs do not write it; `claude doctor` v2.1.248+ reports remote state | [39] | supported | Each item matches the page, including the four doctor outcomes. |
+| 11 | `/logout` deletes the cache | [39] | partly | The page says `/logout` or `claude auth logout` "deletes the cached copy", but only in the approval-memory bullet for "any other credential" (API key, OAuth token). It does not say this for a claude.ai login. |
+| 12 | Cache present on this host; auto-mode config holds more allow and environment entries than defaults | [11] | supported | probe-remote-settings-cache.md: "present". probe-resolved-views.md: config allow 27 and environment 45, against defaults allow 16 and environment 21. Versions 2.1.317 and 0.160.1 also match probe-versions-help.md. |
+| 13 | **disputed** whether MDM `config_toml_base64` feeds the high legacy layer or the low `Mdm` base layer | [14][16] | supported | [16] has `Mdm` at 0 and `LegacyManagedConfigTomlFromMdm` at 50, above `SessionFlags` at 30. [14] says MDM, then `managed_config.toml`, then user `config.toml`, and that at startup managed defaults "override the user's local `config.toml` and any CLI `--config` overrides". It calls this "legacy ordering" and says cloud defaults use normal precedence. So the official docs back the high-layer reading for MDM defaults. The dispute stands, but [14] leans toward the high layer more than the text suggests. |
+| 14 | Requirements constrain approval policy, sandbox, web search, MCP allowlist, features, hooks; fall back with a notice | [14] | supported | [14] also lists approvals reviewer, permission profiles and marketplace sources. Fallback: "falls back to a compatible value and notifies the user." |
+| 15 | Requirements local cache "reported only by a third-party mirror" (section 2 and Contrary evidence) | [14] | not supported (understated) | [14] itself says the client checks "a valid, identity-matched cache entry", writes "a signed cache entry on success" and refreshes it in the background. A signed local cache is therefore in the official docs. The one-hour lifetime and the filename are still unsourced. |
+| 16 | codex numeric ranks; legacy layers above CLI flags | [16] | supported | Ranks quoted: Mdm 0, System 10, EnterpriseManaged 15, User 20/21, Project 25, SessionFlags 30, legacy file 40, legacy MDM 50. "Above CLI flags" reads `SessionFlags` as CLI flags, which is a reasonable reading. |
+| 17 | `approval_policy = "untrusted"` retired by PR #39630 (merged 2026-08-20) and now fails at startup | [17] | partly | Merged 2026-08-20. The PR says explicit settings "now fail with an actionable error". It does not say "at startup". |
+| 18 | Project config ignores provider, notify, profile, otel and base-URL keys "with a startup warning" (also Recommendation 5) | [12] | partly | The key list matches. The part of the page that was read does not mention a warning. Recommendation 5 ("silently" changed to "with a startup warning") depends on this, so check the rest of the page or test it before changing the brief. |
+| 19 | Project layers load only for trusted projects | [12] | supported | "Codex loads project-scoped config files only when you trust the project." |
+| 20 | Skills paths `.agents/skills`, `~/.agents/skills`, `/etc/codex/skills`; analytics exporter on unless `analytics.enabled = false` | [12] | not supported in the part read | Skills paths not found. The analytics entry says only "When unset, the client default applies." The report already marks both "unverified beyond the docs". |
+| 21 | goose stack: system file, then `GOOSE_ADDITIONAL_CONFIG_FILES`, then user; later wins; `extensions` and `providers` merge per entry; env var checked first; writes only the user file | [26] | supported | Each point matches the code and its comments. "Writes only the user file" is literally "the last entry", which is the user file by default. |
+
+## Items to look at
+
+- Row 15: the claim that a codex requirements cache is "reported only by a third-party mirror" is contradicted by [14]. The official managed-configuration page describes a signed, identity-matched cache. This weakens the "off-disk" point further.
+- Row 18: Recommendation 5 rests on a "startup warning" that the part of [12] that was read does not show.
+- Row 13: [14] backs MDM defaults beating user config and CLI `--config` at startup. The dispute is fair, but the docs side is the high-layer reading.
+- Rows 3, 9, 11, 17: small wording gaps ("admin" versus requirements.toml/MDM; release span dates; `/logout` scope; "at startup").
+
+Not checked within budget: [2], [5], [6], [8], [24], [25], [28], [29], and the codex doctor/features detail in [11].
