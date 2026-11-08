@@ -196,6 +196,8 @@ with the same problem, not named here.
 - Settings inventory, guided bootstrap, repository help and local
   recommendations (proposals the person applies), from the command line
   and the background service.
+- A thin in-harness surface (MCP) where the newcomer starts: map, compare,
+  explain and propose, with every change confirmed by the person.
 - macOS first. Linux likely. Windows unknown (aae-orc-1vgfk).
 
 **Posture, from the first commit:**
@@ -247,7 +249,8 @@ with the same problem, not named here.
 - The team service: templates, the signed catalog, the options index and
   enrollment.
 - Activity effects beyond cache reuse, and reporting levels up to OTEL.
-- The in-LLM surface and the app.
+- The full in-LLM surface (an agent driving installs and clones) and the
+  app.
 - The full contribution loop.
 - Chat products.
 

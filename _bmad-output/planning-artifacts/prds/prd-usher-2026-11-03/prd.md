@@ -19,7 +19,7 @@ This PRD is for the operator, the architect who takes it next, and the seats
 that will write epics from it. It builds on the 2026-11-02 brief and its
 addendum, and on the harness settings research of the same date; it does
 not repeat their evidence. Terms in §3 are used exactly as defined. Features
-in §4 carry FRs with stable IDs; FR-43 to FR-66 were added after the first
+in §4 carry FRs with stable IDs; FR-43 to FR-67 were added after the first
 finalization (FR-43 sits first in §4.1; the rest sit where their feature
 belongs). Inferences not yet
 confirmed are tagged `[ASSUMPTION]` inline and listed in §10. Mechanism
@@ -195,8 +195,14 @@ illustrative; this fleet is the first user.
   A template checks; it is not a baseline everyone must match.
 - **Team instance:** the light collector or central service a team runs,
   and the team customization it holds.
-- **Personal layer:** the part of a person's settings they own; usher keeps
-  it and never treats it as a difference to resolve.
+- **Personal layer:** the entries a person marks as their own, in any file
+  (a key, or one entry of a list). Usher never writes a marked entry, never
+  recommends against it, and never treats it as a difference to resolve.
+  Nothing is marked until the person marks it; a value they set by hand is
+  still shown as a conflict before any write (FR-49).
+- **Profile source:** a file, directory or git repository a person names as
+  a place to read profiles from, such as a team repo. A team instance's
+  catalog (FR-60) is also a profile source.
 - **Change:** anything usher does that alters a host: an install, update,
   clone, generated file, settings write, restore or rollback.
 - **Change journal:** usher's local, append-only record of every change,
@@ -470,7 +476,9 @@ can stop and resume.
 
 **Consequences (testable):**
 - Every step is idempotent; rerunning a finished step changes nothing.
-- Every failure says what went wrong and what to do next.
+- Every failure names the step, the command or check that failed with its
+  exit status or error, and at least one next action (retry, skip, or a
+  named manual step).
 - The first session ends with a visible win: at least one harness working
   in at least one repo, launched by the person.
 
@@ -523,6 +531,23 @@ that launch, so the key never lands on disk.
 - The key's value is never written to disk, logged, journaled or reported.
 - A plaintext key found by the credential scan (§5) comes with a
   recommendation to move it behind the broker.
+
+#### FR-67: Remove usher
+
+A person can remove usher and choose what it leaves behind.
+
+**Consequences (testable):**
+- Before removing anything, usher lists its background service, its
+  binaries, its own state (journal, backups, snapshots, reports) and every
+  change from the journal still in effect.
+- The person chooses to keep the changes usher made, or to roll back some
+  or all of them first (FR-63).
+- Tools usher installed through their own installers stay unless the
+  person picks each one for removal, which runs through that installer.
+- The journal and backups are kept, and usher says where, unless the
+  person asks for them to be deleted.
+- After removal no usher process, login item, scheduled job or OTLP
+  endpoint remains; a test checks this.
 
 ### 4.3 Watcher
 
@@ -717,7 +742,9 @@ their settings, after confirming.
 - Nothing is overwritten silently; a value the person set by hand is shown
   as a conflict.
 - Usher never writes a managed or device-management layer, and never
-  writes the personal layer (§3).
+  writes an entry the person marked as personal (§3).
+- A person can mark or unmark any entry as personal, from a map or a
+  comparison.
 
 #### FR-50: Restore a seat
 
@@ -732,10 +759,15 @@ new machine or time away.
 
 #### FR-51: Catch up
 
-A person can see what changed in the team's profiles since they last
-synced, with the reason recorded for each change.
+A person can see what changed in the profiles from the profile sources
+they follow (§3) since the version they last loaded, with the reason
+recorded for each change.
 
 **Consequences (testable):**
+- Usher records, per profile source, the profile versions the person last
+  loaded; "since they last synced" means since those versions.
+- A profile from a source is untrusted until the person loads it, and
+  loading changes nothing (FR-22).
 - Each change names its profile version, author and note.
 - The person can adopt each change, or keep their own value.
 
@@ -758,8 +790,9 @@ Realizes the UJ-1 problem and the UJ-2 resolution.
 
 #### FR-26: Cache reuse per session
 
-A person can see, per session, the share of turns served from cache versus
-paid at full write cost, with the model and environment in effect.
+A person can see, per session, the share of input tokens read from cache
+versus written to cache at full cost, with the model and environment in
+effect.
 
 **Consequences (testable):**
 - A session whose model is missing from the price table is reported as
@@ -998,9 +1031,9 @@ and what usher could not observe. Realizes UJ-1 and UJ-2.
 
 #### FR-55: Local recommendations
 
-A person can see recommendations drawn from the team's profiles, the
-templates that apply to them, and their own records (for example
-permission denials a harness recorded).
+A person can see recommendations drawn from the profiles in the sources
+they follow (§3), the templates that apply to them, and their own records
+(for example permission denials a harness recorded).
 
 **Consequences (testable):**
 - Each recommendation states its source, its reason, the versions and
@@ -1010,8 +1043,8 @@ permission denials a harness recorded).
   example cache settings that do not fit the time between turns, MCP
   connections configured and never used, a spend cap not set).
 - An allow entry offered as a recommendation is marked as a loosening.
-- A recommendation worth acting on is pushed through the notice settings
-  the person chose (FR-13).
+- A recommendation is pushed only for the kinds the person set to notify
+  them (FR-13); the rest wait in the list.
 
 #### FR-56: Template checks
 
@@ -1159,9 +1192,15 @@ A person can rely on a change touching only what its dry run listed.
   is written through to its target when the target is on the list, and is
   never replaced; one that leads off the list is refused. A write that
   would touch more targets than its dry run listed stops.
-- **Credential files are not written.** A file harness knowledge marks as
+- **Credentials are not written.** A file harness knowledge marks as
   holding credentials (for example a harness's auth file) belongs to the
   vendor's login; usher never writes it, so never backs it up.
+- **Mixed files are written by key.** Some files hold settings beside
+  account data or trust records (for example Claude Code's user config,
+  which holds MCP registrations, folder trust and account details). Usher
+  writes only the keys harness knowledge lists as writable for that file,
+  never a trust record (§6), and leaves every other key byte for byte as it
+  was. The backup of such a file stays in the owner-only store (FR-63).
 - **Nothing is lost.** Usher backs a file up and checks the backup reads
   back before writing it, and never deletes: a removal moves the target to
   the backup store. It checks free space first.
@@ -1213,10 +1252,14 @@ A person can rely on a change touching only what its dry run listed.
   §8).
 - **Local observation from install** (operator 2026-11-04). Usher maps and
   watches from install onward, including a silent install by device
-  management, and nothing leaves the host. The first time the person opens
-  usher, it tells them it has been observing since install and shows what
-  it looked at. Sending anything off the host keeps its own opt-in (FR-39,
-  charter B1).
+  management, and nothing leaves the host. Until the person confirms
+  directories (FR-5), usher observes only the locations harness knowledge
+  names for each harness (settings files, install locations, the process
+  table); directories it discovers are kept as proposals and not mapped,
+  and no home-wide sweep runs before open question 3 is settled. The
+  first time the person opens usher, it tells them it has been observing
+  since install and shows what it looked at. Sending anything off the host
+  keeps its own opt-in (FR-39, charter B1).
 - **Derived state, not content.** Usher reports that a value or file exists.
 - **Session records: named fields only.** Where usher reads a harness's
   session records (FR-5, FR-26), it parses only named fields: timestamps,
@@ -1242,11 +1285,17 @@ A person can rely on a change touching only what its dry run listed.
   judges; stagekeeper detects faults and recovers from them (addendum §6).
 - **Platforms.** macOS first. Linux likely. Windows unknown (open question
   14).
-- **Attention budget.** Usher asks only when it has to; every in-LLM surface
-  carries a token budget from the start.
+- **Attention budget.** Usher asks only for a confirmation, a consent, or a
+  choice it has no default for. Prompts per session and the token budget of
+  every in-LLM surface have numbers set in architecture (Q25).
+- **Footprint.** The background service is idle between events: it uses the
+  operating system's file-change notices, not polling. CPU, memory, disk
+  and watched-path counts each have a budget (Q25), tested on a laptop on
+  battery, and usher reports its own use. Past the watched-path budget,
+  usher names the paths it stopped watching rather than going quiet.
 - **Two-way channel.** A person can ask usher at any time what it is doing,
   what it has looked at, and what their consent state is, and change it.
-  Usher returns more than it takes.
+  Anything usher holds about a person, that person can see (FR-39, FR-41).
 
 ## 6. Non-Goals
 
@@ -1275,16 +1324,23 @@ A person can rely on a change touching only what its dry run listed.
 ### 7.1 In Scope
 
 All of §4 except the features in §7.2 (FR-1 to FR-52, FR-55, FR-62 to
-FR-64) for Claude Code, the Claude desktop app with Claude's general
+FR-64, FR-67) for Claude Code, the Claude desktop app with Claude's general
 settings, codex and goose. Other harnesses enter through harness
 knowledge. Limits for the MVP:
 
 - Apply, restore, catch-up and the organization drop-in (FR-49 to FR-52)
   act on the host usher runs on; remote apply follows (§7.2).
+- Profile sources are files, directories and git repositories the person
+  names; the signed catalog comes with the central service.
 - Recommendations (FR-55) draw on profiles and the person's own records;
   templates come with the team instance.
-- Surfaces (FR-62): the command line and the background service; the
-  in-LLM surface and the app follow.
+- Surfaces (FR-62): the command line, the background service, and a thin
+  in-harness surface for the newcomer, who starts inside a harness, not a
+  terminal. From Claude Code, and from the Claude desktop app where it
+  takes MCP servers, the thin surface maps, compares, explains findings and
+  proposes changes; every change is confirmed through a prompt the agent
+  cannot answer (§5). Bootstrap from nothing (FR-46) starts at the command
+  line, since no harness is there yet. The app follows.
 - The change journal and safe execution (FR-63, FR-64) cover every change
   the MVP makes.
 - Hazard checks ship only as their tests pass.
@@ -1292,6 +1348,7 @@ knowledge. Limits for the MVP:
   light collector serves one affiliation (one organization or team).
 - Operator rulings, 2026-11-05: the split of FR-44 to FR-66 between this
   section and §7.2, and configuration writes in the MVP.
+- Operator ruling, 2026-11-07: the thin in-harness surface in the MVP.
 
 ### 7.2 Out of Scope for MVP
 
@@ -1299,7 +1356,8 @@ knowledge. Limits for the MVP:
   model is designed.
 - **Activity effects and reporting levels** (v2): FR-53, FR-54.
 - **Templates** (v2): FR-56, with the team instance.
-- **In-LLM surface and app** (v2): the rest of FR-62.
+- **Full in-LLM surface and the app** (v2): the rest of FR-62, including
+  an agent driving installs and clones conversationally.
 - **Central service** (v2): FR-60, FR-61, and enrollment (FR-59).
 - **Reviewer seating and the key broker** (v2): FR-65, FR-66.
 - **Several affiliations per person** (later): associating some
@@ -1358,7 +1416,9 @@ motivation (UJ-2), not a counted metric.
 
 ## 9. Open Questions
 
-1. Where profiles live and their format (F6).
+1. Profile format (F6). Where profiles live is answered for the MVP by
+   profile sources (§3); the file format, and how a repo source is laid
+   out, are still open, and block FR-19 to FR-23 and FR-51.
 2. The usher-marvel seam: a profile fragment, or role files marvel already
    reads (two `--settings` are last-wins).
 3. Discovery and consent for a home-wide directory sweep (F10).
@@ -1406,8 +1466,8 @@ motivation (UJ-2), not a counted metric.
 24. Ingesting the service operator's usage and cost APIs: helps SM-2, but
     an admin key is bearer authority at a third party (ADR-009 custody).
     SM-2's target depends on the answer.
-25. Numbers for the attention and token budgets (§5, FR-62), set in
-    architecture.
+25. Numbers for the attention, token and footprint budgets (§5, FR-62),
+    set in architecture.
 
 ## 10. Assumptions Index
 

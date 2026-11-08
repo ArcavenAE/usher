@@ -19,7 +19,7 @@ research (2026-11-02) and the orc index, `docs/research/orc-index.md`.
 | §4 | Source conflicts resolved in the PRD (a log) | none |
 | §5 | Carried from the brief, for architecture | PRD §5, FR-37 to FR-40 |
 | §6 | Boundaries by objective | PRD §5, Q16 |
-| §7 | Change-safety failure cases | FR-63, FR-64, PRD §5 |
+| §7 | Change-safety failure cases | FR-49, FR-63, FR-64, FR-67, PRD §5 |
 
 ## 1. Observation method per harness
 
@@ -199,3 +199,9 @@ checking that the change stops or recovers as FR-63 and FR-64 require.
 | Undo of an entry a later entry depends on | The later entry listed; undone first or the rollback stops |
 | A lock left by an usher process that is gone | Released and journaled |
 | An in-LLM agent answering its own confirmation prompt | Refused; the change waits for the person |
+| A write to one writable key in a file that also holds account data and trust records | Only that key changes; every other key is byte for byte the same |
+| A write that would change a folder-trust record | Refused |
+| A write to an entry the person marked as personal | Refused; shown as personal |
+| Removal of usher, keeping its changes | No usher process, login item, scheduled job or endpoint remains; journal and backups kept |
+| Removal of usher with rollback chosen | Changes rolled back in reverse order first; conflicts shown, as in any rollback |
+| Observation before the person confirms any directory | Only harness-knowledge locations read; discovered directories listed as proposals, none mapped |
