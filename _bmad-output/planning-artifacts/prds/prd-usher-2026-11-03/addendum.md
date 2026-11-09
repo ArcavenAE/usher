@@ -63,11 +63,11 @@ open question 4):
 
 | Harness | Claim | Status |
 |---|---|---|
-| Claude Code 2.1.317 | Omitting `$defaults` drops the built-in auto-mode rules; the FR-16 `$defaults` hazard check waits on this | Disputed |
-| codex | Where device-management config ranks in precedence | Disputed |
-| codex | Whether project skills load in untrusted repos | Disputed |
+| Claude Code 2.1.317 | Omitting `$defaults` drops the built-in auto-mode rules; the FR-16 `$defaults` hazard check waits on this | Confirmed on 2.1.319, 2026-11-08: 16 built-in allow rules drop to the one set; deny lists unchanged |
+| codex | Where device-management config ranks in precedence | Disputed; untested, no managed codex layer on the probe host |
+| codex | Whether project skills load in untrusted repos | Confirmed on 0.160.1, 2026-11-08: `.agents/skills` and `.codex/skills` load; the project config layer is disabled |
 | goose | The `GOOSE_MODE` default | Disputed |
-| codex | A startup warning for ignored project keys | Unconfirmed |
+| codex | A startup warning for ignored project keys | Confirmed on 0.160.1, 2026-11-08: app-server logs the ignored key (`notify`) at error level |
 
 ## 2. Bootstrap sketch
 
@@ -198,7 +198,7 @@ checking that the change stops or recovers as FR-63 and FR-64 require.
 | Undo of an update whose installer cannot pin the earlier version | The named manual step shown; nothing run |
 | Undo of an entry a later entry depends on | The later entry listed; undone first or the rollback stops |
 | A lock left by an usher process that is gone | Released and journaled |
-| An in-LLM agent answering its own confirmation prompt | Refused; the change waits for the person |
+| An in-LLM agent confirming a change | Applied as from any surface; the journal records the surface that confirmed |
 | A write to one writable key in a file that also holds account data and trust records | Only that key changes; every other key is byte for byte the same |
 | A write that would change a folder-trust record | Refused |
 | A write to an entry the person marked as personal | Refused; shown as personal |
