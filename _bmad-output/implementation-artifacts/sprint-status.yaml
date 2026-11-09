@@ -1,0 +1,181 @@
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when its first story starts (via build's sprint sync)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates the next story after the previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; the status view surfaces open ones
+generated: 11-09-2026 14:21
+last_updated: 11-09-2026 14:21
+project: usher
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+development_status:
+  epic-1: backlog
+  1-1-bootstrap-the-usher-workspace-from-the-fleet-baseline: backlog
+  1-2-scratch-homes-and-the-observation-invariant: backlog
+  1-3-referenced-harness-knowledge-embedded-in-the-binary: backlog
+  1-4-signed-harness-knowledge-updates-without-a-client-release: backlog
+  1-5-claude-code-settings-inventory: backlog
+  1-6-claude-code-settings-in-effect-with-provenance: backlog
+  1-7-declared-but-not-in-effect-and-folder-trust-for-claude-code: backlog
+  1-8-instruction-skill-and-agent-files-as-metadata: backlog
+  1-9-every-launch-directory-with-consent-for-discovery: backlog
+  1-10-codex-map-through-its-own-resolved-view: backlog
+  1-11-goose-map-rebuilt-from-files: backlog
+  1-12-claude-desktop-app-and-claude-general-settings: backlog
+  1-13-stale-key-behavior-and-re-runnable-probes: backlog
+  1-14-environment-labels: backlog
+  1-15-one-egress-port-and-a-generated-behavioral-profile: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-installed-tools-their-source-version-and-whether-they-are-be: backlog
+  2-2-installer-level-drift-and-failure-modes: backlog
+  2-3-pack-level-failure-modes: backlog
+  2-4-running-harness-processes-and-stale-sessions: backlog
+  2-5-device-management-overlap: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-re-check-dates-by-class-and-by-release: backlog
+  3-2-release-helpers-that-draft-knowledge-updates: backlog
+  3-3-a-maintainer-page-per-harness: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-compare-two-environments-in-either-direction: backlog
+  4-2-findings-on-keys-layers-and-undocumented-settings: backlog
+  4-3-locks-weaker-than-they-look-and-hazard-checks-gated-on-probe: backlog
+  4-4-local-reports-in-a-published-schema: backlog
+  4-5-which-environments-carry-entry-x: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-the-background-service-idle-between-events: backlog
+  5-2-change-notices: backlog
+  5-3-dated-settings-history: backlog
+  5-4-what-usher-is-doing-and-has-looked-at: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-the-change-journal-and-the-one-writer-lock: backlog
+  6-2-dry-run-and-target-checks-for-usher-s-own-writes: backlog
+  6-3-the-five-step-write-backup-atomic-replace-format-kept: backlog
+  6-4-credential-files-mixed-files-and-trust-records: backlog
+  6-5-a-run-stopped-part-way-can-be-resumed-or-rolled-back: backlog
+  6-6-roll-back-any-change-or-a-whole-run: backlog
+  6-7-delegated-runs-through-the-runner-port: backlog
+  6-8-install-a-harness-or-tool-on-confirmation: backlog
+  6-9-update-a-harness-or-tool-on-confirmation: backlog
+  6-10-usher-updates-itself-from-a-local-signed-feed: backlog
+  6-11-self-update-through-the-owning-installer-or-from-a-team-name: backlog
+  6-12-install-the-background-service-as-a-login-item: backlog
+  6-13-usher-recognizes-its-own-writes: backlog
+  6-14-remove-usher: backlog
+  6-15-every-change-safety-failure-case-has-a-test: backlog
+  6-16-the-public-tap-and-a-default-feed: backlog
+  epic-6-retrospective: optional
+
+  epic-7: backlog
+  7-1-profile-format-and-profile-sources: backlog
+  7-2-capture-an-environment-into-a-draft-profile: backlog
+  7-3-filter-annotate-and-save-a-profile: backlog
+  7-4-load-a-profile-and-see-it-against-my-environments: backlog
+  7-5-tools-and-toolchain-a-profile-declares: backlog
+  epic-7-retrospective: optional
+
+  epic-8: backlog
+  8-1-exact-placement-for-an-entry: backlog
+  8-2-proposals-hold-operations-not-diffs: backlog
+  8-3-apply-with-write-safety-and-personal-entries: backlog
+  8-4-verify-after-applying-and-the-adoption-record: backlog
+  8-5-restore-a-seat: backlog
+  8-6-catch-up-on-profiles-i-follow: backlog
+  8-7-an-organization-drop-in: backlog
+  epic-8-retrospective: optional
+
+  epic-9: backlog
+  9-1-a-guided-resumable-setup-run: backlog
+  9-2-attach-supporting-services: backlog
+  9-3-bootstrap-method-content-through-sideshow-or-eos: backlog
+  9-4-get-a-repository-i-need-without-git-fluency: backlog
+  epic-9-retrospective: optional
+
+  epic-10: backlog
+  10-1-the-mcp-server-for-maps-comparisons-and-findings: backlog
+  10-2-register-usher-s-mcp-server-in-claude-code-and-the-desktop-a: backlog
+  10-3-propose-and-apply-from-inside-the-harness: backlog
+  epic-10-retrospective: optional
+
+  epic-11: backlog
+  11-1-cache-reuse-per-session: backlog
+  11-2-effects-beside-settings: backlog
+  11-3-recommendations-from-profiles-and-my-own-records: backlog
+  11-4-credential-scan-off-by-default: backlog
+  epic-11-retrospective: optional
+
+  epic-12: backlog
+  12-1-prove-the-default-sends-no-report: backlog
+  12-2-the-light-collector-receives-one-versioned-schema: backlog
+  12-3-host-keys-the-collector-can-revoke: backlog
+  12-4-consent-before-the-first-report-and-withdrawal-at-any-time: backlog
+  12-5-send-on-events-from-an-outbox: backlog
+  12-6-ask-the-collector-across-hosts: backlog
+  12-7-see-and-delete-my-own-data-at-the-collector: backlog
+  12-8-retention: backlog
+  epic-12-retrospective: optional
+
+  epic-13: backlog
+  13-1-activity-effects: backlog
+  13-2-reporting-levels: backlog
+  13-3-usher-as-the-local-otlp-endpoint: backlog
+  epic-13-retrospective: optional
+
+  epic-14: backlog
+  14-1-enroll-with-a-team-instance: backlog
+  14-2-the-signed-catalog: backlog
+  14-3-the-options-index: backlog
+  14-4-template-checks: backlog
+  14-5-remote-apply-as-a-proposal-my-other-host-receives: backlog
+  epic-14-retrospective: optional
+
+  epic-15: backlog
+  15-1-an-agent-drives-setup-from-inside-the-harness: backlog
+  15-2-the-app: backlog
+  epic-15-retrospective: optional
+
+  epic-16: backlog
+  16-1-seat-a-reviewer-at-a-run-variant: backlog
+  16-2-launch-with-a-key-my-vault-or-cloud-login-issues: backlog
+  16-3-move-plaintext-keys-behind-the-broker: backlog
+  epic-16-retrospective: optional
+
+  epic-17: backlog
+  17-1-propose-a-difference: backlog
+  17-2-decide-ripple-and-credit: backlog
+  epic-17-retrospective: optional
