@@ -310,9 +310,14 @@ So that a release that changes a harness reaches me without a new usher build, a
 
 **Acceptance Criteria:**
 
-**Given** an update file signed with the minisign ed25519 key compiled into the binary
+**Given** an update file signed with a minisign ed25519 key from the binary's build-time list of trusted keys (with key ids, current and next)
 **When** usher loads it
 **Then** the signature and a sequence number higher than the current one are both checked before any item is used, and the new version is reported
+
+**Given** the repo
+**When** tests run
+**Then** no signing key, public or private, is stored in it: `usher-testkit` generates a throwaway key pair per run and injects its public half through a test-only constructor
+**And** a release build with an empty trusted-key list fails to compile; the real keys and their holders are PRD Q8, which blocks the first release and no story in this epic
 
 **Given** an update with a bad signature, or a sequence number not higher than the current one
 **When** usher loads it
@@ -492,6 +497,27 @@ So that I can compare, for example, my "reviews" setup with my "long refactors" 
 **When** I add a label
 **Then** the label is stored locally and filters maps, and later comparisons and effects
 **And** a label appears in a saved report only if I include it
+
+### Story 1.15: One egress port and a generated behavioral profile
+
+As a security reviewer,
+I want every network call usher makes listed, with what it sends, from the code itself,
+So that I can check usher's outbound traffic without trusting a hand-kept list (NFR11, AD-14).
+
+**Acceptance Criteria:**
+
+**Given** `usher-core`
+**When** any code makes an outbound call
+**Then** it goes through one egress port that registers its endpoint, its purpose and the fields it sends; Story 1.4's knowledge fetch is the first caller
+
+**Given** CI
+**When** it runs
+**Then** `clippy.toml` `disallowed-types` fails any use of an HTTP client outside the egress crate, and `cargo deny` fails a second HTTP client crate
+
+**Given** the registry
+**When** the docs are built
+**Then** the behavioral profile is generated as a versioned file with two sections: usher's own calls (endpoint, purpose, fields sent), and delegated runs listed by installer, each marked "network access is the installer's, under its own settings"
+**And** Stories 2.1 and 12.1 read this file; neither keeps its own list
 
 ## Epic 2: Know what's installed and running
 
@@ -1591,6 +1617,15 @@ So that we see our fleet without anyone outside the team in the path (FR-37, FR-
 **Given** one collector
 **When** it is set up
 **Then** it serves one affiliation (one organization or team)
+
+**Given** the collector's builds (AD-13)
+**When** CI runs
+**Then** a Linux job builds the static musl binary for x86_64 and aarch64 and runs the collector tests under the `FROM scratch` container image (the binary and a CA bundle), beside the macOS build; a systemd unit ships with it
+
+**Given** a store path on a network filesystem
+**When** the collector opens its store
+**Then** it refuses to start and names the path; a test checks this
+**And** the docs show the team how to back up the store; usher adds no timer
 
 ### Story 12.3: Host keys the collector can revoke
 
