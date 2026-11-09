@@ -1,5 +1,5 @@
 ---
-status: draft
+status: final
 stepsCompleted: [1, 2, 3]
 scope: full product (MVP and v2); release per epic follows specs/spec-usher/capability-scope.md
 inputDocuments:
