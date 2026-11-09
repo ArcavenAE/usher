@@ -41,7 +41,7 @@ FR-46: Guided, resumable bootstrap from nothing: idempotent steps, every failure
 FR-47: Attach supporting services and method content (sideshow, eos) on confirmation, through each service's own setup; no bearer credential held. [MVP]
 FR-48: Get a repository onto the host and open it in a harness for a person not fluent in git, each command named and confirmed. [MVP]
 FR-65: Seat a reviewer at an agent-grown run variant: repo, declared tools and named profile, each on confirmation; the variant's tool declaration is untrusted. [v2]
-FR-66: Launch a harness with a key the person's vault issues for that launch, or their own store holds, held in memory only; each route says whether it issues or reads; plaintext keys found by the credential scan get a broker recommendation. [v2]
+FR-66: Launch a harness with a short-lived key the person's vault or cloud login issues for that launch, held in memory only; no stored long-lived key is read; plaintext keys found by the credential scan get a broker recommendation. [v2]
 FR-67: Remove usher: list what it would leave, keep or roll back changes, keep journal and backups unless asked, and leave no process, login item, job or endpoint (tested). [MVP]
 FR-13: Notify on harness self-update, sessions older than the installed binary, device-management reinstall and changed settings in effect; batched and quiet by default; watcher writes only usher state. [MVP]
 FR-14: Keep dated, coarse snapshots of each environment map and report differences between them, to line up with the service operator's daily usage. [MVP]
@@ -139,7 +139,7 @@ From the architecture spine (AD-1 to AD-20, conventions, stack, seed):
 - Conventions: ULIDs for journal entries, proposals and reports; RFC 3339 UTC; path tokens `${HOME}`, `${CONFIG_DIR}`, `${REPO}`, `${USER}` with globs; one `UsherError` carrying step, check, status and next action; local logs only, rotated in the disk budget; `tokio` in daemon, MCP and collector modes.
 - Stack versions as pinned in the spine (tokio 1.54.1, rusqlite 0.41.1 `bundled`, toml_edit 0.25.19, jsonc-parser 0.34.0 `cst`, yamlpatch 1.32.0, serde_json 1.0.154, notify 8.2.2, rmcp 3.9.0, axum 0.8.9, axum-server 0.9.0, rustls 0.23.46, minisign-verify 0.3.0, ed25519-dalek 3.0.0, keyring 4.2.0, ulid 3.0.0).
 - App bundle: a Tauri 2 menu-bar app over `usher-core` and the same store; its webview never writes, sending proposals only; it watches no files (AD-21).
-- Launch keys through one broker port; each route declares whether it issues or reads; Anthropic API keys are read from the person's store, since they cannot be issued programmatically today (AD-22).
+- Launch keys through one broker port of issuing routes only; usher never reads a stored long-lived key, and Anthropic has no route until a key can be issued programmatically (AD-22).
 - Self-update goes through the installer that owns usher's install, or a team-named signed feed for a direct install (AD-19). The public homebrew tap, a default feed, notarization and the installer are deferred while the repo is private (Q11); the sign and notarize plumbing comes later from the apple-codesign skill and the runbook's sidestep pointer.
 - Untested claims stay in harness knowledge until probed: codex device-management precedence, goose `GOOSE_MODE` default.
 
@@ -1896,7 +1896,7 @@ So that usher is usable without the command line (FR-62).
 
 ## Epic 16: Reviewer seats and brokered keys [v2]
 
-A person sits down at an agent-grown run variant with a working seat to review it, and launches a harness with a key their own vault issues for that launch, or their own store holds.
+A person sits down at an agent-grown run variant with a working seat to review it, and launches a harness with a short-lived key their own vault or cloud login issues for that launch.
 
 ### Story 16.1: Seat a reviewer at a run variant
 
@@ -1920,32 +1920,29 @@ So that I can review the variant instead of setting it up (FR-65).
 **And** usher never answers the harness's trust prompt; I trust the folder myself, knowing what is in it
 **And** usher sets up the seat only; reviewing and judging stay mine, or critic's
 
-### Story 16.2: Launch with a key my vault issues or my store holds
+### Story 16.2: Launch with a key my vault or cloud login issues
 
 As a person,
-I want to launch a harness with a key my vault issues for that launch, or my own store holds,
-So that no key sits on my disk in plain text (FR-66, ADR-009 and its 2026-10-19 amendment).
+I want to launch a harness with a short-lived key my vault or cloud login issues for that launch,
+So that no long-lived key sits on my disk or in usher (FR-66, ADR-009).
 
 **Acceptance Criteria:**
 
 **Given** `usher-broker` and its routes (AD-22)
 **When** I launch a harness through usher
-**Then** a route that can issue (AWS STS or GCP for a cloud route; Vault's OpenAI plugin, labelled experimental) gets a short-lived, scoped credential for that launch, and a route that cannot (the 1Password CLI or the macOS keychain, which Anthropic API keys use today) reads the key from my store; either way usher hands it to the harness in memory
+**Then** an issuing route (AWS STS or GCP for a cloud route; Vault's OpenAI plugin, labelled experimental) gets a short-lived, scoped credential for that launch, and usher hands it to the harness in memory
+**And** usher never reads a stored long-lived key from 1Password, the keychain or any other store; a provider with no issuing route (Anthropic API keys today) gets no brokered launch
 **And** an issuing route gets its credential through the owning tool's own login and CLI (`aws configure export-credentials`, `gcloud`, the `vault` token helper); usher never reads, caches or stores the base credential
-**And** a read route holds the key in memory only, from the read until the harness starts, never at rest; usher never creates or modifies an item in my store
+**And** usher never creates or modifies an item in my store
 **And** only a launch I start from the CLI or the app calls the broker; MCP and the background service never do
 
 **Given** any route
 **When** `usher status` shows it
-**Then** it says, per harness, whether my key is issued short-lived or read long-lived
+**Then** it says, per harness, whether a brokered route exists
 
 **Given** Anthropic workload identity federation, unverified
 **When** this story lands
 **Then** it is a harness-knowledge item marked unverified, with a probe; the Anthropic route moves to issuing only after the probe passes
-
-**Given** PRD open question 26 (whether ADR-009's 2026-10-19 amendment applies to usher)
-**When** this story is picked up
-**Then** read routes are built only if the operator has ruled yes; otherwise the story ships issuing routes only
 
 **Given** the key
 **When** the launch runs
@@ -1962,7 +1959,7 @@ So that I know a safer path exists (FR-66).
 
 **Given** a plaintext key found by the Story 11.4 scan
 **When** findings are shown
-**Then** it carries a recommendation to move it behind the broker, naming its location and type, never its value; moving it is my act, with my store's own tool
+**Then** it names the key's location and type, never its value, and where an issuing route exists for that provider, recommends launching through the broker instead; where none exists (Anthropic today), it says so
 
 ## Epic 17: Contribution loop [v2+]
 

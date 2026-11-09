@@ -33,8 +33,8 @@ Release for each capability, and the spine decisions that govern it, are in `cap
   - **intent:** A person can sit down at an agent-grown run variant with a working seat to review it (FR-65).
   - **success:** The variant's repo, declared tools and a named profile are set up, each on confirmation; the variant's own tool declaration runs only after it is shown and confirmed.
 - **CAP-5**
-  - **intent:** A person can launch a harness with a key their own vault issues for that launch, or their own store holds (FR-66).
-  - **success:** The key reaches the harness in memory and is never written to disk, logged, journaled or reported; each route states whether it issues or reads, and the person sees which.
+  - **intent:** A person can launch a harness with a short-lived key their own vault or cloud login issues for that launch (FR-66).
+  - **success:** The key reaches the harness in memory and is never written to disk, logged, journaled or reported; usher never reads a stored long-lived key, and the person sees which harnesses have a brokered route.
 - **CAP-6**
   - **intent:** A person can remove usher and choose to keep or roll back the changes it made (FR-67).
   - **success:** After removal no usher process, login item, scheduled job or OTLP endpoint remains, checked by a test; the journal and backups are kept unless the person asks otherwise.
@@ -134,4 +134,3 @@ Release for each capability, and the spine decisions that govern it, are in `cap
 - Q19: the reporting wire shape beyond the MVP report schema (metrics, OTEL, or levels).
 - Q20: is usher a product, a protocol, or a service?
 - Q24: may usher ingest the service operator's usage and cost APIs, given an admin key is bearer authority at a third party?
-- Q26: does ADR-009's 2026-10-19 amendment, written for marvel, apply to usher, admitting CAP-5 read routes (a key read from the person's own store, held in memory only)?

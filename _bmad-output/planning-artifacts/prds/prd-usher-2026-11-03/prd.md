@@ -523,20 +523,17 @@ legion grew) with a working seat, to review it.
 
 #### FR-66: Key broker at launch
 
-A person can launch a harness with a key that a vault or store they own
-issues for that launch or holds, so the key never lands on disk.
+A person can launch a harness with a short-lived key that a vault or cloud
+login they own issues for that launch, so no key lands on disk.
 
 **Consequences (testable):**
 - Usher asks the person's vault for a short-lived, scoped key at launch
-  where the route can issue one, or reads the key from the person's own
-  store where it cannot, and hands it to the harness in memory. On an
-  issuing route it never holds the grant that issues the key; on a read
-  route it holds the key in memory only, until the harness starts, never
-  at rest, and never writes the person's store (ADR-009, brokering, not
-  custody; read routes await the ruling in open question 26).
-- Each route says whether it issues or reads, and usher shows the person
-  which (operator ruling, 2026-11-09: Anthropic API keys cannot be issued
-  programmatically today).
+  and hands it to the harness in memory; it never holds the grant that
+  issues the key, never reads a stored long-lived key, and never writes
+  the person's store (ADR-009, brokering, not custody).
+- A provider with no issuing route gets no brokered launch; Anthropic API
+  keys cannot be issued programmatically today (operator ruling,
+  2026-11-09), and usher shows the person which harnesses have a route.
 - The key's value is never written to disk, logged, journaled or reported.
 - A plaintext key found by the credential scan (§5) comes with a
   recommendation to move it behind the broker.
@@ -1482,10 +1479,8 @@ motivation (UJ-2), not a counted metric.
     SM-2's target depends on the answer.
 25. Numbers for the attention, token and footprint budgets (§5, FR-62),
     set in architecture.
-26. Does ADR-009's 2026-10-19 amendment (in memory while running, at rest
-    only in an operator-owned store), written for marvel, also apply to
-    usher, so that FR-66's read routes (the Anthropic key from the person's
-    own store) are admissible? If not, FR-66 offers issuing routes only.
+26. Does ADR-009's 2026-10-19 amendment apply to usher? Ruled 2026-11-09:
+    no, it is marvel-specific; FR-66 offers issuing routes only.
 
 ## 10. Assumptions Index
 

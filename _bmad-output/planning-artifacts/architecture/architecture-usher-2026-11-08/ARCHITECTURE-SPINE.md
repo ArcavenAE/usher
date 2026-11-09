@@ -151,9 +151,9 @@ no adapter depends on another adapter.
   knowledge marks as secret-bearing (`env`, `headers`) are shown by name, never by value, in the
   map, MCP responses, logs or reports. Trust records (Claude Code `projects` trust state, codex
   trusted projects) are read for discovery (AD-10) and never written. The one exception is
-  `usher-broker` (AD-22, v2): at a launch the person starts from the CLI or the app, it may read the
-  single item the person named for that launch, from the person's own store, never a harness's
-  credential store; MCP and the daemon never call it.
+  `usher-broker` (AD-22, v2): at a launch the person starts from the CLI or the app, it may hold in
+  memory the short-lived credential an issuing route returns for that launch; it never reads a
+  stored key. MCP and the daemon never call it.
 
 ### AD-9: Observation changes nothing
 
@@ -317,24 +317,24 @@ no adapter depends on another adapter.
   checks the capability file and the policy. The app watches no files and reads the store only;
   the daemon keeps the store current. macOS first; Windows follows PRD Q14.
 
-### AD-22: Launch keys go through one broker port, and each route says whether it issues or reads
+### AD-22: Launch keys go through one broker port, and every route issues a short-lived credential
 
-- **Binds:** FR-66, ADR-009 and its 2026-10-19 amendment
-- **Prevents:** a route claiming a short-lived key it cannot issue, usher holding the grant that issues a key, usher writing a person's store, and a key value reaching disk, a log, the journal or a report
-- **Rule:** `usher-broker` defines one port with an adapter per route: the 1Password CLI and the
-  macOS keychain read a key the person stores (they issue nothing); AWS STS and GCP workload
-  identity issue short-lived credentials for cloud routes; Vault's OpenAI plugin issues project
-  keys and is labelled experimental. Anthropic API keys have no issuing route today, so they are
-  read from the person's store and held in memory only; Anthropic workload identity federation is an
-  unverified harness-knowledge item with a probe. An issuing route gets its credential through the
-  owning tool's own login and CLI (`aws configure export-credentials`, `gcloud`, the `vault` token
-  helper); usher never reads, caches or stores the base credential. A read route holds the key in
-  memory only, from the read until the harness is started, never at rest (read routes wait on the
-  operator ruling recorded in the memlog). Usher never creates or modifies an item in a person's
-  store; moving a key there is the person's act, with the store's own tool. Only a launch the person
-  starts from the CLI or the app calls the broker (AD-8). Each route declares issues or reads, and
-  `usher status` shows it per harness. The key reaches the harness through its process
-  environment, which the same OS user can read; usher states this and promises no more.
+- **Binds:** FR-66, ADR-009 (its 2026-10-19 amendment is marvel's and does not apply to usher; operator ruling, 2026-11-09)
+- **Prevents:** usher holding a long-lived key or the grant that issues one, usher writing a person's store, and a key value reaching disk, a log, the journal or a report
+- **Rule:** `usher-broker` defines one port with an adapter per issuing route: AWS STS and GCP
+  workload identity issue short-lived credentials for cloud routes; Vault's OpenAI plugin issues
+  project keys and is labelled experimental. Every route issues; usher never reads a stored
+  long-lived key from 1Password, the keychain or any other store, because ADR-009's in-memory
+  amendment is marvel's and does not extend to usher (operator ruling, 2026-11-09). Anthropic API
+  keys have no issuing route today, so the broker offers none for Anthropic; Anthropic workload
+  identity federation is an unverified harness-knowledge item with a probe, and becomes a route
+  only after it passes. An issuing route gets its credential through the owning tool's own login
+  and CLI (`aws configure export-credentials`, `gcloud`, the `vault` token helper); usher never
+  reads, caches or stores the base credential. Usher never creates or modifies an item in a
+  person's store. Only a launch the person starts from the CLI or the app calls the broker (AD-8),
+  and `usher status` shows, per harness, whether a brokered route exists. The credential reaches
+  the harness through its process environment, which the same OS user can read; usher states this
+  and promises no more.
 
 ## Consistency Conventions
 
