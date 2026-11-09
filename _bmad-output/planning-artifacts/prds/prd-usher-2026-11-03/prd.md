@@ -454,8 +454,10 @@ installer that owns it, after seeing what will change.
   to versions first.
 - Before updating a binary that running sessions use, usher names those
   sessions (FR-10) and lets the person choose when.
-- Usher updates itself from a signed feed and verifies the feed before it
-  installs anything.
+- Usher updates itself through the installer that owns its install (for
+  example brew), like any other tool; a direct install updates from a
+  signed feed the team names, verified before anything is installed
+  (operator ruling, 2026-11-09).
 
 #### FR-45: Declared tools and toolchain
 
@@ -521,13 +523,20 @@ legion grew) with a working seat, to review it.
 
 #### FR-66: Key broker at launch
 
-A person can launch a harness with a key that a vault they own mints for
-that launch, so the key never lands on disk.
+A person can launch a harness with a key that a vault or store they own
+issues for that launch or holds, so the key never lands on disk.
 
 **Consequences (testable):**
-- Usher asks the person's vault for a short-lived, scoped key at launch and
-  hands it to the harness in memory; it never holds the long-lived grant
-  (ADR-009, brokering, not custody).
+- Usher asks the person's vault for a short-lived, scoped key at launch
+  where the route can issue one, or reads the key from the person's own
+  store where it cannot, and hands it to the harness in memory. On an
+  issuing route it never holds the grant that issues the key; on a read
+  route it holds the key in memory only, until the harness starts, never
+  at rest, and never writes the person's store (ADR-009, brokering, not
+  custody; read routes await the ruling in open question 26).
+- Each route says whether it issues or reads, and usher shows the person
+  which (operator ruling, 2026-11-09: Anthropic API keys cannot be issued
+  programmatically today).
 - The key's value is never written to disk, logged, journaled or reported.
 - A plaintext key found by the credential scan (§5) comes with a
   recommendation to move it behind the broker.
@@ -843,7 +852,10 @@ Reporting is off by default; the off switch gates the code path, not just
 the send.
 
 **Consequences (testable):**
-- A test proves no egress in the default state.
+- A test proves no reporting egress in the default state, and no traffic
+  beyond the endpoints the published behavioral profile lists for the
+  version check (FR-9), which carries nothing about the person and has its
+  own off switch (operator ruling, 2026-11-09).
 - A test proves the enabled state sends only reported fields.
 - A published "we do not collect" list is part of the contract.
 - DO_NOT_TRACK set in the environment keeps reporting off on that host,
@@ -1438,8 +1450,10 @@ motivation (UJ-2), not a counted metric.
 10. Name and backronym (F5), and the overlap with beadle.
 11. Going public: time, license, and a sweep for private repo names, client
     names and per-person data; a front door (README) that carries the
-    problem; contributor guidelines; the homebrew tap formula, blocked
-    while the repo is private.
+    problem; contributor guidelines; the public homebrew tap formula and
+    a default update feed, blocked while the repo is private. Self-update
+    through the owning installer and a team-named feed does not wait on
+    this (2026-11-09).
 12. Which Claude desktop app and account settings usher can read (FR-7
     probe).
 13. Brief follow-up: replace "divergence from the baseline" with the
@@ -1468,6 +1482,10 @@ motivation (UJ-2), not a counted metric.
     SM-2's target depends on the answer.
 25. Numbers for the attention, token and footprint budgets (§5, FR-62),
     set in architecture.
+26. Does ADR-009's 2026-10-19 amendment (in memory while running, at rest
+    only in an operator-owned store), written for marvel, also apply to
+    usher, so that FR-66's read routes (the Anthropic key from the person's
+    own store) are admissible? If not, FR-66 offers issuing routes only.
 
 ## 10. Assumptions Index
 

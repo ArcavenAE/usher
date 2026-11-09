@@ -33,8 +33,8 @@ Release for each capability, and the spine decisions that govern it, are in `cap
   - **intent:** A person can sit down at an agent-grown run variant with a working seat to review it (FR-65).
   - **success:** The variant's repo, declared tools and a named profile are set up, each on confirmation; the variant's own tool declaration runs only after it is shown and confirmed.
 - **CAP-5**
-  - **intent:** A person can launch a harness with a short-lived key their own vault mints for that launch (FR-66).
-  - **success:** The key reaches the harness in memory and is never written to disk, logged, journaled or reported.
+  - **intent:** A person can launch a harness with a key their own vault issues for that launch, or their own store holds (FR-66).
+  - **success:** The key reaches the harness in memory and is never written to disk, logged, journaled or reported; each route states whether it issues or reads, and the person sees which.
 - **CAP-6**
   - **intent:** A person can remove usher and choose to keep or roll back the changes it made (FR-67).
   - **success:** After removal no usher process, login item, scheduled job or OTLP endpoint remains, checked by a test; the journal and backups are kept unless the person asks otherwise.
@@ -55,7 +55,7 @@ Release for each capability, and the spine decisions that govern it, are in `cap
   - **success:** An unpriced model is reported, not dropped; throttled calls are counted apart; effects from different backends are never combined in one figure.
 - **CAP-12**
   - **intent:** A person can save any map, comparison or effect as a local report, and reporting off the host stays off until they turn it on, at a level they choose (FR-28, FR-29, FR-54).
-  - **success:** A test proves no egress in the default state and only reported fields in the enabled state; saved reports validate against the published schema.
+  - **success:** A test proves no reporting egress in the default state (only the listed version-check endpoints are contacted) and only reported fields in the enabled state; saved reports validate against the published schema.
 - **CAP-13**
   - **intent:** A maintainer can keep harness knowledge current, with a reference and verification date per item, re-check dates by class and by release, re-runnable probes and release helpers, shipped without a client release (FR-30 to FR-36).
   - **success:** An item without reference or date fails the structural check; each supported harness has a probe-verified stale-key entry; helpers and probes run under a scratch home and only propose.
@@ -125,7 +125,7 @@ Release for each capability, and the spine decisions that govern it, are in `cap
 - Q7: admissions and organization-required settings beyond the consent in FR-39.
 - Q8: who signs harness knowledge and profiles, and how keys rotate and are revoked.
 - Q10: the name, and the overlap with beadle.
-- Q11: going public (timing, license, disclosure sweep, README, homebrew tap).
+- Q11: going public (timing, license, disclosure sweep, README, the public homebrew tap and a default update feed). Self-update through the owning installer does not wait on it.
 - Q13: replace "divergence from the baseline" with the comparison model in the brief.
 - Q14: Windows.
 - Q15: usher's place in the independence matrix, and marquee's "marvel to usher: Onboards" edge.
@@ -134,3 +134,4 @@ Release for each capability, and the spine decisions that govern it, are in `cap
 - Q19: the reporting wire shape beyond the MVP report schema (metrics, OTEL, or levels).
 - Q20: is usher a product, a protocol, or a service?
 - Q24: may usher ingest the service operator's usage and cost APIs, given an admin key is bearer authority at a third party?
+- Q26: does ADR-009's 2026-10-19 amendment, written for marvel, apply to usher, admitting CAP-5 read routes (a key read from the person's own store, held in memory only)?
