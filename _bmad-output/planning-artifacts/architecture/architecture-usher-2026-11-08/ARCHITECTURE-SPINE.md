@@ -7,8 +7,8 @@ paradigm: hexagonal (ports and adapters)
 scope: 'usher client (CLI, MCP, daemon modes), its local store, harness adapters, delegated runs, and the light collector; the central service is deferred'
 status: final
 created: '2026-11-08'
-updated: '2026-11-08'
-binds: [FR-1..FR-52, FR-55, FR-62, FR-63, FR-64, FR-67]
+updated: '2026-11-09'
+binds: [FR-1..FR-52, FR-55, FR-62, FR-63, FR-64, FR-66, FR-67]
 sources:
   - _bmad-output/planning-artifacts/prds/prd-usher-2026-11-03/prd.md
   - _bmad-output/planning-artifacts/prds/prd-usher-2026-11-03/addendum.md
@@ -59,7 +59,8 @@ no adapter depends on another adapter.
   server), `usher daemon` (watcher) and `usher collector` (light collector) are modes of it.
   Client modes resolve one state directory per OS user from the OS user's account home (not
   `$HOME`, which a harness or sandbox may override), and open one store there (AD-7). No mode
-  requires the daemon: bootstrap (FR-46), apply and removal (FR-67) work with no daemon.
+  requires the daemon: bootstrap (FR-46), apply and removal (FR-67) work with no daemon. The v2 app
+  (AD-21) is a separate optional bundle that opens this same store and adds no state of its own.
 
 ### AD-2: One writer at a time, through the journal lock
 
@@ -81,8 +82,8 @@ no adapter depends on another adapter.
   outcome with each target's hash after. Each step's row is committed to disk before the next
   step starts. At apply time each target's hash must still equal the proposal's base hash
   (AD-16); otherwise usher writes nothing and asks for a fresh proposal. An intent with no
-  outcome is a crash marker. It is resolved only by an explicit resume or roll back, from the CLI
-  or MCP, after each target's state is shown and confirmed (AD-4); the choice is journaled. The
+  outcome is a crash marker. It is resolved only by an explicit resume or roll back, from the CLI,
+  MCP or the app, after each target's state is shown and confirmed (AD-4); the choice is journaled. The
   daemon never resolves one. Until it is resolved, every mode refuses new changes, keeps serving
   reads, and names the command that resolves it. A target whose hash is neither the recorded before nor after is a conflict and is
   left alone.
@@ -91,11 +92,11 @@ no adapter depends on another adapter.
 
 - **Binds:** FR-62, PRD §5 confirmation rule, addendum §7
 - **Prevents:** surfaces with different confirmation rules, and changes whose origin cannot be traced
-- **Rule:** the CLI and MCP modes may both apply, roll back, resolve a crash marker, remove and
-  run delegated commands, under the same steps: show the diff computed per AD-16, take a
+- **Rule:** the CLI and MCP modes, and the v2 app (AD-21), may each apply, roll back, resolve a
+  crash marker, remove and run delegated commands, under the same steps: show the diff computed per AD-16, take a
   confirmation, then run AD-3. An agent working for the person confirms as the person can
-  (operator ruling, 2026-11-08). The journal records the surface that confirmed (`cli`, `mcp`)
-  and, for MCP, the client name the harness reported. The daemon never applies a change.
+  (operator ruling, 2026-11-08). The journal records the surface that confirmed (`cli`, `mcp`,
+  `app`) and, for MCP, the client name the harness reported. The daemon never applies a change.
 
 ### AD-5: The harness's own writer first, every other byte unchanged
 
@@ -149,7 +150,10 @@ no adapter depends on another adapter.
   harness knowledge marks as credential. Values inside MCP server definitions that harness
   knowledge marks as secret-bearing (`env`, `headers`) are shown by name, never by value, in the
   map, MCP responses, logs or reports. Trust records (Claude Code `projects` trust state, codex
-  trusted projects) are read for discovery (AD-10) and never written.
+  trusted projects) are read for discovery (AD-10) and never written. The one exception is
+  `usher-broker` (AD-22, v2): at a launch the person starts from the CLI or the app, it may read the
+  single item the person named for that launch, from the person's own store, never a harness's
+  credential store; MCP and the daemon never call it.
 
 ### AD-9: Observation changes nothing
 
@@ -220,7 +224,10 @@ no adapter depends on another adapter.
 - **Prevents:** a code path that sends data before consent, and two modes sending or retrying reports differently
 - **Rule:** reporting is off by default and is turned on per collector, after the person sees
   what will be sent; `DO_NOT_TRACK` keeps it off. With reporting off, the only network calls are
-  ones the person starts (an install, a clone, a profile source fetch, a knowledge update).
+  ones the person starts (an install, a clone, a profile source fetch, a knowledge update) and
+  the version check (FR-9), which asks each source for its current version, sends nothing about
+  the person or host, contacts only the endpoints the published behavioral profile lists, and has
+  its own off switch (operator ruling, 2026-11-09).
   With reporting on, reports go into the store's outbox and are sent by the daemon after a map
   change, at daemon start, and on an OS network-change notice; the CLI may also send on the
   person's command. The egress test (FR-29) covers both states.
@@ -230,7 +237,7 @@ no adapter depends on another adapter.
 - **Binds:** FR-9, FR-11, FR-12, FR-44 to FR-48, FR-50, FR-67
 - **Prevents:** installs and clones run outside the journal, and two features invoking package managers differently
 - **Rule:** every external command that changes the host (brew, mise, uv, npm, git clone, sideshow,
-  vendor installers, usher's own update) runs through `usher-runner`, from the CLI or MCP only, after AD-4
+  vendor installers, usher's own update) runs through `usher-runner`, from the CLI, MCP or the app only, after AD-4
   confirmation and inside AD-3. The journal records the command, its arguments, working directory,
   exit status and what it installed or cloned. A failure names the step, the command, its exit
   status and a next action (FR-46). Undo is the recorded reverse command where one is known;
@@ -242,7 +249,7 @@ no adapter depends on another adapter.
 - **Binds:** FR-49, FR-62, AD-4
 - **Prevents:** an agent-written or stale diff shown at apply that differs from what gets written
 - **Rule:** a proposal stores structured operations (adapter, file, key, new value) and each
-  target's base hash. The diff the person confirms is computed by the CLI at apply time from the
+  target's base hash. The diff the person confirms is computed by `usher-core` at apply time from the
   operations and the current files. A proposal's text from MCP is a note only; it is never shown
   as the diff.
 
@@ -269,7 +276,15 @@ no adapter depends on another adapter.
 - **Prevents:** a daemon running an old binary on a migrated store, and two migration paths
 - **Rule:** the store carries a schema version; migrations are forward-only, run under the
   journal lock by the first mode of a newer binary, and journaled. Self-update is a delegated run
-  (AD-15) fetching a release signed with the AD-12 key. A daemon that sees its binary replaced or
+  (AD-15). Where an installer owns usher's install (brew), usher updates through that installer
+  like any other tool; a direct install fetches a release signed with the AD-12 key from a feed
+  the team names (a URL or directory), accepted only if its version is higher than the one
+  installed. The public tap and a default feed wait on PRD Q11. Before a migration, usher backs
+  up the store beside the previous binary, so the undo of a self-update restores both; where the
+  installer cannot reinstall the earlier version (brew without a versioned formula), the person
+  sees "no undo" before confirming. The launchd agent and the app (AD-21) run usher from its
+  stable install path, never a versioned one, and removal (FR-67) removes the app bundle and its
+  login item with the rest. A daemon that sees its binary replaced or
   the schema version raised exits and is restarted by the OS service manager (a per-user launchd
   agent on macOS), which install creates and removal deletes.
 
@@ -282,8 +297,44 @@ no adapter depends on another adapter.
   Each adapter runs fixture tests on every change and live tests against the harness versions
   harness knowledge lists, under the scratch home. SM-5 is checked by hashing the metadata of
   every harness file before and after an observation run; FR-29 by running with reporting off
-  under a sandbox that denies network. The addendum §7 cases are tests in this kit. These are
+  under a sandbox that allows only the version-check endpoints of AD-14, with a control showing
+  every other connection refused. The addendum §7 cases are tests in this kit. These are
   structural tests and may gate merges; no health metric does (ADR-007).
+
+### AD-21: The app is a separate bundle over the same core, and its webview never writes
+
+- **Binds:** FR-62 (the app), FR-67, PRD §7.2
+- **Prevents:** a second write path that skips the journal, a second file watcher, an app and CLI disagreeing about the store's schema, and a second update path
+- **Rule:** the app is a Tauri 2 menu-bar app (`usher-app`), shipped as its own optional bundle
+  beside the one `usher` executable of AD-1, at the same version, linking `usher-core` and opening
+  the same store. It never migrates the store and refuses one whose schema version differs from
+  its own; it updates only through AD-19, never through Tauri's updater. The webview gets no fs,
+  shell, http or opener permission in its Tauri capability file, only a fixed list of usher
+  commands (`propose`, `show_diff`, `confirm(proposal_id, diff_hash)`); `usher-core` computes the
+  diff (AD-16) and applies through AD-3 under the AD-2 lock only when the person's confirmation
+  carries that diff's hash, recording `app` as the surface (AD-4). A content security policy
+  forbids remote origins, the UI bundle is pinned and built from the repo, and a structural test
+  checks the capability file and the policy. The app watches no files and reads the store only;
+  the daemon keeps the store current. macOS first; Windows follows PRD Q14.
+
+### AD-22: Launch keys go through one broker port, and each route says whether it issues or reads
+
+- **Binds:** FR-66, ADR-009 and its 2026-10-19 amendment
+- **Prevents:** a route claiming a short-lived key it cannot issue, usher holding the grant that issues a key, usher writing a person's store, and a key value reaching disk, a log, the journal or a report
+- **Rule:** `usher-broker` defines one port with an adapter per route: the 1Password CLI and the
+  macOS keychain read a key the person stores (they issue nothing); AWS STS and GCP workload
+  identity issue short-lived credentials for cloud routes; Vault's OpenAI plugin issues project
+  keys and is labelled experimental. Anthropic API keys have no issuing route today, so they are
+  read from the person's store and held in memory only; Anthropic workload identity federation is an
+  unverified harness-knowledge item with a probe. An issuing route gets its credential through the
+  owning tool's own login and CLI (`aws configure export-credentials`, `gcloud`, the `vault` token
+  helper); usher never reads, caches or stores the base credential. A read route holds the key in
+  memory only, from the read until the harness is started, never at rest (read routes wait on the
+  operator ruling recorded in the memlog). Usher never creates or modifies an item in a person's
+  store; moving a key there is the person's act, with the store's own tool. Only a launch the person
+  starts from the CLI or the app calls the broker (AD-8). Each route declares issues or reads, and
+  `usher status` shows it per harness. The key reaches the harness through its process
+  environment, which the same OS user can read; usher states this and promises no more.
 
 ## Consistency Conventions
 
@@ -319,6 +370,7 @@ no adapter depends on another adapter.
 | ed25519-dalek (host keys) | 3.0.0 |
 | keyring (host private key) | 4.2.0 |
 | ulid | 3.0.0 |
+| tauri (app bundle, AD-21) | 2 (2.9.3 last seen; confirm at Story 15.2 start) |
 
 ## Structural Seed
 
@@ -367,6 +419,8 @@ usher/
     usher-mcp/
     usher-daemon/
     usher-collector/
+    usher-broker/         # launch-key broker port and route adapters (AD-22)
+    usher-app/            # Tauri menu-bar app bundle (AD-21)
     usher-testkit/        # scratch homes, fixtures, invariant checks
 ```
 
@@ -387,6 +441,8 @@ usher/
 | In-harness surface (FR-62) | `usher-mcp` | AD-3, AD-4, AD-16, budgets |
 | Journal and safe execution (FR-63, FR-64) | `usher-store`, adapters | AD-2, AD-3, AD-5, AD-7, AD-8 |
 | Removal and self-update (FR-44, FR-67) | `usher-cli`, `usher-runner` | AD-3, AD-15, AD-19 |
+| The app (FR-62, v2) | `usher-app` | AD-4, AD-16, AD-21 |
+| Launch-key broker (FR-66, v2) | `usher-broker` | AD-22 |
 
 ## Budgets
 
@@ -405,13 +461,13 @@ PRD Q25, ratified by the operator on 2026-11-08. Each is a test on a laptop on b
 
 ## Deferred
 
-- **Central service, signed catalog, templates, remote apply, app UI:** v2 (PRD §7.2); the
+- **Central service, signed catalog, templates, remote apply:** v2 (PRD §7.2); the
   collector's schema ownership in `usher-core` (AD-13) is the seam they extend.
 - **Sigstore verification:** with the v2 catalog, after sigstore-rs bundle verification is checked.
 - **Who signs harness knowledge, and the key ceremony:** PRD Q8, a governance call.
 - **Windows:** the service manager and the cross-build in CI wait on PRD Q14; AD-1, AD-2 and
   AD-19 name the macOS form.
-- **Distribution and the release pipeline (installer, notarization, homebrew tap):** blocked
+- **Distribution and the release pipeline (installer, notarization, public homebrew tap, default feed):** blocked
   while the repo is private (PRD Q11); AD-12 and AD-19 fix what a release must carry.
 - **OTLP export from the collector:** after the MVP, as an export only (AD-13).
 - **Untested harness claims:** codex device-management precedence and the goose `GOOSE_MODE`
