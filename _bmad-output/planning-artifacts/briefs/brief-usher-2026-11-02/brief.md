@@ -197,7 +197,7 @@ with the same problem, not named here.
   recommendations (proposals the person applies), from the command line
   and the background service.
 - A thin in-harness surface (MCP) where the newcomer starts: map, compare,
-  explain and propose, with every change confirmed by the person.
+  explain, propose and apply, with every change shown and confirmed first.
 - macOS first. Linux likely. Windows unknown (aae-orc-1vgfk).
 
 **Posture, from the first commit:**

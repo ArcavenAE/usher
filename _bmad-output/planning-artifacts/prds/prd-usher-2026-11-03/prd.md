@@ -1234,10 +1234,10 @@ A person can rely on a change touching only what its dry run listed.
 ## 5. Cross-Cutting NFRs and Guardrails
 
 - **Changes on confirmation.** Usher shows every change before making it
-  and makes it only when the person confirms. An agent on the in-LLM
-  surface can propose a change; the person confirms it through a prompt
-  the agent cannot answer for them. Locked settings belong to device
-  management; usher is never the sole configuration authority.
+  and makes it only on confirmation. An agent working for the person
+  confirms and applies as the person can (operator ruling, 2026-11-08);
+  the journal records which surface confirmed. Locked settings belong to
+  device management; usher is never the sole configuration authority.
 - **Every change is journaled and fail-safe.** No change runs without a
   journal entry, written first, that names its undo or its manual step,
   which the person sees before confirming (FR-63), and without the
@@ -1338,9 +1338,9 @@ knowledge. Limits for the MVP:
   in-harness surface for the newcomer, who starts inside a harness, not a
   terminal. From Claude Code, and from the Claude desktop app where it
   takes MCP servers, the thin surface maps, compares, explains findings and
-  proposes changes; every change is confirmed through a prompt the agent
-  cannot answer (§5). Bootstrap from nothing (FR-46) starts at the command
-  line, since no harness is there yet. The app follows.
+  proposes and applies changes, each confirmed as on any surface (§5).
+  Bootstrap from nothing (FR-46) starts at the command line, since no
+  harness is there yet. The app follows.
 - The change journal and safe execution (FR-63, FR-64) cover every change
   the MVP makes.
 - Hazard checks ship only as their tests pass.
