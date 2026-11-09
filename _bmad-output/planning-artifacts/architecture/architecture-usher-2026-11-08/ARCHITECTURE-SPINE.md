@@ -201,8 +201,11 @@ no adapter depends on another adapter.
   last-checked date. A knowledge file is built into each release; updates are fetched only when
   the person asks (AD-14). An update is accepted only with a minisign (ed25519) signature by a
   public key compiled into the binary, verified offline, and only with a sequence number higher
-  than the one in force. Each release carries the current key and the next; a release that drops
-  a key revokes it. The daemon reloads knowledge when the store records a new sequence number.
+  than the one in force. The trusted keys are a build-time list with key ids, carrying the current
+  key and the next; a release that drops a key revokes it. No signing key, public or private, is
+  kept in the repo: tests generate a throwaway key pair per run and inject its public half through
+  a test-only constructor, and a release build with an empty key list fails to compile. Who holds
+  the keys and how they rotate is PRD Q8, which blocks the first release only. The daemon reloads knowledge when the store records a new sequence number.
 
 ### AD-13: The light collector accepts one versioned schema from known hosts
 
@@ -216,7 +219,12 @@ no adapter depends on another adapter.
   collector answers a person's query for and deletion of their own data, serves aggregates by
   default, opens per-person drill-down only after the team's recorded decision (FR-41), and
   deletes data past retention (default 90 days), keeping a deletion record (FR-42). One collector
-  serves one affiliation. OTLP is at most a later export, never the intake.
+  serves one affiliation. OTLP is at most a later export, never the intake. The collector is the
+  same usher binary, built as a static musl binary for Linux x86_64 and aarch64 and as a macOS
+  binary, shipped with a systemd unit and a `FROM scratch` container image (the binary and a CA
+  bundle) as two ways to run it. Its store must be on local disk: it checks the filesystem type at
+  open and refuses a network filesystem, naming the path. Backups are the team's; usher adds no
+  timer.
 
 ### AD-14: Nothing leaves the host unless the person turns it on, and the client sends on events
 
@@ -228,7 +236,9 @@ no adapter depends on another adapter.
   the version check (FR-9), which asks each source for its current version, sends nothing about
   the person or host, contacts only the endpoints the published behavioral profile lists, and has
   its own off switch (operator ruling, 2026-11-09).
-  With reporting on, reports go into the store's outbox and are sent by the daemon after a map
+  Every outbound call goes through one egress port in `usher-core` that registers its endpoint and
+  what it sends; the published behavioral profile is generated from that registry, and an HTTP
+  client used outside the port fails CI. With reporting on, reports go into the store's outbox and are sent by the daemon after a map
   change, at daemon start, and on an OS network-change notice; the CLI may also send on the
   person's command. The egress test (FR-29) covers both states.
 
