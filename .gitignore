@@ -10,3 +10,4 @@
 /.claude/skills/bmb-*/
 /.claude/skills/wds-*/
 /_bmad-custom/config.user.toml
+/target/

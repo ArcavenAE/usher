@@ -29,14 +29,14 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 11-09-2026 14:21
-last_updated: 11-09-2026 14:21
+last_updated: 11-10-2026 08:30
 project: usher
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 development_status:
-  epic-1: backlog
-  1-1-bootstrap-the-usher-workspace-from-the-fleet-baseline: backlog
+  epic-1: in-progress
+  1-1-bootstrap-the-usher-workspace-from-the-fleet-baseline: review
   1-2-scratch-homes-and-the-observation-invariant: backlog
   1-3-referenced-harness-knowledge-embedded-in-the-binary: backlog
   1-4-signed-harness-knowledge-updates-without-a-client-release: backlog

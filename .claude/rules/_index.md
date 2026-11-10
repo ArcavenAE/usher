@@ -5,3 +5,4 @@
 @bash.md
 @diagnostic-not-gate.md
 @task-workflow.md
+@rust.md

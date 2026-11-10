@@ -1,0 +1,38 @@
+# cargo-deny config: supply-chain advisories, license, and ban checks.
+# Run: cargo deny check advisories licenses bans
+# CI: cargo-deny is installed from a pinned release in .github/workflows/ci.yml.
+
+[advisories]
+version = 2
+yanked = "warn"
+ignore = []
+
+[licenses]
+version = 2
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
+    "MPL-2.0",
+]
+
+# usher's own crates are private (publish = false) and carry no license field;
+# the license is the operator's choice. Skip them so only dependencies are checked.
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = []
