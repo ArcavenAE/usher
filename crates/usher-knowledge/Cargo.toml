@@ -9,6 +9,17 @@ publish.workspace = true
 [dependencies]
 usher-core.workspace = true
 toml_edit.workspace = true
+minisign-verify.workspace = true
+
+[build-dependencies]
+minisign-verify.workspace = true
+
+[dev-dependencies]
+usher-testkit.workspace = true
+
+[features]
+# Lets a test build trust a throwaway key. A release build refuses it (build.rs).
+test-keys = []
 
 [lints]
 workspace = true

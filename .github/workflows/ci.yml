@@ -82,6 +82,12 @@ jobs:
         with:
           cache-on-failure: true
       - run: cargo test --locked --workspace --all-targets
+      - name: Test the signing-crate guard
+        run: scripts/test-guard-signer-crates.sh
+      - name: Keep test-only signing crates out of shipping crates
+        # usher-testkit carries ed25519-dalek and blake2 for the test signer. No
+        # other workspace member may reach them (Story 1.4, director ruling).
+        run: scripts/guard-signer-crates.sh
 
   deny:
     name: Cargo Deny
