@@ -66,7 +66,7 @@ context: ['{project-root}/_bmad-output/implementation-artifacts/epic-1-context.m
 - Std only. The scratch environment reaches spawned `Command`s only; no `set_var`.
 - Skip list: the std test harness has no end-of-run hook, so `skip()` prints the cumulative list on each skip. Director ruled option (a) on 2026-11-10 (valid until 2026-11-12). The list is per test binary, and cargo captures stderr of passing tests, so the SKIPPED lines show only under `-- --nocapture` or `--show-output`.
 - The digest root is followed when it is a symlink (a patch from review); entries below it are not followed.
-- Tests: 34 pass in the workspace (25 in the testkit, 9 existing; of the 25, 20 written first, 5 added by review: symlinks below the root, a symlinked root, an empty home list refused by `observe`, a dangling symlink at the watched path, and creating or repointing a link below the root).
+- Tests: 35 pass in the workspace (26 in the testkit, 9 existing; of the 26, 20 written first, 6 added by review: symlinks below the root, a symlinked root, a symlinked root walked and not just stat-ed, an empty home list refused by `observe`, a dangling symlink at the watched path, and creating or repointing a link below the root).
 - A symlink at a watched path, dangling or not, counts as present, and its link metadata including the `readlink` target text goes into the digest (director ruling after review, as `find -H` would list it).
 
 ## Spec Change Log

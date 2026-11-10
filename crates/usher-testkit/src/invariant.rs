@@ -332,6 +332,22 @@ mod tests {
     }
 
     #[test]
+    fn a_symlinked_home_root_is_walked_not_just_stat_ed() {
+        use std::os::unix::fs::symlink;
+        let fake = ScratchHome::new().expect("fake real home root");
+        let target = fake.home().join("target");
+        fs::create_dir_all(target.join("sub")).expect("target tree");
+        fs::write(target.join("sub").join("f"), "one").expect("seed file");
+        let link = fake.home().join("linked-home");
+        symlink(&target, &link).expect("link the home");
+        let before = digest_tree(&link).expect("digest");
+        // A same-size rewrite deep in the tree leaves the target directory's
+        // own metadata alone, so only a walk behind the link sees it.
+        fs::write(target.join("sub").join("f"), "two").expect("rewrite");
+        assert_ne!(digest_tree(&link).expect("digest"), before);
+    }
+
+    #[test]
     fn a_dangling_symlink_at_the_watched_path_is_present() {
         use std::os::unix::fs::symlink;
         let fake = ScratchHome::new().expect("fake real home root");
