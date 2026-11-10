@@ -8,6 +8,7 @@
 
 #![forbid(unsafe_code)]
 
+mod location;
 mod schema;
 mod support;
 mod trust;
@@ -18,6 +19,7 @@ mod version;
 #[path = "../build/keys.rs"]
 mod build_keys;
 
+pub use location::{Location, PLACEHOLDERS, Platform, Scope, Shape};
 pub use schema::{
     Class, Date, Item, KnowledgeFile, KnowledgeVersion, Layer, Reference, ReferenceKind,
 };

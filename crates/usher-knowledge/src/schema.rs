@@ -12,6 +12,7 @@ use std::fmt;
 use toml_edit::{DocumentMut, Item as TomlItem, TableLike};
 use usher_core::UsherError;
 
+use crate::location::{Location, parse_keys, parse_locations};
 use crate::support::{Capability, SupportReport};
 use crate::version::{Version, VersionRange};
 
@@ -25,7 +26,7 @@ const STEP: &str = "load harness knowledge";
 const NEXT: &str =
     "fix the entry in the knowledge file, then run `cargo test -p usher-knowledge` to check it";
 
-fn fail(check: impl Into<String>, status: impl Into<String>) -> UsherError {
+pub(crate) fn fail(check: impl Into<String>, status: impl Into<String>) -> UsherError {
     UsherError::new(STEP, check, status, NEXT)
 }
 
@@ -164,6 +165,8 @@ pub struct Item {
     summary: String,
     reference: Reference,
     last_verified: Date,
+    locations: Vec<Location>,
+    keys: Vec<String>,
 }
 
 impl Item {
@@ -205,6 +208,16 @@ impl Item {
     /// The date the fact was last verified against its source.
     pub fn last_verified(&self) -> Date {
         self.last_verified
+    }
+
+    /// The settings locations the item names; empty unless the class is `paths`.
+    pub fn locations(&self) -> &[Location] {
+        &self.locations
+    }
+
+    /// The setting names the item cites; empty unless the class is `keys`.
+    pub fn keys(&self) -> &[String] {
+        &self.keys
     }
 }
 
@@ -257,7 +270,11 @@ pub struct KnowledgeFile {
     support: Vec<SupportEntry>,
 }
 
-fn text_field<'a>(table: &'a dyn TableLike, key: &str, owner: &str) -> Result<&'a str, UsherError> {
+pub(crate) fn text_field<'a>(
+    table: &'a dyn TableLike,
+    key: &str,
+    owner: &str,
+) -> Result<&'a str, UsherError> {
     table
         .get(key)
         .and_then(TomlItem::as_str)
@@ -272,7 +289,7 @@ fn text_field<'a>(table: &'a dyn TableLike, key: &str, owner: &str) -> Result<&'
 
 /// Fails on any key outside `allowed`, so a misspelled table or field is an
 /// error and not an empty or half-read file.
-fn reject_unknown_keys(
+pub(crate) fn reject_unknown_keys(
     table: &dyn TableLike,
     allowed: &[&str],
     owner: &str,
@@ -396,6 +413,8 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
             "summary",
             "reference",
             "last_verified",
+            "locations",
+            "keys",
         ],
         &owner,
     )?;
@@ -420,6 +439,20 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
             format!("class `{class_name}` belongs to the other layer than `{layer_name}`"),
         ));
     }
+    let locations = parse_locations(table, &owner)?;
+    if !locations.is_empty() && class != Class::Paths {
+        return Err(fail(
+            format!("{owner}: locations"),
+            "`locations` belongs only on items of class `paths`",
+        ));
+    }
+    let keys = parse_keys(table, &owner)?;
+    if !keys.is_empty() && class != Class::Keys {
+        return Err(fail(
+            format!("{owner}: keys"),
+            "`keys` belongs only on items of class `keys`",
+        ));
+    }
     Ok(Item {
         id: id.to_string(),
         harness: harness.to_string(),
@@ -429,6 +462,8 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
         summary: text_field(table, "summary", &owner)?.to_string(),
         reference: parse_reference(table, id)?,
         last_verified: parse_date(table, id)?,
+        locations,
+        keys,
     })
 }
 
@@ -783,17 +818,42 @@ capabilities = ["inventory", "map"]
     }
 
     #[test]
-    fn the_embedded_seed_offers_no_capability_and_says_so() {
+    fn the_embedded_seed_offers_inventory_for_claude_code_and_nothing_else() {
         let file = KnowledgeFile::embedded().expect("embedded");
-        for (harness, version) in [
-            ("claude-code", "2.1.317"),
-            ("codex", "0.160.1"),
-            ("goose", "1.57.0"),
-        ] {
+        let claude = file.support("claude-code", &v("2.1.317"));
+        assert!(claude.known());
+        assert_eq!(claude.offered(), [Capability::Inventory]);
+        for (harness, version) in [("codex", "0.160.1"), ("goose", "1.57.0")] {
             let report = file.support(harness, &v(version));
             assert!(report.known(), "{harness} has a support entry");
             assert!(report.offered().is_empty(), "{harness} offers nothing yet");
             assert_eq!(report.unsupported(), Capability::ALL);
         }
+        // An older Claude Code than the seed was checked against offers nothing.
+        let older = file.support("claude-code", &v("2.1.0"));
+        assert!(older.offered().is_empty());
+    }
+
+    #[test]
+    fn the_embedded_seed_names_the_claude_code_locations_and_keys() {
+        let file = KnowledgeFile::embedded().expect("embedded");
+        let version = v("2.1.317");
+        let mut scopes: Vec<&str> = file
+            .items_for("claude-code", &version)
+            .flat_map(|item| item.locations())
+            .map(|location| location.scope().name())
+            .collect();
+        scopes.sort_unstable();
+        scopes.dedup();
+        assert_eq!(
+            scopes,
+            ["global-config", "local", "managed", "project", "user"]
+        );
+        let keys: Vec<&str> = file
+            .items_for("claude-code", &version)
+            .flat_map(|item| item.keys())
+            .map(String::as_str)
+            .collect();
+        assert!(keys.contains(&"permissions") && keys.contains(&"env"));
     }
 }
