@@ -1,3 +1,12 @@
 .beads
 .DS_Store
 .claude/settings.local.json
+/_bmad/
+/.claude/commands/bmad-*.md
+/.claude/skills/bmad-*/
+/.claude/skills/gds-*/
+/.claude/skills/cis-*/
+/.claude/skills/tea-*/
+/.claude/skills/bmb-*/
+/.claude/skills/wds-*/
+/_bmad-custom/config.user.toml
