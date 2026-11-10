@@ -2,7 +2,8 @@
 //! must leave the real harness homes exactly as they were.
 //!
 //! The check hashes metadata, never file contents: name, file type, size,
-//! mtime, ctime and inode of every entry, symlinks not followed. The digests
+//! mtime, ctime and inode of every entry. The root is followed when it is
+//! itself a symlink; nothing below it is followed. The digests
 //! are compared within one process run and are never written to disk, so
 //! `std`'s `DefaultHasher` is enough. If a digest is ever stored or compared
 //! across runs or toolchains, replace it with a stable hash first.
@@ -31,18 +32,33 @@ pub enum TreeDigest {
 
 /// Digests the metadata of `path` and everything under it.
 ///
-/// The root itself is followed when it is a symlink, because dotfile managers
+/// The root is followed when it is itself a symlink, because dotfile managers
 /// commonly link a harness home and the guard must watch the directory behind
-/// it. Entries below the root are never followed.
+/// it; nothing below the root is followed. A symlink at a watched path counts
+/// as present even when it dangles, and its link metadata and target text are
+/// part of the digest, so creating, removing or repointing one changes it.
 pub fn digest_tree(path: &Path) -> io::Result<TreeDigest> {
-    let meta = match fs::metadata(path) {
+    let link_meta = match fs::symlink_metadata(path) {
         Ok(meta) => meta,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(TreeDigest::Absent),
         Err(err) => return Err(err),
     };
     let mut hasher = DefaultHasher::new();
-    hash_entry(&mut hasher, Path::new(""), &meta);
-    if meta.is_dir() {
+    hash_entry(&mut hasher, Path::new(""), path, &link_meta);
+    let root_is_dir = if link_meta.is_symlink() {
+        // A dangling link has nothing behind it to walk.
+        match fs::metadata(path) {
+            Ok(target) => {
+                hash_entry(&mut hasher, Path::new("->"), path, &target);
+                target.is_dir()
+            }
+            Err(err) if err.kind() == io::ErrorKind::NotFound => false,
+            Err(err) => return Err(err),
+        }
+    } else {
+        link_meta.is_dir()
+    };
+    if root_is_dir {
         walk(&mut hasher, path, Path::new(""))?;
     }
     Ok(TreeDigest::Present(hasher.finish()))
@@ -63,7 +79,7 @@ fn walk(hasher: &mut DefaultHasher, dir: &Path, relative: &Path) -> io::Result<(
             Err(err) if err.kind() == io::ErrorKind::NotFound => continue,
             Err(err) => return Err(err),
         };
-        hash_entry(hasher, &rel, &meta);
+        hash_entry(hasher, &rel, &path, &meta);
         if meta.is_dir() {
             walk(hasher, &path, &rel)?;
         }
@@ -71,9 +87,11 @@ fn walk(hasher: &mut DefaultHasher, dir: &Path, relative: &Path) -> io::Result<(
     Ok(())
 }
 
-fn hash_entry(hasher: &mut DefaultHasher, relative: &Path, meta: &fs::Metadata) {
+fn hash_entry(hasher: &mut DefaultHasher, relative: &Path, path: &Path, meta: &fs::Metadata) {
     relative.hash(hasher);
     let kind: u8 = if meta.is_symlink() {
+        // The target text is part of a link's metadata, as `find -H` lists it.
+        fs::read_link(path).ok().hash(hasher);
         1
     } else if meta.is_dir() {
         2
@@ -311,6 +329,39 @@ mod tests {
         let before = digest_tree(&link).expect("digest");
         fs::write(target.join("new"), "x").expect("write through the link");
         assert_ne!(digest_tree(&link).expect("digest"), before);
+    }
+
+    #[test]
+    fn a_dangling_symlink_at_the_watched_path_is_present() {
+        use std::os::unix::fs::symlink;
+        let fake = ScratchHome::new().expect("fake real home root");
+        let link = fake.home().join("dangling-home");
+        assert_eq!(digest_tree(&link).expect("digest"), TreeDigest::Absent);
+        symlink(fake.home().join("nowhere"), &link).expect("dangling link");
+        let created = digest_tree(&link).expect("digest");
+        assert_ne!(created, TreeDigest::Absent);
+        fs::remove_file(&link).expect("remove the link");
+        assert_eq!(digest_tree(&link).expect("digest"), TreeDigest::Absent);
+    }
+
+    #[test]
+    fn creating_or_repointing_a_symlink_below_the_root_changes_the_digest() {
+        use std::os::unix::fs::symlink;
+        let fake = ScratchHome::new().expect("fake real home root");
+        let homes = fake_real(&fake);
+        let path = homes.homes()[0].path.clone();
+        fs::create_dir_all(&path).expect("the fake home is made");
+        let empty = digest_tree(&path).expect("digest");
+        symlink("missing-one", path.join("link")).expect("dangling link");
+        let created = digest_tree(&path).expect("digest");
+        assert_ne!(created, empty, "creating a dangling link is a change");
+        fs::remove_file(path.join("link")).expect("remove");
+        symlink("missing-two", path.join("link")).expect("repointed link");
+        assert_ne!(
+            digest_tree(&path).expect("digest"),
+            created,
+            "repointing a link is a change"
+        );
     }
 
     #[test]
