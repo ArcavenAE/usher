@@ -9,7 +9,7 @@ rust-version = "1.99.1"
 publish = false
 
 [workspace.dependencies]
-usher-core = { path = "crates/usher-core" }
+usher-core = { path = "crates/usher-core", version = "0.0.0" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -23,6 +23,11 @@ allow = [
     "MPL-2.0",
 ]
 
+# usher's own crates are private (publish = false) and carry no license field;
+# the license is the operator's choice. Skip them so only dependencies are checked.
+[licenses.private]
+ignore = true
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
