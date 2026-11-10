@@ -82,17 +82,12 @@ jobs:
         with:
           cache-on-failure: true
       - run: cargo test --locked --workspace --all-targets
-      - name: Keep test-only signing crates out of the usher binary
-        # usher-testkit carries ed25519-dalek and blake2 for the test signer. They
-        # must never reach a shipping build (Story 1.4, director ruling).
-        run: |
-          tree="$(cargo tree --locked -e normal,build --target all --all-features -p usher --prefix none)"
-          # An empty or wrong tree would pass silently, so check it names the binary.
-          printf '%s\n' "$tree" | grep -q '^usher ' || { echo "cargo tree did not list usher" >&2; exit 1; }
-          if printf '%s\n' "$tree" | grep -E '^(ed25519-dalek|blake2) v'; then
-            echo "ed25519-dalek or blake2 is a normal dependency of usher" >&2
-            exit 1
-          fi
+      - name: Test the signing-crate guard
+        run: scripts/test-guard-signer-crates.sh
+      - name: Keep test-only signing crates out of shipping crates
+        # usher-testkit carries ed25519-dalek and blake2 for the test signer. No
+        # other workspace member may reach them (Story 1.4, director ruling).
+        run: scripts/guard-signer-crates.sh
 
   deny:
     name: Cargo Deny

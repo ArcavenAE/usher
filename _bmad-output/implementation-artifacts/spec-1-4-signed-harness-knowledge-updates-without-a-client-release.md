@@ -52,17 +52,17 @@ context: ['{project-root}/_bmad-output/implementation-artifacts/epic-1-context.m
 - `Cargo.toml`, `crates/usher-knowledge/Cargo.toml`, `crates/usher-testkit/Cargo.toml`, `Cargo.lock` -- the dependency lines
 - `_bmad-output/planning-artifacts/architecture/architecture-usher-2026-11-08/ARCHITECTURE-SPINE.md` -- AD-12 (lines 196-208); record the build.rs ruling beside it
 - minisign-verify 0.3.0 `PublicKey::from_base64`, `Signature::decode`, `PublicKey::verify(bin, sig, allow_legacy)` (checks key id, returns `UnexpectedKeyId`)
-- `.github/workflows/ci.yml` -- one new step: fail if `cargo tree -e normal -p usher` shows `ed25519-dalek` or `blake2` (director ruling, Story 1.4; no other CI change)
+- `.github/workflows/ci.yml`, `scripts/guard-signer-crates.sh`, `scripts/test-guard-signer-crates.sh` -- the guard: for every workspace member except `usher-testkit`, listed from `cargo metadata`, fail if `cargo tree -e normal,build --target all --all-features` shows `ed25519-dalek` or `blake2`, or if the member list is empty; a fixture test runs in CI (director rulings, Story 1.4; no other CI change)
 - Do not change: `crates/usher`, `crates/usher-core`, `deny.toml`, the seed file
 
 ## Tasks & Acceptance
 
 **Execution:**
 - [x] `crates/usher-knowledge/build.rs`, `build/keys.rs` -- read, validate, emit the trusted list; fail release on empty, malformed or test-keys -- the compile-time rule
-- [x] `crates/usher-knowledge/src/trust.rs`, `src/update.rs`, `src/lib.rs` -- verify, then sequence, then structural check; atomic swap -- the update path
+- [x] `crates/usher-knowledge/src/trust.rs`, `src/update.rs`, `src/lib.rs` -- verify the signature, then the structural check, then the sequence; atomic swap -- the update path
 - [x] `crates/usher-testkit/src/signer.rs` -- throwaway signer -- tests need signed fixtures
 - [x] tests in each module covering every matrix row, including that a malformed key fails the validator the build script runs
-- [x] `.github/workflows/ci.yml` -- the one step above, shown red locally when a crate is made a normal dependency of a shipping crate, green at head
+- [x] `.github/workflows/ci.yml` and the two scripts -- the guard above, shown red locally when a signing crate is made a normal dependency of `usher-knowledge`, green at head
 - [x] `ARCHITECTURE-SPINE.md` -- ruling note beside AD-12, and the three rulings (build.rs, load-only, prehashed-only signer) with `blake2` 0.11.0 added to the Stack table
 
 **Acceptance Criteria:**
@@ -74,6 +74,7 @@ context: ['{project-root}/_bmad-output/implementation-artifacts/epic-1-context.m
 
 - New: `usher-knowledge` `build.rs`, `build/keys.rs` (list parser, release rule, generated const), `src/trust.rs`, `src/update.rs`; `usher-testkit` `src/signer.rs`. Edited: the three manifests, `Cargo.lock`, `lib.rs` of both crates, the spine (AD-12 rulings, Stack table), one CI step.
 - Added crates (lock file, names only): `minisign-verify` (no dependencies) for production; `ed25519-dalek` and `blake2` with their dependencies for the test signer, 24 lock entries in all. `cargo tree -e normal -p usher` shows neither signing crate.
+- The signing-crate guard is a script run for every workspace member but `usher-testkit` (listed from `cargo metadata`, so a new crate is covered without an edit); a fixture test with stand-in crates runs in CI before it (director ruling after review, 2026-11-10).
 - Key ids print the way minisign prints them (eight bytes, reversed); checked against the example in the minisign documentation.
 - The release rule lives in `keys::check_release` so a unit test covers it; the release build was also run by hand for: empty list, `test-keys` on, valid key (fail, fail, pass).
 - Known limit: the sequence in force lives in memory. After a restart, a replay of a signed file above the embedded sequence is accepted until a later story persists the highest accepted sequence (deferred-work.md).
@@ -101,6 +102,8 @@ Three layers (blind, edge-case, verification-gap), findings grouped by root caus
 | `PROFILE` is the only release signal | false | the director ruling names `PROFILE release`; cargo reports the root profile for custom profiles |
 | `Cargo.lock` missing from the diff | false | the diff file excluded it; it is modified and committed |
 | hand-rolled base64 on both sides | low | rejected: removing it adds a crate or loses the key id in errors |
+| Second review (mokuzai): Tasks line still said verify, sequence, structural | low | patch: reworded to the ruled order |
+| Second review: the CI guard covers only `usher` | low | patch, ruled (director, 2026-11-10): the guard now runs for every workspace member except `usher-testkit`, listed from `cargo metadata`, and fails on an empty list; a committed fixture test shows it red for a signing crate as a normal or indirect dependency |
 | `cargo deny` not run locally, bookkeeping blank, 1-3 still `in-progress` in sprint status | low | patch: logs filled here; 1-3 set to done; deny runs in CI |
 
 ## Design Notes
