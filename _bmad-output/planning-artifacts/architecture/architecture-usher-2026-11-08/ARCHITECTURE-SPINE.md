@@ -207,6 +207,12 @@ no adapter depends on another adapter.
   a test-only constructor, and a release build with an empty key list fails to compile. Who holds
   the keys and how they rotate is PRD Q8, which blocks the first release only. The daemon reloads knowledge when the store records a new sequence number.
 
+  Story 1.4 rulings (director, 2026-11-10):
+  - The key list comes from a `build.rs` in `usher-knowledge`. It reads `USHER_TRUSTED_KEYS` (`current:<base64>[,next:<base64>]`), validates each key, reruns when the variable changes, and writes the list as a const into `OUT_DIR`. A release build (`PROFILE=release`) with an empty list, a malformed key, or the `test-keys` feature on fails; a test asserts that a malformed key fails the validator the script runs.
+  - A knowledge update is loaded from supplied bytes only. Story 1.15 adds the fetch through the egress port; Story 1.4 contains no network code.
+  - Production verifies prehashed (`ED`) signatures only and never sets `allow_legacy`. The test signer in `usher-testkit` writes real prehashed minisign signatures, so a legacy (`Ed`) signature is shown to be rejected.
+  - The test signer's `ed25519-dalek` and `blake2` are normal dependencies of `usher-testkit` (a library module cannot use dev-dependencies). `usher-testkit` is only ever a dev-dependency of shipping crates, and a CI step fails if `cargo tree -e normal -p usher` shows either crate.
+
 ### AD-13: The light collector accepts one versioned schema from known hosts
 
 - **Binds:** FR-29, FR-39 to FR-42, PRD Q6, Q19
@@ -377,7 +383,8 @@ no adapter depends on another adapter.
 | axum-server with rustls | 0.9.0 |
 | rustls | 0.23.46 |
 | minisign-verify | 0.3.0 |
-| ed25519-dalek (host keys) | 3.0.0 |
+| ed25519-dalek (host keys; test signer in `usher-testkit`) | 3.0.0 |
+| blake2 (test signer in `usher-testkit` only) | 0.11.0 |
 | keyring (host private key) | 4.2.0 |
 | ulid | 3.0.0 |
 | tauri (app bundle, AD-21) | 2 (2.9.3 last seen; confirm at Story 15.2 start) |

@@ -38,8 +38,8 @@ development_status:
   epic-1: in-progress
   1-1-bootstrap-the-usher-workspace-from-the-fleet-baseline: done
   1-2-scratch-homes-and-the-observation-invariant: review
-  1-3-referenced-harness-knowledge-embedded-in-the-binary: in-progress
-  1-4-signed-harness-knowledge-updates-without-a-client-release: backlog
+  1-3-referenced-harness-knowledge-embedded-in-the-binary: done
+  1-4-signed-harness-knowledge-updates-without-a-client-release: review
   1-5-claude-code-settings-inventory: backlog
   1-6-claude-code-settings-in-effect-with-provenance: backlog
   1-7-declared-but-not-in-effect-and-folder-trust-for-claude-code: backlog

@@ -3,17 +3,25 @@
 //! file embedded in each release, and the support level usher reports for a
 //! harness version.
 //!
-//! Signed updates and sequence checks arrive in Story 1.4; this crate only
-//! reads the embedded file and reports which version it used.
+//! A signed update replaces the embedded file only when its signature, its
+//! structure and its sequence number all check out ([`Knowledge::update`]).
 
 #![forbid(unsafe_code)]
 
 mod schema;
 mod support;
+mod trust;
+mod update;
 mod version;
+
+#[cfg(test)]
+#[path = "../build/keys.rs"]
+mod build_keys;
 
 pub use schema::{
     Class, Date, Item, KnowledgeFile, KnowledgeVersion, Layer, Reference, ReferenceKind,
 };
 pub use support::{Capability, SupportReport};
+pub use trust::TrustedKeys;
+pub use update::Knowledge;
 pub use version::{Version, VersionRange};
