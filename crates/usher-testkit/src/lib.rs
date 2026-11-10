@@ -1,12 +1,23 @@
 //! Test support for usher.
 //!
-//! This crate exists from the first story so every later story tests the same
-//! way (architecture decision AD-20): scratch homes, fixtures captured from
-//! real harness output, and the invariant checks. Story 1.2 adds the scratch
-//! home and the observation invariant; until then the crate holds only its own
-//! name so the workspace shape is settled.
+//! This crate exists so every story tests the same way (architecture decision
+//! AD-20): scratch homes, the observation invariant over the real harness
+//! homes, and pinned harness binaries. Fixtures captured from real harness
+//! output arrive with the adapter stories that need them.
+//!
+//! Unix only for now (macOS first): the invariant reads ctime and inode.
 
 #![forbid(unsafe_code)]
+
+pub mod harness;
+pub mod invariant;
+pub mod scratch;
+
+pub use harness::{Probe, Skip, probe, skip, skipped};
+pub use invariant::{
+    InvariantViolation, NamedHome, RealHomeGuard, RealHomes, TreeDigest, digest_tree, observe,
+};
+pub use scratch::ScratchHome;
 
 /// The crate name, for tests that assert the workspace layout.
 pub const CRATE_NAME: &str = "usher-testkit";
