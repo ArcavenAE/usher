@@ -70,3 +70,17 @@ expect fail "a signing crate reached through another crate fails" "via reaches"
 
 workspace usher-testkit
 expect fail "no member other than usher-testkit fails" "no workspace member"
+
+# A cargo whose `tree` output does not name the member (and shows no signing
+# crate) must still fail: a check that saw nothing must not pass.
+cat > "$scratch/blind-cargo" <<'WRAPPER'
+#!/usr/bin/env bash
+if [[ "$1" == tree ]]; then
+  echo "unrelated v0.0.0"
+else
+  exec cargo "$@"
+fi
+WRAPPER
+chmod +x "$scratch/blind-cargo"
+workspace usher-testkit clean
+GUARD_CARGO="$scratch/blind-cargo" expect fail "a tree that does not list the member fails" "did not list clean"
