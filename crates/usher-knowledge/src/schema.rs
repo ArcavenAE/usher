@@ -1,0 +1,799 @@
+//! The harness-knowledge schema (AD-12) and its structural check.
+//!
+//! One TOML file, two layers. The slow layer holds layer order, file paths and
+//! credential stores; the fast layer holds keys, defaults, hazards, the
+//! never-call list and disputed claims. Every item names a harness, a version
+//! range, a reference and the date it was last verified (FR-30). A file that
+//! breaks any of that does not load.
+
+use std::collections::HashSet;
+use std::fmt;
+
+use toml_edit::{DocumentMut, Item as TomlItem, TableLike};
+use usher_core::UsherError;
+
+use crate::support::{Capability, SupportReport};
+use crate::version::{Version, VersionRange};
+
+/// The knowledge file built into this release.
+const EMBEDDED: &str = include_str!("../knowledge/harness-knowledge.toml");
+
+/// The only schema version this build reads.
+const SUPPORTED_SCHEMA: u32 = 1;
+
+const STEP: &str = "load harness knowledge";
+const NEXT: &str =
+    "fix the entry in the knowledge file, then run `cargo test -p usher-knowledge` to check it";
+
+fn fail(check: impl Into<String>, status: impl Into<String>) -> UsherError {
+    UsherError::new(STEP, check, status, NEXT)
+}
+
+/// Which layer an item lives in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Layer {
+    /// Slow facts: layers and precedence, file paths, credential stores.
+    Slow,
+    /// Fast facts: keys, defaults, hazards, the never-call list, disputes.
+    Fast,
+}
+
+impl Layer {
+    fn parse(name: &str) -> Option<Self> {
+        match name {
+            "slow" => Some(Layer::Slow),
+            "fast" => Some(Layer::Fast),
+            _ => None,
+        }
+    }
+}
+
+/// What kind of fact an item states.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Class {
+    /// Layer order and precedence (slow).
+    Layers,
+    /// File and directory locations (slow).
+    Paths,
+    /// Where credentials live (slow).
+    CredentialStores,
+    /// Settings keys and what they do (fast).
+    Keys,
+    /// Default values (fast).
+    Defaults,
+    /// Hazards for an observer (fast).
+    Hazards,
+    /// Commands usher must never call (fast).
+    NeverCall,
+    /// Claims whose sources disagree (fast).
+    Disputed,
+}
+
+impl Class {
+    fn parse(name: &str) -> Option<Self> {
+        match name {
+            "layers" => Some(Class::Layers),
+            "paths" => Some(Class::Paths),
+            "credential-stores" => Some(Class::CredentialStores),
+            "keys" => Some(Class::Keys),
+            "defaults" => Some(Class::Defaults),
+            "hazards" => Some(Class::Hazards),
+            "never-call" => Some(Class::NeverCall),
+            "disputed" => Some(Class::Disputed),
+            _ => None,
+        }
+    }
+
+    /// The layer this class belongs to.
+    pub fn layer(self) -> Layer {
+        match self {
+            Class::Layers | Class::Paths | Class::CredentialStores => Layer::Slow,
+            Class::Keys | Class::Defaults | Class::Hazards | Class::NeverCall | Class::Disputed => {
+                Layer::Fast
+            }
+        }
+    }
+}
+
+/// Where a fact comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReferenceKind {
+    /// The vendor's documentation.
+    VendorDocs,
+    /// A release changelog.
+    Changelog,
+    /// The harness source code.
+    Source,
+    /// A probe usher ran.
+    Probe,
+}
+
+impl ReferenceKind {
+    fn parse(name: &str) -> Option<Self> {
+        match name {
+            "vendor-docs" => Some(ReferenceKind::VendorDocs),
+            "changelog" => Some(ReferenceKind::Changelog),
+            "source" => Some(ReferenceKind::Source),
+            "probe" => Some(ReferenceKind::Probe),
+            _ => None,
+        }
+    }
+}
+
+/// The source an item cites: what kind it is and where to find it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reference {
+    kind: ReferenceKind,
+    locator: String,
+}
+
+impl Reference {
+    /// The kind of source.
+    pub fn kind(&self) -> ReferenceKind {
+        self.kind
+    }
+
+    /// A URL, file path or probe name that leads to the source.
+    pub fn locator(&self) -> &str {
+        &self.locator
+    }
+}
+
+/// A calendar date, `YYYY-MM-DD`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Date {
+    year: u16,
+    month: u8,
+    day: u8,
+}
+
+impl fmt::Display for Date {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:04}-{:02}-{:02}", self.year, self.month, self.day)
+    }
+}
+
+/// One fact about a harness, with its source and the date it was last verified.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Item {
+    id: String,
+    harness: String,
+    layer: Layer,
+    class: Class,
+    versions: VersionRange,
+    summary: String,
+    reference: Reference,
+    last_verified: Date,
+}
+
+impl Item {
+    /// The item's unique id.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// The harness the fact is about.
+    pub fn harness(&self) -> &str {
+        &self.harness
+    }
+
+    /// The layer the item lives in.
+    pub fn layer(&self) -> Layer {
+        self.layer
+    }
+
+    /// The kind of fact.
+    pub fn class(&self) -> Class {
+        self.class
+    }
+
+    /// The harness versions the fact applies to.
+    pub fn versions(&self) -> &VersionRange {
+        &self.versions
+    }
+
+    /// The fact, in one sentence.
+    pub fn summary(&self) -> &str {
+        &self.summary
+    }
+
+    /// The source the fact cites.
+    pub fn reference(&self) -> &Reference {
+        &self.reference
+    }
+
+    /// The date the fact was last verified against its source.
+    pub fn last_verified(&self) -> Date {
+        self.last_verified
+    }
+}
+
+/// The capabilities usher offers for a harness within a version range.
+///
+/// This is usher's own statement, not a fact about the harness, so it carries
+/// no reference. When two entries for one harness both match a version, the
+/// first in file order wins.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SupportEntry {
+    harness: String,
+    versions: VersionRange,
+    capabilities: Vec<Capability>,
+}
+
+/// The version of a knowledge file, for any report that relies on it (FR-31).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KnowledgeVersion {
+    schema_version: u32,
+    sequence: u64,
+}
+
+impl KnowledgeVersion {
+    /// The schema the file is written in.
+    pub fn schema_version(&self) -> u32 {
+        self.schema_version
+    }
+
+    /// The file's sequence number; a later file has a higher one.
+    pub fn sequence(&self) -> u64 {
+        self.sequence
+    }
+}
+
+impl fmt::Display for KnowledgeVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "knowledge v{} (schema {})",
+            self.sequence, self.schema_version
+        )
+    }
+}
+
+/// A parsed knowledge file that passed the structural check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KnowledgeFile {
+    version: KnowledgeVersion,
+    items: Vec<Item>,
+    support: Vec<SupportEntry>,
+}
+
+fn text_field<'a>(table: &'a dyn TableLike, key: &str, owner: &str) -> Result<&'a str, UsherError> {
+    table
+        .get(key)
+        .and_then(TomlItem::as_str)
+        .filter(|s| !s.trim().is_empty() && *s == s.trim())
+        .ok_or_else(|| {
+            fail(
+                format!("{owner}: {key}"),
+                format!("`{key}` is missing, empty, padded with spaces, or not a string"),
+            )
+        })
+}
+
+/// Fails on any key outside `allowed`, so a misspelled table or field is an
+/// error and not an empty or half-read file.
+fn reject_unknown_keys(
+    table: &dyn TableLike,
+    allowed: &[&str],
+    owner: &str,
+) -> Result<(), UsherError> {
+    match table
+        .iter()
+        .map(|(key, _)| key)
+        .find(|key| !allowed.contains(key))
+    {
+        None => Ok(()),
+        Some(key) => Err(fail(
+            format!("{owner}: {key}"),
+            format!(
+                "`{key}` is not a known key; known keys are {}",
+                allowed.join(", ")
+            ),
+        )),
+    }
+}
+
+fn number_field(table: &dyn TableLike, key: &str, owner: &str) -> Result<u64, UsherError> {
+    table
+        .get(key)
+        .and_then(TomlItem::as_integer)
+        .and_then(|n| u64::try_from(n).ok())
+        .filter(|n| *n >= 1)
+        .ok_or_else(|| {
+            fail(
+                format!("{owner}: {key}"),
+                format!("`{key}` is missing or not a whole number of at least 1"),
+            )
+        })
+}
+
+fn tables<'a>(doc: &'a DocumentMut, key: &str) -> Result<Vec<&'a dyn TableLike>, UsherError> {
+    match doc.get(key) {
+        None => Ok(Vec::new()),
+        Some(item) => item
+            .as_array_of_tables()
+            .map(|array| array.iter().map(|t| t as &dyn TableLike).collect())
+            .ok_or_else(|| {
+                fail(
+                    format!("[[{key}]]"),
+                    format!("`{key}` must be written as [[{key}]] tables"),
+                )
+            }),
+    }
+}
+
+fn parse_reference(table: &dyn TableLike, id: &str) -> Result<Reference, UsherError> {
+    let owner = format!("item `{id}`");
+    let reference = table
+        .get("reference")
+        .and_then(TomlItem::as_table_like)
+        .ok_or_else(|| {
+            fail(
+                format!("{owner}: reference"),
+                "the item has no reference (kind and locator)",
+            )
+        })?;
+    reject_unknown_keys(
+        reference,
+        &["kind", "locator"],
+        &format!("{owner} reference"),
+    )?;
+    let kind_name = text_field(reference, "kind", &format!("{owner} reference"))?;
+    let kind = ReferenceKind::parse(kind_name).ok_or_else(|| {
+        fail(
+            format!("{owner}: reference kind"),
+            format!("`{kind_name}` is not one of vendor-docs, changelog, source, probe"),
+        )
+    })?;
+    let locator = text_field(reference, "locator", &format!("{owner} reference"))?;
+    Ok(Reference {
+        kind,
+        locator: locator.to_string(),
+    })
+}
+
+fn parse_date(table: &dyn TableLike, id: &str) -> Result<Date, UsherError> {
+    let owner = format!("item `{id}`: last_verified");
+    let datetime = table
+        .get("last_verified")
+        .and_then(TomlItem::as_value)
+        .and_then(|v| v.as_datetime())
+        .ok_or_else(|| {
+            fail(
+                owner.clone(),
+                "the item has no last_verified date (write it as 2026-11-02, without quotes)",
+            )
+        })?;
+    match (datetime.date, datetime.time, datetime.offset) {
+        (Some(date), None, None) => Ok(Date {
+            year: date.year,
+            month: date.month,
+            day: date.day,
+        }),
+        _ => Err(fail(
+            owner,
+            "last_verified must be a plain date with no time part",
+        )),
+    }
+}
+
+fn parse_range(table: &dyn TableLike, owner: &str) -> Result<VersionRange, UsherError> {
+    let text = text_field(table, "versions", owner)?;
+    VersionRange::parse(text).map_err(|why| fail(format!("{owner}: versions"), why))
+}
+
+fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
+    let id = text_field(table, "id", &format!("item #{index}"))?;
+    let owner = format!("item `{id}`");
+    reject_unknown_keys(
+        table,
+        &[
+            "id",
+            "harness",
+            "layer",
+            "class",
+            "versions",
+            "summary",
+            "reference",
+            "last_verified",
+        ],
+        &owner,
+    )?;
+    let harness = text_field(table, "harness", &owner)?;
+    let layer_name = text_field(table, "layer", &owner)?;
+    let layer = Layer::parse(layer_name).ok_or_else(|| {
+        fail(
+            format!("{owner}: layer"),
+            format!("`{layer_name}` is not slow or fast"),
+        )
+    })?;
+    let class_name = text_field(table, "class", &owner)?;
+    let class = Class::parse(class_name).ok_or_else(|| {
+        fail(
+            format!("{owner}: class"),
+            format!("`{class_name}` is not a known class"),
+        )
+    })?;
+    if class.layer() != layer {
+        return Err(fail(
+            format!("{owner}: class"),
+            format!("class `{class_name}` belongs to the other layer than `{layer_name}`"),
+        ));
+    }
+    Ok(Item {
+        id: id.to_string(),
+        harness: harness.to_string(),
+        layer,
+        class,
+        versions: parse_range(table, &owner)?,
+        summary: text_field(table, "summary", &owner)?.to_string(),
+        reference: parse_reference(table, id)?,
+        last_verified: parse_date(table, id)?,
+    })
+}
+
+fn parse_support(table: &dyn TableLike, index: usize) -> Result<SupportEntry, UsherError> {
+    let owner = format!("support entry #{index}");
+    reject_unknown_keys(table, &["harness", "versions", "capabilities"], &owner)?;
+    let harness = text_field(table, "harness", &owner)?;
+    let versions = parse_range(table, &owner)?;
+    let list = table
+        .get("capabilities")
+        .and_then(TomlItem::as_array)
+        .ok_or_else(|| {
+            fail(
+                format!("{owner}: capabilities"),
+                "`capabilities` must be a list, empty when nothing is offered",
+            )
+        })?;
+    let mut capabilities = Vec::new();
+    for entry in list {
+        let name = entry.as_str().unwrap_or("(not a string)");
+        let capability = Capability::parse(name).ok_or_else(|| {
+            fail(
+                format!("{owner}: capabilities"),
+                format!("`{name}` is not one of inventory, install, map, compare, place, apply"),
+            )
+        })?;
+        capabilities.push(capability);
+    }
+    Ok(SupportEntry {
+        harness: harness.to_string(),
+        versions,
+        capabilities,
+    })
+}
+
+impl KnowledgeFile {
+    /// Parses a knowledge file and runs the structural check.
+    ///
+    /// Returns an error naming the first item that breaks the schema: a
+    /// missing reference or date, an unknown layer, class, kind or capability,
+    /// a malformed version range, or a duplicate id.
+    pub fn parse(text: &str) -> Result<Self, UsherError> {
+        let doc = text
+            .parse::<DocumentMut>()
+            .map_err(|why| fail("parse the TOML", why.to_string()))?;
+        let header = doc.as_table() as &dyn TableLike;
+        let schema_version = number_field(header, "schema_version", "file header")?;
+        let schema_version = u32::try_from(schema_version).map_err(|_| {
+            fail(
+                "file header: schema_version",
+                "`schema_version` is too large",
+            )
+        })?;
+        if schema_version != SUPPORTED_SCHEMA {
+            return Err(fail(
+                "file header: schema_version",
+                format!(
+                    "schema {schema_version} is not supported; this build reads schema {SUPPORTED_SCHEMA}"
+                ),
+            ));
+        }
+        reject_unknown_keys(
+            header,
+            &["schema_version", "sequence", "item", "support"],
+            "file header",
+        )?;
+        let sequence = number_field(header, "sequence", "file header")?;
+
+        let mut items = Vec::new();
+        let mut seen = HashSet::new();
+        for (index, table) in tables(&doc, "item")?.into_iter().enumerate() {
+            let item = parse_item(table, index + 1)?;
+            if !seen.insert(item.id.clone()) {
+                return Err(fail(
+                    format!("item `{}`", item.id),
+                    "two items share this id",
+                ));
+            }
+            items.push(item);
+        }
+        let mut support = Vec::new();
+        for (index, table) in tables(&doc, "support")?.into_iter().enumerate() {
+            support.push(parse_support(table, index + 1)?);
+        }
+        Ok(Self {
+            version: KnowledgeVersion {
+                schema_version,
+                sequence,
+            },
+            items,
+            support,
+        })
+    }
+
+    /// The knowledge file built into this release.
+    pub fn embedded() -> Result<Self, UsherError> {
+        Self::parse(EMBEDDED)
+    }
+
+    /// The version of this file, for any report that relies on it.
+    pub fn version(&self) -> KnowledgeVersion {
+        self.version
+    }
+
+    /// Every item, in file order.
+    pub fn items(&self) -> &[Item] {
+        &self.items
+    }
+
+    /// The items about `harness` that apply to `installed`.
+    pub fn items_for<'a>(
+        &'a self,
+        harness: &'a str,
+        installed: &'a Version,
+    ) -> impl Iterator<Item = &'a Item> + 'a {
+        self.items
+            .iter()
+            .filter(move |item| item.harness == harness && item.versions.contains(installed))
+    }
+
+    /// The support level for `harness` at `installed`: what usher offers, and
+    /// everything else reading as unsupported.
+    pub fn support(&self, harness: &str, installed: &Version) -> SupportReport {
+        let entry = self
+            .support
+            .iter()
+            .find(|entry| entry.harness == harness && entry.versions.contains(installed));
+        SupportReport {
+            harness: harness.to_string(),
+            installed: *installed,
+            known: entry.is_some(),
+            offered: entry.map(|e| e.capabilities.clone()).unwrap_or_default(),
+            knowledge: self.version,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const VALID: &str = r#"
+schema_version = 1
+sequence = 7
+
+[[item]]
+id = "demo.layer-order"
+harness = "demo"
+layer = "slow"
+class = "layers"
+versions = ">=1.2.0, <2.0.0"
+summary = "A fact."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs" }
+last_verified = 2026-11-02
+
+[[item]]
+id = "demo.default-model"
+harness = "demo"
+layer = "fast"
+class = "defaults"
+versions = ">=2.0.0"
+summary = "Another fact."
+reference = { kind = "probe", locator = "probe-demo-1" }
+last_verified = 2026-11-03
+
+[[support]]
+harness = "demo"
+versions = ">=1.2.0, <2.0.0"
+capabilities = ["inventory", "map"]
+"#;
+
+    fn v(text: &str) -> Version {
+        Version::parse(text).expect("a valid version")
+    }
+
+    fn rejects(text: &str, needle: &str) {
+        let err = KnowledgeFile::parse(text).expect_err("the check must fail");
+        let shown = err.to_string();
+        assert!(shown.contains(needle), "`{needle}` not in `{shown}`");
+        assert!(!err.step().is_empty());
+        assert!(!err.check().is_empty());
+        assert!(!err.status().is_empty());
+        assert!(!err.next_action().is_empty());
+    }
+
+    #[test]
+    fn a_valid_file_parses_with_both_layers_and_ranges() {
+        let file = KnowledgeFile::parse(VALID).expect("valid");
+        assert_eq!(file.items().len(), 2);
+        assert_eq!(file.items()[0].layer(), Layer::Slow);
+        assert_eq!(file.items()[1].layer(), Layer::Fast);
+        let one_five = v("1.5.0");
+        let for_one_five: Vec<&str> = file.items_for("demo", &one_five).map(Item::id).collect();
+        assert_eq!(for_one_five, ["demo.layer-order"]);
+        let two = v("2.0.0");
+        let for_two: Vec<&str> = file.items_for("demo", &two).map(Item::id).collect();
+        assert_eq!(for_two, ["demo.default-model"]);
+        assert_eq!(file.items_for("other", &one_five).count(), 0);
+        let item = &file.items()[0];
+        assert_eq!(item.reference().kind(), ReferenceKind::VendorDocs);
+        assert_eq!(item.reference().locator(), "https://example.test/docs");
+        assert_eq!(item.last_verified().to_string(), "2026-11-02");
+    }
+
+    #[test]
+    fn an_item_without_a_reference_fails_naming_the_item() {
+        let text = VALID.replace(
+            "reference = { kind = \"vendor-docs\", locator = \"https://example.test/docs\" }\n",
+            "",
+        );
+        rejects(&text, "demo.layer-order");
+        rejects(&text, "no reference");
+    }
+
+    #[test]
+    fn an_item_without_a_last_verified_date_fails_naming_the_item() {
+        let text = VALID.replace("last_verified = 2026-11-03\n", "");
+        rejects(&text, "demo.default-model");
+        rejects(&text, "last_verified");
+    }
+
+    #[test]
+    fn a_bad_date_or_reference_fails() {
+        rejects(
+            &VALID.replace("2026-11-02", "2026-11-02T10:00:00"),
+            "no time part",
+        );
+        rejects(
+            &VALID.replace("2026-11-02", "\"2026-11-02\""),
+            "last_verified",
+        );
+        rejects(&VALID.replace("vendor-docs", "rumor"), "rumor");
+        rejects(&VALID.replace("https://example.test/docs", ""), "locator");
+    }
+
+    #[test]
+    fn unknown_layer_class_or_capability_fails() {
+        rejects(
+            &VALID.replace("layer = \"slow\"", "layer = \"medium\""),
+            "medium",
+        );
+        rejects(
+            &VALID.replace("class = \"layers\"", "class = \"vibes\""),
+            "vibes",
+        );
+        rejects(&VALID.replace("\"map\"", "\"teleport\""), "teleport");
+    }
+
+    #[test]
+    fn a_class_in_the_other_layer_fails() {
+        rejects(
+            &VALID.replace("layer = \"slow\"", "layer = \"fast\""),
+            "other layer",
+        );
+    }
+
+    #[test]
+    fn duplicate_item_ids_fail() {
+        rejects(
+            &VALID.replace("demo.default-model", "demo.layer-order"),
+            "share this id",
+        );
+    }
+
+    #[test]
+    fn a_malformed_range_fails() {
+        rejects(&VALID.replace(">=2.0.0", "2.0"), "demo.default-model");
+    }
+
+    #[test]
+    fn a_missing_or_bad_sequence_or_schema_version_fails() {
+        rejects(&VALID.replace("sequence = 7\n", ""), "sequence");
+        rejects(
+            &VALID.replace("sequence = 7", "sequence = \"seven\""),
+            "sequence",
+        );
+        rejects(&VALID.replace("schema_version = 1\n", ""), "schema_version");
+    }
+
+    #[test]
+    fn invalid_toml_fails_with_the_four_error_fields() {
+        rejects("this is = = not toml", "parse the TOML");
+    }
+
+    #[test]
+    fn items_must_be_tables() {
+        rejects("schema_version = 1\nsequence = 1\nitem = 3\n", "[[item]]");
+    }
+
+    #[test]
+    fn the_file_reports_its_version() {
+        let file = KnowledgeFile::parse(VALID).expect("valid");
+        assert_eq!(file.version().sequence(), 7);
+        assert_eq!(file.version().schema_version(), 1);
+        assert_eq!(file.version().to_string(), "knowledge v7 (schema 1)");
+    }
+
+    #[test]
+    fn a_support_level_lists_offered_capabilities_and_marks_the_rest_unsupported() {
+        let file = KnowledgeFile::parse(VALID).expect("valid");
+        let report = file.support("demo", &v("1.5.0"));
+        assert!(report.known());
+        assert_eq!(report.offered(), [Capability::Inventory, Capability::Map]);
+        assert_eq!(
+            report.unsupported(),
+            [
+                Capability::Install,
+                Capability::Compare,
+                Capability::Place,
+                Capability::Apply
+            ]
+        );
+        let lines = report.lines();
+        assert!(lines.contains(&"demo 1.5.0: map offered".to_string()));
+        assert!(lines.contains(&"demo 1.5.0: apply unsupported".to_string()));
+        assert_eq!(
+            lines.last().map(String::as_str),
+            Some("knowledge v7 (schema 1)")
+        );
+    }
+
+    #[test]
+    fn an_unknown_harness_or_version_offers_nothing_and_says_so() {
+        let file = KnowledgeFile::parse(VALID).expect("valid");
+        for report in [
+            file.support("nope", &v("1.5.0")),
+            file.support("demo", &v("3.0.0")),
+        ] {
+            assert!(!report.known());
+            assert!(report.offered().is_empty());
+            assert_eq!(report.unsupported(), Capability::ALL);
+            assert!(report.lines()[0].contains("no support entry"));
+            assert_eq!(report.knowledge_version().sequence(), 7);
+        }
+    }
+
+    #[test]
+    fn the_embedded_seed_file_passes_the_structural_check() {
+        let file = KnowledgeFile::embedded().expect("the embedded file must pass the check");
+        assert!(!file.items().is_empty());
+        for item in file.items() {
+            assert!(!item.reference().locator().is_empty(), "{}", item.id());
+            assert!(
+                item.last_verified()
+                    >= Date {
+                        year: 2026,
+                        month: 1,
+                        day: 1
+                    }
+            );
+        }
+    }
+
+    #[test]
+    fn the_embedded_seed_offers_no_capability_and_says_so() {
+        let file = KnowledgeFile::embedded().expect("embedded");
+        for (harness, version) in [
+            ("claude-code", "2.1.317"),
+            ("codex", "0.160.1"),
+            ("goose", "1.57.0"),
+        ] {
+            let report = file.support(harness, &v(version));
+            assert!(report.known(), "{harness} has a support entry");
+            assert!(report.offered().is_empty(), "{harness} offers nothing yet");
+            assert_eq!(report.unsupported(), Capability::ALL);
+        }
+    }
+}

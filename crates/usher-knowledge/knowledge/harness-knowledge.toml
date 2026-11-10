@@ -1,0 +1,54 @@
+# Harness knowledge embedded in each usher release (AD-12).
+#
+# Every item names its harness, a version range, a reference and the date it
+# was last verified. The facts below come from the settings observability
+# research map of 2026-11-02 and cite the sources it cites. Support entries are
+# usher's own statement: no adapter exists yet, so nothing is offered.
+
+schema_version = 1
+sequence = 1
+
+[[item]]
+id = "claude-code.config-dir-variable"
+harness = "claude-code"
+layer = "slow"
+class = "paths"
+versions = ">=2.1.317, <3.0.0"
+summary = "CLAUDE_CONFIG_DIR relocates the user config home."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/env-vars" }
+last_verified = 2026-11-02
+
+[[item]]
+id = "codex.home-variable"
+harness = "codex"
+layer = "slow"
+class = "paths"
+versions = ">=0.160.1, <1.0.0"
+summary = "CODEX_HOME is where the global AGENTS.md and the user config are read from."
+reference = { kind = "vendor-docs", locator = "https://learn.chatgpt.com/docs/agent-configuration/agents-md" }
+last_verified = 2026-11-02
+
+[[item]]
+id = "goose.path-root-variable"
+harness = "goose"
+layer = "slow"
+class = "paths"
+versions = ">=1.57.0, <2.0.0"
+summary = "GOOSE_PATH_ROOT, when absolute, relocates goose config, data and state."
+reference = { kind = "source", locator = "https://raw.githubusercontent.com/aaif-goose/goose/main/crates/goose/src/config/paths.rs" }
+last_verified = 2026-11-02
+
+[[support]]
+harness = "claude-code"
+versions = ">=0.0.0"
+capabilities = []
+
+[[support]]
+harness = "codex"
+versions = ">=0.0.0"
+capabilities = []
+
+[[support]]
+harness = "goose"
+versions = ">=0.0.0"
+capabilities = []
