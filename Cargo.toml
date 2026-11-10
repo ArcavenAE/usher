@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/usher", "crates/usher-core", "crates/usher-knowledge", "crates/usher-testkit"]
+members = [
+    "crates/usher",
+    "crates/usher-adapter-claude-code",
+    "crates/usher-core",
+    "crates/usher-knowledge",
+    "crates/usher-testkit",
+]
 
 [workspace.package]
 version = "0.0.0"
@@ -10,6 +16,9 @@ publish = false
 
 [workspace.dependencies]
 usher-core = { path = "crates/usher-core", version = "0.0.0" }
+usher-knowledge = { path = "crates/usher-knowledge", version = "0.0.0" }
+usher-adapter-claude-code = { path = "crates/usher-adapter-claude-code", version = "0.0.0" }
+serde_json = "=1.0.154"
 toml_edit = "=0.25.19"
 minisign-verify = "=0.3.0"
 ed25519-dalek = "=3.0.0"

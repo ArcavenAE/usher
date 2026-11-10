@@ -172,7 +172,7 @@ pub(crate) fn parse_locations(
         let here = format!("{owner} location #{}", index + 1);
         let location = value.as_inline_table().ok_or_else(|| {
             fail(
-                format!("{here}"),
+                here.clone(),
                 "each location must be a table: { template, scope, shape, platform }",
             )
         })?;
