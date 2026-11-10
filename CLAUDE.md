@@ -54,6 +54,9 @@ usher/
 - **Visibility:** private for now.
 - **Auth:** delegate to owning tools; never store credentials (SOUL.md §3).
 - **Task tracking:** bd via `.beads -> ../.beads` symlink (orc shared).
+- **Worktrees:** a session that builds on a branch uses a worktree under
+  `../usher-worktrees/<slug>` (sibling of this checkout, inside the orc),
+  never inside this checkout.
 
 ## How to Work Here (kos Process)
 
