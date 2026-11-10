@@ -37,7 +37,7 @@ story_location: _bmad-output/implementation-artifacts
 development_status:
   epic-1: in-progress
   1-1-bootstrap-the-usher-workspace-from-the-fleet-baseline: done
-  1-2-scratch-homes-and-the-observation-invariant: review
+  1-2-scratch-homes-and-the-observation-invariant: done
   1-3-referenced-harness-knowledge-embedded-in-the-binary: done
   1-4-signed-harness-knowledge-updates-without-a-client-release: review
   1-5-claude-code-settings-inventory: backlog

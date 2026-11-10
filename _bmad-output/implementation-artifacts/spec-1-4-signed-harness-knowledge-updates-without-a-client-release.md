@@ -15,7 +15,7 @@ context: ['{project-root}/_bmad-output/implementation-artifacts/epic-1-context.m
 
 **Problem:** A release that changes a harness should reach people without a new usher build, but knowledge is only the file built into the binary, and an unsigned update could feed usher forged or replayed facts (FR-31).
 
-**Approach:** In `usher-knowledge`, accept an update file only when its minisign (ed25519) signature verifies against a key in a build-time trusted list (`current` and `next`), its sequence number is higher than the one in force, and it passes the Story 1.3 structural check, in that order. A rejected update leaves the embedded or last good knowledge in use and says why. A `build.rs` supplies the list (director ruling, Story 1.4: option B).
+**Approach:** In `usher-knowledge`, accept an update file only when its minisign (ed25519) signature verifies against a key in a build-time trusted list (`current` and `next`), it passes the Story 1.3 structural check, and its sequence number is higher than the one in force, in that order. A rejected update leaves the embedded or last good knowledge in use and says why. A `build.rs` supplies the list (director ruling, Story 1.4: option B).
 
 ## Boundaries & Constraints
 
@@ -86,7 +86,7 @@ Three layers (blind, edge-case, verification-gap), findings grouped by root caus
 
 | Finding | Verdict | Route / evidence |
 |---|---|---|
-| Frozen Approach says signature, sequence, structural; code and Design Notes parse (structural) first, then sequence | low | intent_gap, sent to the supervisor: the sequence is inside the file, so parsing must come first; asks to reword the frozen sentence |
+| Frozen Approach says signature, sequence, structural; code and Design Notes parse (structural) first, then sequence | low | intent_gap, resolved: the sequence is inside the file, so parsing comes first; the frozen sentence was reworded to signature, structural check, sequence (director ruling, 2026-11-10); both orders refuse the file |
 | Release refusals in build.rs untested | medium | patch: rule moved to `keys::check_release`, unit-tested; release builds also run by hand |
 | `build_time` with a non-empty list never run; role mapped any other string to `next` | medium | patch: `TrustedKeys::from_pairs` (strict roles), tested and used in an update test |
 | "names the key id" test compared the function to itself; id printed in file order, minisign prints it reversed | medium | patch: reversed, test pins to the signer's own id; verified against the minisign documentation example |
