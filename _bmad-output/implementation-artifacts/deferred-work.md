@@ -23,7 +23,7 @@
   evidence: PR B makes both tables insert-only by trigger (architect ruling 01M7GFSGTF); no story prunes them yet, and the disk budget (AD-7) is the first reason one would.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5-claude-code-settings-inventory.md`
   summary: the store does not check that the state directory's owner is the current uid; a red for it is due in PR C.
-  evidence: std has no safe getuid, and PR B adds no crate beyond rusqlite and serde_json; the safe-API crate that PR C adds for the account-home resolver also gives the uid (architect answer 01M7GG12SP).
+  evidence: std has no safe getuid, and PR B adds one dependency crate, rusqlite, and no serde_json; the safe-API crate that PR C adds for the account-home resolver also gives the uid (architect answer 01M7GG12SP).
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5-claude-code-settings-inventory.md`
   summary: closed. The frozen Never line allows creating the missing standard parents of the state directory at 0700; the operator ruled it on 2026-11-15 (relayed by director 01M7GG8BXE) and PR B creates them.
   evidence: the Renegotiated note in the spec's frozen block; the store tests for missing and existing parents.
