@@ -103,6 +103,22 @@ fn a_missing_parent_outside_the_standard_chain_is_refused_and_nothing_is_created
 }
 
 #[test]
+fn the_standard_suffix_under_a_missing_base_is_refused_and_nothing_is_created() {
+    let scratch = ScratchHome::new().expect("scratch home");
+    let base = scratch.home().join("no-such-home");
+    let dir = base.join(".local/state/usher");
+    let before = listing(scratch.home());
+    let base_text = base.display().to_string();
+    refused(Store::open(&dir), &[base_text.as_str(), "mkdir -p -m 0700"]);
+    assert_eq!(
+        listing(scratch.home()),
+        before,
+        "the refused open created nothing"
+    );
+    assert!(!base.exists());
+}
+
+#[test]
 fn a_first_open_creates_the_state_directory_at_0700_and_the_database_at_0600() {
     let scratch = ScratchHome::new().expect("scratch home");
     let (_store, dir) = open(&scratch);
