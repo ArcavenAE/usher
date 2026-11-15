@@ -359,7 +359,7 @@ no adapter depends on another adapter.
 | Naming | Crates `usher-<area>`; adapters `usher-adapter-<harness>` (`claude-code`, `claude-desktop`, `codex`, `goose`); CLI verbs are plain English (`map`, `compare`, `propose`, `apply`, `rollback`, `remove`) |
 | Identifiers | ULIDs for journal entries, proposals and reports; environments keyed per AD-17 |
 | Time | RFC 3339 in UTC everywhere stored or reported |
-| Path tokens (FR-20) | `${HOME}`, `${CONFIG_DIR}` (the harness config directory), `${REPO}` (repository root), `${USER}`; patterns are globs (`*`, `**`, `?`) on `/`-separated paths; tokens resolve per environment at apply time |
+| Path tokens (FR-20) | `${HOME}`, `${CONFIG_DIR}` (the harness config directory), `${REPO}` (repository root), `${LAUNCH_DIR}` (the directory the harness session starts in: the absolute directory of the environment's AD-17 key), `${USER}`; patterns are globs (`*`, `**`, `?`) on `/`-separated paths; tokens resolve per environment at apply time |
 | Errors | One `UsherError` type in `usher-core` carrying the step, the command or check, its exit status or error, and at least one next action (FR-46) |
 | Derived state only | The store and reports hold settings values AD-8 allows, names, hashes and counts; never file contents, prompt text or environment variable values (names only); session records by named fields only |
 | Usher's own config | TOML in the state directory; never inside a harness file |

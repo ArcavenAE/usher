@@ -212,7 +212,13 @@ impl ReadRule {
 }
 
 /// The tokens a source path may contain; each resolves per launch environment.
-const PATH_TOKENS: [&str; 4] = ["${HOME}", "${CONFIG_DIR}", "${REPO}", "${USER}"];
+const PATH_TOKENS: [&str; 5] = [
+    "${HOME}",
+    "${CONFIG_DIR}",
+    "${REPO}",
+    "${LAUNCH_DIR}",
+    "${USER}",
+];
 
 /// What harness knowledge says about one settings source.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -224,7 +230,7 @@ pub struct SourceFact {
 }
 
 impl SourceFact {
-    /// The path pattern, in the four path tokens.
+    /// The path pattern, in the five path tokens.
     pub fn path(&self) -> &str {
         &self.path
     }
@@ -482,7 +488,7 @@ fn parse_range(table: &dyn TableLike, owner: &str) -> Result<VersionRange, Usher
     VersionRange::parse(text).map_err(|why| fail(format!("{owner}: versions"), why))
 }
 
-/// A source path starts with a token or `/`, and holds no token outside the four.
+/// A source path starts with a token or `/`, and holds no token outside the five.
 fn check_source_path(path: &str, owner: &str) -> Result<(), UsherError> {
     if !(path.starts_with("${") || path.starts_with('/')) {
         return Err(fail(
