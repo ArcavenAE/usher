@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 use std::fs;
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt, symlink};
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
@@ -67,6 +67,42 @@ fn refused(result: Result<Store, usher_core::UsherError>, needles: &[&str]) {
 }
 
 #[test]
+fn control_the_umask_lets_group_and_other_bits_show() {
+    let scratch = ScratchHome::new().expect("scratch home");
+    let file = scratch.home().join("umask-probe");
+    fs::write(&file, b"").expect("a probe file");
+    let dir = scratch.home().join("umask-probe-dir");
+    fs::create_dir(&dir).expect("a probe dir");
+    assert_ne!(
+        mode(&file) & 0o077,
+        0,
+        "CONTROL: the umask hides group and other bits, so the mode tests would pass with no code"
+    );
+    assert_ne!(
+        mode(&dir) & 0o077,
+        0,
+        "CONTROL: the umask hides group and other bits on a directory"
+    );
+}
+
+#[test]
+fn a_missing_parent_outside_the_standard_chain_is_refused_and_nothing_is_created() {
+    let scratch = ScratchHome::new().expect("scratch home");
+    let dir = scratch.home().join("elsewhere/usher");
+    let before = listing(scratch.home());
+    let parent_text = scratch.home().join("elsewhere").display().to_string();
+    refused(
+        Store::open(&dir),
+        &[parent_text.as_str(), "mkdir -p -m 0700"],
+    );
+    assert_eq!(
+        listing(scratch.home()),
+        before,
+        "the refused open created nothing"
+    );
+}
+
+#[test]
 fn a_first_open_creates_the_state_directory_at_0700_and_the_database_at_0600() {
     let scratch = ScratchHome::new().expect("scratch home");
     let (_store, dir) = open(&scratch);
@@ -119,7 +155,7 @@ fn missing_standard_parents_are_created_at_0700_and_nothing_else_is_created() {
 }
 
 #[test]
-fn an_existing_parent_directory_is_never_changed() {
+fn an_existing_grandparent_keeps_its_mode_and_only_the_missing_part_of_the_chain_is_created() {
     let scratch = ScratchHome::new().expect("scratch home");
     let parent = scratch.home().join(".local");
     fs::DirBuilder::new()
@@ -128,7 +164,16 @@ fn an_existing_parent_directory_is_never_changed() {
         .expect("an existing parent");
     fs::set_permissions(&parent, fs::Permissions::from_mode(0o755)).expect("lax parent");
     let dir = state_dir(&scratch);
-    let _store = Store::open(&dir).expect("opens under an existing parent");
+    let before = listing(scratch.home());
+    let _store = Store::open(&dir).expect("opens under an existing grandparent");
+    let after = listing(scratch.home());
+    for path in after.difference(&before) {
+        assert!(
+            path == Path::new(".local/state") || path.starts_with(".local/state/usher"),
+            "only the missing part of the chain is created: {}",
+            path.display()
+        );
+    }
     assert_eq!(
         mode(&parent),
         0o755,
@@ -230,10 +275,10 @@ fn an_existing_owner_only_directory_is_used_and_an_empty_database_file_is_initia
     fs::write(dir.join(DB), b"").expect("an empty file");
     let store = Store::open(&dir).expect("opens in a directory it did not create");
     assert!(store.runs().expect("runs").is_empty());
-    assert_eq!(
-        fs::metadata(&dir).expect("meta").uid(),
-        fs::metadata(dir.join(DB)).expect("meta").uid()
-    );
+    let version: i64 = raw(&dir)
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .expect("user_version");
+    assert_eq!(version, 1, "the empty file was initialized");
 }
 
 #[test]
@@ -261,6 +306,10 @@ fn a_database_from_a_newer_usher_is_refused() {
         .execute_batch("PRAGMA user_version = 2;")
         .expect("a newer version");
     refused(Store::open(&dir), &["newer"]);
+    let version: i64 = raw(&dir)
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .expect("user_version");
+    assert_eq!(version, 2, "a refused database is left as it was");
 }
 
 #[test]
@@ -547,11 +596,15 @@ fn the_store_holds_derived_state_only() {
         while let Some(row) = rows.next().expect("row") {
             for i in 0..width {
                 let cell: rusqlite::types::Value = row.get(i).expect("cell");
-                if let rusqlite::types::Value::Text(text) = cell {
-                    assert!(
+                match cell {
+                    rusqlite::types::Value::Null | rusqlite::types::Value::Integer(_) => {}
+                    rusqlite::types::Value::Text(text) => assert!(
                         allowed.contains(&text.as_str()),
                         "{table} holds `{text}`, which no recorded field produced"
-                    );
+                    ),
+                    other => panic!(
+                        "{table} holds a {other:?} cell; the store keeps text and integers only"
+                    ),
                 }
             }
         }
