@@ -194,7 +194,9 @@ pub enum ReadRule {
     Read,
     /// The version does not read it.
     NotRead,
-    /// Read only when no higher-ranked source of the same layer exists.
+    /// Read only when no higher-ranked source of the vendor's managed tier delivers a
+    /// policy: under the default, "exists" means "delivers at least one policy key", so a
+    /// file holding only control keys is skipped.
     FirstWins,
 }
 
@@ -237,7 +239,9 @@ impl SourceFact {
         self.read
     }
 
-    /// Precedence among sources of the same layer; 1 is highest.
+    /// Precedence within the vendor's managed tier, counting every managed delivery the
+    /// vendor lists, listed here or not; 1 is highest. Sources of other layers each use
+    /// their own rank.
     pub fn rank(&self) -> u32 {
         self.rank
     }
