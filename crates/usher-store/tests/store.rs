@@ -74,6 +74,35 @@ fn a_first_open_creates_the_state_directory_at_0700_and_the_database_at_0600() {
 }
 
 #[test]
+fn missing_parent_directories_are_created_at_0700() {
+    let scratch = ScratchHome::new().expect("scratch home");
+    let (_store, dir) = open(&scratch);
+    let parent = dir.parent().expect("a parent");
+    let grandparent = parent.parent().expect("a grandparent");
+    assert_eq!(mode(parent), 0o700, "the parent the open created");
+    assert_eq!(mode(grandparent), 0o700, "the grandparent the open created");
+    assert!(grandparent.starts_with(scratch.home()));
+}
+
+#[test]
+fn an_existing_parent_directory_is_never_changed() {
+    let scratch = ScratchHome::new().expect("scratch home");
+    let parent = scratch.home().join("Library");
+    fs::DirBuilder::new()
+        .mode(0o755)
+        .create(&parent)
+        .expect("an existing parent");
+    fs::set_permissions(&parent, fs::Permissions::from_mode(0o755)).expect("lax parent");
+    let (_store, dir) = open(&scratch);
+    assert_eq!(
+        mode(&parent),
+        0o755,
+        "the parent that existed keeps its mode"
+    );
+    assert_eq!(mode(&dir), 0o700);
+}
+
+#[test]
 fn the_store_runs_wal_with_synchronous_full_a_busy_timeout_and_foreign_keys() {
     let scratch = ScratchHome::new().expect("scratch home");
     let (store, dir) = open(&scratch);
