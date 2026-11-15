@@ -710,3 +710,38 @@ fn two_first_opens_at_once_both_succeed_and_leave_one_schema() {
         assert_eq!(tables, 2, "round {round}: one schema");
     }
 }
+
+#[test]
+fn a_file_already_switched_to_wal_at_version_zero_opens_and_gets_the_schema() {
+    let scratch = ScratchHome::new().expect("scratch home");
+    let dir = state_dir(&scratch);
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&dir)
+        .expect("an owner-only directory");
+    // The state a first open leaves when it is killed after its WAL switch and before its
+    // commit, and the state a second open meets while the first sits between the two.
+    let first = Connection::open(dir.join(DB)).expect("a database");
+    let mode_now: String = first
+        .query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))
+        .expect("switch to WAL");
+    assert_eq!(mode_now, "wal");
+    drop(first);
+    let size = fs::metadata(dir.join(DB)).expect("meta").len();
+    assert!(
+        size > 0,
+        "the WAL switch wrote the file header, so the file is not empty"
+    );
+    let version: i64 = raw(&dir)
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .expect("user_version");
+    assert_eq!(version, 0, "and it is still at version 0");
+
+    let store = Store::open(&dir).expect("a file with no schema yet is a first open");
+    assert!(store.runs().expect("runs").is_empty());
+    let version: i64 = raw(&dir)
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .expect("user_version");
+    assert_eq!(version, 1);
+}
