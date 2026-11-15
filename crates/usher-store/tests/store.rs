@@ -66,6 +66,24 @@ fn refused(result: Result<Store, usher_core::UsherError>, needles: &[&str]) {
     assert!(!err.status().is_empty() && !err.next_action().is_empty());
 }
 
+/// The error must give the command that creates `missing`, with the path quoted, since a
+/// macOS state directory has a space in it. Naming only the leaf does not pass.
+fn refused_with_mkdir_for(result: Result<Store, usher_core::UsherError>, missing: &Path) {
+    let err = result.expect_err("the open must be refused");
+    let shown = err.to_string();
+    let path = missing.display();
+    let quoted = [
+        format!("mkdir -p -m 0700 '{path}'"),
+        format!("mkdir -p -m 0700 \"{path}\""),
+    ];
+    assert!(
+        quoted.iter().any(|q| shown.contains(q.as_str())),
+        "the error must give the command for `{path}`, quoted: `{shown}`"
+    );
+    assert!(!err.step().is_empty() && !err.check().is_empty());
+    assert!(!err.status().is_empty() && !err.next_action().is_empty());
+}
+
 #[test]
 fn control_the_umask_lets_group_and_other_bits_show() {
     let scratch = ScratchHome::new().expect("scratch home");
@@ -90,11 +108,7 @@ fn a_missing_parent_outside_the_standard_chain_is_refused_and_nothing_is_created
     let scratch = ScratchHome::new().expect("scratch home");
     let dir = scratch.home().join("elsewhere/usher");
     let before = listing(scratch.home());
-    let parent_text = scratch.home().join("elsewhere").display().to_string();
-    refused(
-        Store::open(&dir),
-        &[parent_text.as_str(), "mkdir -p -m 0700"],
-    );
+    refused_with_mkdir_for(Store::open(&dir), &scratch.home().join("elsewhere"));
     assert_eq!(
         listing(scratch.home()),
         before,
@@ -108,8 +122,7 @@ fn the_standard_suffix_under_a_missing_base_is_refused_and_nothing_is_created() 
     let base = scratch.home().join("no-such-home");
     let dir = base.join(".local/state/usher");
     let before = listing(scratch.home());
-    let base_text = base.display().to_string();
-    refused(Store::open(&dir), &[base_text.as_str(), "mkdir -p -m 0700"]);
+    refused_with_mkdir_for(Store::open(&dir), &base);
     assert_eq!(
         listing(scratch.home()),
         before,
