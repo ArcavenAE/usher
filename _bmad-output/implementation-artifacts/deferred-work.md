@@ -18,3 +18,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-signed-harness-knowledge-updates-without-a-client-release.md`
   summary: the CI step that keeps ed25519-dalek and blake2 out of `usher` will need a scoped exception when host keys (AD-13) put ed25519-dalek in a shipping crate.
   evidence: the spine Stack table lists ed25519-dalek for host keys; maybe-false until that story exists.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-5-claude-code-settings-inventory.md`
+  summary: a later prune of inventory rows needs a migration that relaxes the ABORT triggers on `inventory_run` and `inventory_source`.
+  evidence: PR B makes both tables insert-only by trigger (architect ruling 01M7GFSGTF); no story prunes them yet, and the disk budget (AD-7) is the first reason one would.
