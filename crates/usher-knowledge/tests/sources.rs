@@ -93,11 +93,11 @@ sequence = 1
 }
 
 #[test]
-fn all_four_path_tokens_are_accepted() {
+fn all_five_path_tokens_are_accepted() {
     let text = with_source(
-        r#"source = { path = "${HOME}/a/${USER}/${CONFIG_DIR}/b/${REPO}/c", layer = "project", read = "read", rank = 1 }"#,
+        r#"source = { path = "${HOME}/a/${USER}/${CONFIG_DIR}/b/${REPO}/c/${LAUNCH_DIR}/d", layer = "project", read = "read", rank = 1 }"#,
     );
-    KnowledgeFile::parse(&text).expect("the four tokens of the path convention");
+    KnowledgeFile::parse(&text).expect("the five tokens of the path convention");
 }
 
 #[test]
@@ -109,7 +109,7 @@ fn an_absolute_path_with_no_token_is_accepted() {
 }
 
 #[test]
-fn a_token_outside_the_four_is_refused_naming_the_item_and_the_token() {
+fn a_token_outside_the_five_is_refused_naming_the_item_and_the_token() {
     let text = with_source(
         r#"source = { path = "${TMPDIR}/settings.json", layer = "user", read = "read", rank = 1 }"#,
     );

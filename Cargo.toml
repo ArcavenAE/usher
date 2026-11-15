@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/usher", "crates/usher-core", "crates/usher-knowledge", "crates/usher-testkit"]
+members = [
+    "crates/usher",
+    "crates/usher-core",
+    "crates/usher-knowledge",
+    "crates/usher-store",
+    "crates/usher-testkit",
+]
 
 [workspace.package]
 version = "0.0.0"
@@ -10,10 +16,12 @@ publish = false
 
 [workspace.dependencies]
 usher-core = { path = "crates/usher-core", version = "0.0.0" }
+usher-store = { path = "crates/usher-store", version = "0.0.0" }
 toml_edit = "=0.25.19"
 minisign-verify = "=0.3.0"
 ed25519-dalek = "=3.0.0"
 blake2 = "=0.11.0"
+rusqlite = { version = "=0.41.1", features = ["bundled"] }
 usher-testkit = { path = "crates/usher-testkit", version = "0.0.0" }
 
 [workspace.lints.rust]
