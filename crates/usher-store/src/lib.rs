@@ -6,7 +6,7 @@
 use std::fs::{self, DirBuilder, OpenOptions};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rusqlite::{Connection, params};
 use usher_core::UsherError;
@@ -300,9 +300,39 @@ fn prepare_state_dir(dir: &Path) -> Result<(), UsherError> {
     make_private_dir(dir)
 }
 
-// RED-STAGE STUB (story 1.5, change B2): accepts any mode. The fix compares it with `wal`.
-fn require_wal(_returned: &str) -> Result<(), UsherError> {
-    Ok(())
+/// Asks for WAL mode and returns the mode in force. Switching to WAL needs a lock that SQLite
+/// refuses at once, without running the busy handler, when another first open holds it, so a
+/// busy answer is retried until the busy timeout has passed.
+fn set_wal(conn: &Connection) -> Result<String, UsherError> {
+    let deadline = Instant::now() + BUSY_TIMEOUT;
+    loop {
+        match conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get::<_, String>(0)) {
+            Ok(mode) => return Ok(mode),
+            Err(rusqlite::Error::SqliteFailure(failure, _))
+                if matches!(
+                    failure.code,
+                    rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+                ) && Instant::now() < deadline =>
+            {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(err) => return Err(db_error("set WAL mode", &err)),
+        }
+    }
+}
+
+/// `PRAGMA journal_mode = WAL` returns the mode now in force, which is not `wal` when SQLite
+/// could not make the change; the store does not run without it.
+fn require_wal(returned: &str) -> Result<(), UsherError> {
+    if returned.eq_ignore_ascii_case("wal") {
+        Ok(())
+    } else {
+        Err(fail(
+            "set WAL mode",
+            format!("the database stayed in `{returned}` journal mode; the store needs WAL"),
+            "move the state directory to a local disk that supports WAL, then run the command again",
+        ))
+    }
 }
 
 fn is_utc_second(text: &str) -> bool {
@@ -349,6 +379,28 @@ fn json_names(names: &[&str]) -> String {
     }
     out.push(']');
     out
+}
+
+/// Creates the schema under the write lock. The version is read again inside the lock, so two
+/// first opens at once both succeed and the second finds the schema the first made.
+fn create_schema(conn: &Connection) -> Result<(), UsherError> {
+    let step = |err: &rusqlite::Error| db_error("create the inventory tables", err);
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|err| step(&err))?;
+    let result = (|| -> Result<(), rusqlite::Error> {
+        let now: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if now == 0 {
+            conn.execute_batch(&format!("{SCHEMA}PRAGMA user_version = {USER_VERSION};"))?;
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => conn.execute_batch("COMMIT").map_err(|err| step(&err)),
+        Err(err) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(step(&err))
+        }
+    }
 }
 
 impl Store {
@@ -405,19 +457,13 @@ impl Store {
         }
         conn.busy_timeout(BUSY_TIMEOUT)
             .map_err(|err| db_error("set the busy timeout", &err))?;
-        let journal_mode = conn
-            .query_row("PRAGMA journal_mode = WAL", [], |r| r.get::<_, String>(0))
-            .map_err(|err| db_error("set WAL mode", &err))?;
-        require_wal(&journal_mode)?;
+        require_wal(&set_wal(&conn)?)?;
         conn.pragma_update(None, "synchronous", "FULL")
             .map_err(|err| db_error("set synchronous=FULL", &err))?;
         conn.pragma_update(None, "foreign_keys", "ON")
             .map_err(|err| db_error("turn on foreign keys", &err))?;
         if version == 0 {
-            conn.execute_batch(&format!(
-                "BEGIN IMMEDIATE;{SCHEMA}PRAGMA user_version = {USER_VERSION};COMMIT;"
-            ))
-            .map_err(|err| db_error("create the inventory tables", &err))?;
+            create_schema(&conn)?;
         }
         Ok(Self { conn })
     }
