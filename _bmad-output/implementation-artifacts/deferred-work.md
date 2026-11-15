@@ -25,5 +25,5 @@
   summary: the store does not check that the state directory's owner is the current uid; a red for it is due in PR C.
   evidence: std has no safe getuid, and PR B adds no crate beyond rusqlite and serde_json; the safe-API crate that PR C adds for the account-home resolver also gives the uid (architect answer 01M7GG12SP).
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5-claude-code-settings-inventory.md`
-  summary: the frozen Never line ("write, create, touch or chmod anything outside usher's own state directory") may need to allow creating the missing parents of the platform state directory, which a first run on a fresh account meets; until the human rules, the store refuses a missing parent and names the command to create it.
-  evidence: PR B fallback per architect answer 01M7GG45RB; the human's ruling on the frozen line is pending through director, and on an answer that allows it, a later change relaxes the refusal.
+  summary: closed. The frozen Never line allows creating the missing standard parents of the state directory at 0700; the operator ruled it on 2026-11-15 (relayed by director 01M7GG8BXE) and PR B creates them.
+  evidence: the Renegotiated note in the spec's frozen block; the store tests for missing and existing parents.
