@@ -55,6 +55,8 @@ pub enum Class {
     Layers,
     /// File and directory locations (slow).
     Paths,
+    /// Settings sources, with the layer each belongs to and whether the version reads it (slow).
+    Sources,
     /// Where credentials live (slow).
     CredentialStores,
     /// Settings keys and what they do (fast).
@@ -87,7 +89,7 @@ impl Class {
     /// The layer this class belongs to.
     pub fn layer(self) -> Layer {
         match self {
-            Class::Layers | Class::Paths | Class::CredentialStores => Layer::Slow,
+            Class::Layers | Class::Paths | Class::Sources | Class::CredentialStores => Layer::Slow,
             Class::Keys | Class::Defaults | Class::Hazards | Class::NeverCall | Class::Disputed => {
                 Layer::Fast
             }
@@ -153,6 +155,69 @@ impl fmt::Display for Date {
     }
 }
 
+// RED-STAGE STUB (Story 1.5, PR A): the types below give the red tests something to compile
+// against and do nothing else. The implementation commit replaces them and removes the allows.
+
+/// The harness layer a settings source belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceLayer {
+    /// Managed by an organization or the vendor.
+    Managed,
+    /// The person's own settings.
+    User,
+    /// Shared settings in a repository.
+    Project,
+    /// Personal settings in a repository.
+    Local,
+    /// The harness's own state file.
+    GlobalState,
+    /// The cache of server-managed settings.
+    ServerManagedCache,
+}
+
+/// Whether a harness version reads a source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadRule {
+    /// The version reads it.
+    Read,
+    /// The version does not read it.
+    NotRead,
+    /// Read only when no higher-ranked source of the same layer exists.
+    FirstWins,
+}
+
+/// What harness knowledge says about one settings source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)] // red-stage stub, see above
+pub struct SourceFact {
+    path: String,
+    layer: SourceLayer,
+    read: ReadRule,
+    rank: u32,
+}
+
+impl SourceFact {
+    /// The path pattern, in the four path tokens.
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// The layer the source belongs to.
+    pub fn layer(&self) -> SourceLayer {
+        self.layer
+    }
+
+    /// Whether the version reads it.
+    pub fn read(&self) -> ReadRule {
+        self.read
+    }
+
+    /// Precedence among sources of the same layer; 1 is highest.
+    pub fn rank(&self) -> u32 {
+        self.rank
+    }
+}
+
 /// One fact about a harness, with its source and the date it was last verified.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
@@ -164,9 +229,15 @@ pub struct Item {
     summary: String,
     reference: Reference,
     last_verified: Date,
+    source: Option<SourceFact>,
 }
 
 impl Item {
+    /// The settings-source fact, for an item of class `sources`.
+    pub fn source(&self) -> Option<&SourceFact> {
+        self.source.as_ref()
+    }
+
     /// The item's unique id.
     pub fn id(&self) -> &str {
         &self.id
@@ -429,6 +500,7 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
         summary: text_field(table, "summary", &owner)?.to_string(),
         reference: parse_reference(table, id)?,
         last_verified: parse_date(table, id)?,
+        source: None,
     })
 }
 

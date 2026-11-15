@@ -19,7 +19,8 @@ mod version;
 mod build_keys;
 
 pub use schema::{
-    Class, Date, Item, KnowledgeFile, KnowledgeVersion, Layer, Reference, ReferenceKind,
+    Class, Date, Item, KnowledgeFile, KnowledgeVersion, Layer, ReadRule, Reference, ReferenceKind,
+    SourceFact, SourceLayer,
 };
 pub use support::{Capability, SupportReport};
 pub use trust::TrustedKeys;
