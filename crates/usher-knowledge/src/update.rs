@@ -133,11 +133,15 @@ mod tests {
     const SEED: &str = include_str!("../knowledge/harness-knowledge.toml");
 
     fn with_sequence(sequence: u64) -> String {
-        SEED.replace("sequence = 1\n", &format!("sequence = {sequence}\n"))
+        SEED.replace("\nsequence = 2\n", &format!("\nsequence = {sequence}\n"))
     }
 
+    /// The held file for these tests: the embedded content at sequence 1, so
+    /// the update cases keep their numbers when the embedded sequence moves.
     fn held() -> Knowledge {
-        Knowledge::embedded().expect("embedded")
+        Knowledge {
+            current: KnowledgeFile::parse(&with_sequence(1)).expect("embedded content"),
+        }
     }
 
     fn sequence(knowledge: &Knowledge) -> u64 {
@@ -164,7 +168,7 @@ mod tests {
                 &trusting(&signer, None),
             )
             .expect("accepted");
-        assert_eq!(version.to_string(), "knowledge v2 (schema 1)");
+        assert_eq!(version.to_string(), "knowledge v2 (schema 2)");
         assert_eq!(sequence(&knowledge), 2);
     }
 

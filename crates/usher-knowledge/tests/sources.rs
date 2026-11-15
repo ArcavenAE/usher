@@ -43,7 +43,9 @@ fn a_sources_item_parses_with_path_layer_read_rule_and_rank() {
     let item = &file.items()[0];
     assert_eq!(item.class(), Class::Sources);
     assert_eq!(item.layer(), Layer::Slow);
-    let source = item.source().expect("a sources item carries its source fact");
+    let source = item
+        .source()
+        .expect("a sources item carries its source fact");
     assert_eq!(source.path(), "${CONFIG_DIR}/settings.json");
     assert_eq!(source.layer(), SourceLayer::User);
     assert_eq!(source.read(), ReadRule::Read);
@@ -154,15 +156,21 @@ fn the_sources_class_belongs_to_the_slow_layer() {
 #[test]
 fn an_unknown_layer_read_rule_or_key_is_refused() {
     rejects(
-        &with_source(r#"source = { path = "${HOME}/x", layer = "enterprise", read = "read", rank = 1 }"#),
+        &with_source(
+            r#"source = { path = "${HOME}/x", layer = "enterprise", read = "read", rank = 1 }"#,
+        ),
         &["demo.user-settings", "enterprise"],
     );
     rejects(
-        &with_source(r#"source = { path = "${HOME}/x", layer = "user", read = "sometimes", rank = 1 }"#),
+        &with_source(
+            r#"source = { path = "${HOME}/x", layer = "user", read = "sometimes", rank = 1 }"#,
+        ),
         &["demo.user-settings", "sometimes"],
     );
     rejects(
-        &with_source(r#"source = { path = "${HOME}/x", layer = "user", read = "read", rank = 1, mode = "0600" }"#),
+        &with_source(
+            r#"source = { path = "${HOME}/x", layer = "user", read = "read", rank = 1, mode = "0600" }"#,
+        ),
         &["demo.user-settings", "mode"],
     );
 }
@@ -183,7 +191,10 @@ fn a_rank_below_one_or_missing_is_refused() {
 fn the_read_rule_follows_the_version_range() {
     let text = format!(
         "{}{}",
-        FILE.replace(r#"versions = ">=1.0.0, <2.0.0""#, r#"versions = ">=1.0.0, <1.5.0""#),
+        FILE.replace(
+            r#"versions = ">=1.0.0, <2.0.0""#,
+            r#"versions = ">=1.0.0, <1.5.0""#
+        ),
         r#"
 [[item]]
 id = "demo.user-settings-later"
@@ -200,7 +211,10 @@ source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "not-rea
     let file = KnowledgeFile::parse(&text).expect("one source, two version ranges");
     let rules = |v: &str| {
         let v = Version::parse(v).expect("a version");
-        file.items_for("demo", &v).filter_map(|i| i.source()).map(|s| s.read()).collect::<Vec<_>>()
+        file.items_for("demo", &v)
+            .filter_map(|i| i.source())
+            .map(|s| s.read())
+            .collect::<Vec<_>>()
     };
     assert_eq!(rules("1.2.0"), vec![ReadRule::Read]);
     assert_eq!(rules("1.7.0"), vec![ReadRule::NotRead]);
@@ -210,7 +224,10 @@ source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "not-rea
 fn the_embedded_file_is_schema_two_and_lists_every_claude_code_source() {
     let file = KnowledgeFile::embedded().expect("the embedded file passes the check");
     assert_eq!(file.version().schema_version(), 2);
-    assert!(file.version().sequence() >= 2, "the new items raise the sequence");
+    assert!(
+        file.version().sequence() >= 2,
+        "the new items raise the sequence"
+    );
     let installed = Version::parse("2.1.317").expect("a version");
     let sources: Vec<_> = file
         .items_for("claude-code", &installed)
@@ -232,7 +249,9 @@ fn the_embedded_file_is_schema_two_and_lists_every_claude_code_source() {
         );
     }
     for item in &sources {
-        let source = item.source().expect("a sources item carries its source fact");
+        let source = item
+            .source()
+            .expect("a sources item carries its source fact");
         assert!(
             source.path().starts_with("${") || source.path().starts_with('/'),
             "{}: {}",
