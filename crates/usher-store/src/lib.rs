@@ -3,12 +3,61 @@
 //! Story 1.5, change B holds the inventory tables only: derived state, inserted and
 //! never changed.
 
-// RED-STAGE STUB (Story 1.5, PR B): the items below give the red tests something to
-// compile against and do nothing else. The implementation commit replaces them.
+use std::fs::{self, DirBuilder, OpenOptions};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
-use std::path::Path;
-
+use rusqlite::{Connection, params};
 use usher_core::UsherError;
+
+/// The database file inside the state directory.
+const DB_FILE: &str = "usher.db";
+
+/// The schema version this build writes and reads.
+const USER_VERSION: i64 = 1;
+
+/// How long a connection waits on a locked database.
+const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// The two platform suffixes whose parents usher may create. Both count on every platform;
+/// the resolver in a later change picks the one for the OS.
+const STANDARD_SUFFIXES: [[&str; 3]; 2] = [
+    [".local", "state", "usher"],
+    ["Library", "Application Support", "usher"],
+];
+
+const STEP: &str = "open the usher store";
+
+const SCHEMA: &str = "
+CREATE TABLE inventory_run (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recorded_at TEXT NOT NULL CHECK (recorded_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'),
+    harness TEXT NOT NULL,
+    harness_version TEXT,
+    knowledge_schema INTEGER NOT NULL,
+    knowledge_sequence INTEGER NOT NULL,
+    environment_key TEXT NOT NULL
+);
+CREATE TABLE inventory_source (
+    run_id INTEGER NOT NULL REFERENCES inventory_run(id),
+    item_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    layer TEXT NOT NULL,
+    present INTEGER NOT NULL CHECK (present IN (0, 1)),
+    size INTEGER,
+    modified TEXT CHECK (modified IS NULL OR modified GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'),
+    key_names TEXT NOT NULL
+);
+CREATE TRIGGER inventory_run_no_update BEFORE UPDATE ON inventory_run
+BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
+CREATE TRIGGER inventory_run_no_delete BEFORE DELETE ON inventory_run
+BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
+CREATE TRIGGER inventory_source_no_update BEFORE UPDATE ON inventory_source
+BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
+CREATE TRIGGER inventory_source_no_delete BEFORE DELETE ON inventory_source
+BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
+";
 
 /// The settings a connection to the store runs with.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,45 +151,403 @@ pub struct SourceRow {
 /// An open store.
 #[derive(Debug)]
 pub struct Store {
-    _private: Vec<u8>,
+    conn: Connection,
 }
 
-fn stub() -> UsherError {
-    UsherError::new(
-        "red-stage stub",
-        "usher-store has no implementation yet",
-        "not implemented",
-        "write the implementation commit",
+fn fail(
+    check: impl Into<String>,
+    status: impl Into<String>,
+    next: impl Into<String>,
+) -> UsherError {
+    UsherError::new(STEP, check, status, next)
+}
+
+fn db_error(check: &str, err: &rusqlite::Error) -> UsherError {
+    fail(
+        check,
+        format!("the database refused: {err}"),
+        "check that the state directory is writable and not full, then run the command again",
     )
+}
+
+fn quoted(path: &Path) -> String {
+    let text = path.display().to_string();
+    if text.contains('\'') {
+        format!("\"{text}\"")
+    } else {
+        format!("'{text}'")
+    }
+}
+
+fn refuse_missing(path: &Path) -> UsherError {
+    fail(
+        "check the parents of the state directory",
+        format!(
+            "`{}` is missing, and usher creates only the standard parents of its state directory",
+            path.display()
+        ),
+        format!(
+            "create it, for example mkdir -p -m 0700 {}, then run the command again",
+            quoted(path)
+        ),
+    )
+}
+
+/// The parents usher may create for `dir`: the components above the leaf of a standard suffix.
+fn standard_parents(dir: &Path) -> Vec<PathBuf> {
+    let names: Vec<_> = dir.components().map(|c| c.as_os_str().to_owned()).collect();
+    for suffix in STANDARD_SUFFIXES {
+        if names.len() >= suffix.len()
+            && names[names.len() - suffix.len()..]
+                .iter()
+                .zip(suffix)
+                .all(|(have, want)| have.as_os_str() == want)
+        {
+            let parent = dir.parent().map(Path::to_path_buf);
+            let grandparent = parent
+                .as_deref()
+                .and_then(Path::parent)
+                .map(Path::to_path_buf);
+            return parent.into_iter().chain(grandparent).collect();
+        }
+    }
+    Vec::new()
+}
+
+fn exists(path: &Path) -> Result<bool, UsherError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(err) => Err(fail(
+            "inspect the state directory",
+            format!("cannot inspect `{}`: {err}", path.display()),
+            "fix the permissions on that path, then run the command again",
+        )),
+    }
+}
+
+fn make_private_dir(path: &Path) -> Result<(), UsherError> {
+    DirBuilder::new().mode(0o700).create(path).map_err(|err| {
+        fail(
+            "create the state directory",
+            format!("cannot create `{}`: {err}", path.display()),
+            "fix the permissions above that path, then run the command again",
+        )
+    })
+}
+
+/// Checks the state directory when it exists, and creates it (and its standard parents) when
+/// it does not. Nothing that exists is ever changed.
+fn prepare_state_dir(dir: &Path) -> Result<(), UsherError> {
+    match fs::symlink_metadata(dir) {
+        Ok(meta) => {
+            if meta.file_type().is_symlink() {
+                return Err(fail(
+                    "check the state directory",
+                    format!("`{}` is a symlink", dir.display()),
+                    "point usher at the real directory, or remove the symlink, then run the command again",
+                ));
+            }
+            if !meta.is_dir() {
+                return Err(fail(
+                    "check the state directory",
+                    format!("`{}` is not a directory", dir.display()),
+                    "move that file away, then run the command again",
+                ));
+            }
+            if meta.permissions().mode() & 0o077 != 0 {
+                return Err(fail(
+                    "check the state directory",
+                    format!(
+                        "`{}` has group or other permission bits; the state directory must be owner-only",
+                        dir.display()
+                    ),
+                    format!(
+                        "run chmod 700 {} yourself, then run the command again",
+                        quoted(dir)
+                    ),
+                ));
+            }
+            return Ok(());
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => {
+            return Err(fail(
+                "check the state directory",
+                format!("cannot inspect `{}`: {err}", dir.display()),
+                "fix the permissions on that path, then run the command again",
+            ));
+        }
+    }
+    let mut missing = Vec::new();
+    for ancestor in dir.ancestors().skip(1) {
+        if ancestor.as_os_str().is_empty() || exists(ancestor)? {
+            break;
+        }
+        missing.push(ancestor);
+    }
+    let standard = standard_parents(dir);
+    if missing
+        .iter()
+        .any(|path| !standard.iter().any(|s| s == path))
+    {
+        let topmost = missing.last().copied().unwrap_or(dir);
+        return Err(refuse_missing(topmost));
+    }
+    for ancestor in missing.iter().rev() {
+        make_private_dir(ancestor)?;
+    }
+    make_private_dir(dir)
+}
+
+fn is_utc_second(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    bytes.len() == 20
+        && bytes.iter().enumerate().all(|(i, b)| match i {
+            4 | 7 => *b == b'-',
+            10 => *b == b'T',
+            13 | 16 => *b == b':',
+            19 => *b == b'Z',
+            _ => b.is_ascii_digit(),
+        })
+}
+
+fn check_time(field: &str, text: &str) -> Result<(), UsherError> {
+    if is_utc_second(text) {
+        Ok(())
+    } else {
+        Err(fail(
+            format!("check {field}"),
+            format!("`{field}` is `{text}`; it must be RFC 3339 UTC, written YYYY-MM-DDTHH:MM:SSZ"),
+            "pass the time in UTC and run the command again",
+        ))
+    }
+}
+
+/// A JSON array of strings, compact, for the key names.
+fn json_names(names: &[&str]) -> String {
+    let mut out = String::from("[");
+    for (i, name) in names.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push('"');
+        for ch in name.chars() {
+            match ch {
+                '"' => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+                c => out.push(c),
+            }
+        }
+        out.push('"');
+    }
+    out.push(']');
+    out
 }
 
 impl Store {
     /// Opens the store in `state_dir`, creating the directory and the database.
-    pub fn open(_state_dir: &Path) -> Result<Self, UsherError> {
-        Err(stub())
+    ///
+    /// A missing standard parent is created at 0700, then the directory itself at 0700. Any
+    /// other missing parent is refused. An existing directory with group or other bits, or a
+    /// symlink, is refused and left alone.
+    pub fn open(state_dir: &Path) -> Result<Self, UsherError> {
+        prepare_state_dir(state_dir)?;
+        let db_path = state_dir.join(DB_FILE);
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&db_path)
+        {
+            Ok(_) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(err) => {
+                return Err(fail(
+                    "create the database file",
+                    format!("cannot create `{}`: {err}", db_path.display()),
+                    "fix the permissions on the state directory, then run the command again",
+                ));
+            }
+        }
+        let empty = fs::metadata(&db_path)
+            .map(|m| m.len() == 0)
+            .unwrap_or(false);
+        let conn = Connection::open(&db_path).map_err(|err| db_error("open the database", &err))?;
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .map_err(|err| db_error("read the database version", &err))?;
+        if version > USER_VERSION {
+            return Err(fail(
+                "check the database version",
+                format!(
+                    "`{}` is at version {version}, newer than this usher reads ({USER_VERSION})",
+                    db_path.display()
+                ),
+                "update usher, then run the command again",
+            ));
+        }
+        if version == 0 && !empty {
+            return Err(fail(
+                "check the database version",
+                format!(
+                    "`{}` is not an usher store: it holds data and has no usher version",
+                    db_path.display()
+                ),
+                "move that file away, then run the command again",
+            ));
+        }
+        conn.busy_timeout(BUSY_TIMEOUT)
+            .map_err(|err| db_error("set the busy timeout", &err))?;
+        conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get::<_, String>(0))
+            .map_err(|err| db_error("set WAL mode", &err))?;
+        conn.pragma_update(None, "synchronous", "FULL")
+            .map_err(|err| db_error("set synchronous=FULL", &err))?;
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .map_err(|err| db_error("turn on foreign keys", &err))?;
+        if version == 0 {
+            conn.execute_batch(&format!(
+                "BEGIN IMMEDIATE;{SCHEMA}PRAGMA user_version = {USER_VERSION};COMMIT;"
+            ))
+            .map_err(|err| db_error("create the inventory tables", &err))?;
+        }
+        Ok(Self { conn })
     }
 
     /// The settings this connection runs with.
     pub fn settings(&self) -> Result<StoreSettings, UsherError> {
-        Err(stub())
+        let number = |pragma: &str| -> Result<i64, UsherError> {
+            self.conn
+                .query_row(&format!("PRAGMA {pragma}"), [], |r| r.get(0))
+                .map_err(|err| db_error("read the connection settings", &err))
+        };
+        let journal_mode: String = self
+            .conn
+            .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+            .map_err(|err| db_error("read the connection settings", &err))?;
+        Ok(StoreSettings {
+            journal_mode: journal_mode.to_lowercase(),
+            synchronous: number("synchronous")?,
+            busy_timeout_ms: number("busy_timeout")?,
+            foreign_keys: number("foreign_keys")?,
+        })
     }
 
-    /// Inserts one run and its sources; returns the run id.
+    /// Inserts one run and its sources; returns the run id. A run with a bad field inserts
+    /// nothing.
     pub fn record_inventory(
         &mut self,
-        _run: &RunRecord<'_>,
-        _sources: &[SourceRecord<'_>],
+        run: &RunRecord<'_>,
+        sources: &[SourceRecord<'_>],
     ) -> Result<i64, UsherError> {
-        Err(stub())
+        check_time("recorded_at", run.recorded_at)?;
+        for source in sources {
+            if let Some(modified) = source.modified {
+                check_time("modified", modified)?;
+            }
+        }
+        let tx = self
+            .conn
+            .transaction()
+            .map_err(|err| db_error("start the inventory insert", &err))?;
+        tx.execute(
+            "INSERT INTO inventory_run (recorded_at, harness, harness_version, knowledge_schema, knowledge_sequence, environment_key) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                run.recorded_at,
+                run.harness,
+                run.harness_version,
+                run.knowledge_schema,
+                i64::try_from(run.knowledge_sequence).unwrap_or(i64::MAX),
+                run.environment_key
+            ],
+        )
+        .map_err(|err| db_error("insert the inventory run", &err))?;
+        let run_id = tx.last_insert_rowid();
+        for source in sources {
+            tx.execute(
+                "INSERT INTO inventory_source (run_id, item_id, path, layer, present, size, modified, key_names) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    run_id,
+                    source.item_id,
+                    source.path,
+                    source.layer,
+                    i64::from(source.present),
+                    source.size.map(|n| i64::try_from(n).unwrap_or(i64::MAX)),
+                    source.modified,
+                    json_names(source.key_names)
+                ],
+            )
+            .map_err(|err| db_error("insert an inventory source", &err))?;
+        }
+        tx.commit()
+            .map_err(|err| db_error("commit the inventory insert", &err))?;
+        Ok(run_id)
     }
 
     /// Every run, oldest first.
     pub fn runs(&self) -> Result<Vec<RunRow>, UsherError> {
-        Err(stub())
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, recorded_at, harness, harness_version, knowledge_schema, knowledge_sequence, environment_key FROM inventory_run ORDER BY id")
+            .map_err(|err| db_error("read the runs", &err))?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(RunRow {
+                    id: r.get(0)?,
+                    recorded_at: r.get(1)?,
+                    harness: r.get(2)?,
+                    harness_version: r.get(3)?,
+                    knowledge_schema: r.get(4)?,
+                    knowledge_sequence: u64::try_from(r.get::<_, i64>(5)?).unwrap_or(0),
+                    environment_key: r.get(6)?,
+                })
+            })
+            .map_err(|err| db_error("read the runs", &err))?;
+        rows.collect::<Result<_, _>>()
+            .map_err(|err| db_error("read the runs", &err))
     }
 
     /// The sources of one run, in the order they were recorded.
-    pub fn sources_of(&self, _run_id: i64) -> Result<Vec<SourceRow>, UsherError> {
-        Err(stub())
+    pub fn sources_of(&self, run_id: i64) -> Result<Vec<SourceRow>, UsherError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT run_id, item_id, path, layer, present, size, modified, key_names FROM inventory_source WHERE run_id = ?1 ORDER BY rowid")
+            .map_err(|err| db_error("read the sources", &err))?;
+        let rows = stmt
+            .query_map([run_id], |r| {
+                let names: String = r.get(7)?;
+                Ok((
+                    SourceRow {
+                        run_id: r.get(0)?,
+                        item_id: r.get(1)?,
+                        path: r.get(2)?,
+                        layer: r.get(3)?,
+                        present: r.get::<_, i64>(4)? == 1,
+                        size: r
+                            .get::<_, Option<i64>>(5)?
+                            .map(|n| u64::try_from(n).unwrap_or(0)),
+                        modified: r.get(6)?,
+                        key_names: Vec::new(),
+                    },
+                    names,
+                ))
+            })
+            .map_err(|err| db_error("read the sources", &err))?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (mut source, names) = row.map_err(|err| db_error("read the sources", &err))?;
+            let mut names_stmt = self
+                .conn
+                .prepare("SELECT value FROM json_each(?1) ORDER BY key")
+                .map_err(|err| db_error("read the key names", &err))?;
+            source.key_names = names_stmt
+                .query_map([names], |r| r.get(0))
+                .map_err(|err| db_error("read the key names", &err))?
+                .collect::<Result<_, _>>()
+                .map_err(|err| db_error("read the key names", &err))?;
+            out.push(source);
+        }
+        Ok(out)
     }
 }
