@@ -19,9 +19,9 @@ context: ['{project-root}/_bmad-output/implementation-artifacts/epic-1-context.m
 
 ## Boundaries & Constraints
 
-**Always:** `#![forbid(unsafe_code)]`; read only the keys harness knowledge lists as readable for the installed version, and report any other key by name with its value unread (AD-8); never open `oauthAccount` in `~/.claude.json` or any key knowledge marks as credential; report credentials and the auth route by presence only; values inside MCP server definitions marked secret-bearing (`env`, `headers`) are shown by name only; the store is WAL with `synchronous=FULL` and a busy timeout, in an owner-only state directory (mode 0700) resolved from the OS user's account home, not `$HOME`; the store holds derived state only (AD-8, the spine's "Derived state only" row); every failure is a `UsherError`; every status the command prints stamps the harness version and the knowledge version it assumed; paths come from knowledge as tokens (`${HOME}`, `${CONFIG_DIR}`, `${REPO}`) and resolve per environment; `CLAUDE_CONFIG_DIR` relocates the user home, so a source is never found by `$HOME` alone; the Story 1.2 observation invariant passes for every run (hash of harness file metadata before and after).
+**Always:** `#![forbid(unsafe_code)]`; read only the keys harness knowledge lists as readable for the installed version, and report any other key by name with its value unread (AD-8); never open `oauthAccount` in `~/.claude.json` or any key knowledge marks as credential; report credentials and the auth route by presence only; values inside MCP server definitions marked secret-bearing (`env`, `headers`) are shown by name only; the store is WAL with `synchronous=FULL` and a busy timeout, in an owner-only state directory (mode 0700) resolved from the OS user's account home, not `$HOME`; the store holds derived state only (AD-8, the spine's "Derived state only" row); every failure is a `UsherError`; every status the command prints stamps the harness version and the knowledge version it assumed; paths come from knowledge as tokens (`${HOME}`, `${CONFIG_DIR}`, `${REPO}`, `${USER}`) and resolve per environment; `CLAUDE_CONFIG_DIR` relocates the user home, so a source is never found by `$HOME` alone; the Story 1.2 observation invariant passes for every run (hash of harness file metadata before and after).
 
-**Never:** write, create, touch or chmod anything outside usher's own state directory; run the harness or any command on its never-call list; read file contents beyond the key names of known JSON settings files and the readable keys of AD-8; store a value of any key knowledge does not mark readable; compute which value is in effect per key or where it came from (Story 1.6); report a source as trusted or untrusted (Story 1.7); read instruction, skill or agent files (Story 1.8); discover launch directories beyond the one named (Story 1.9); add an HTTP client or any network call; persist the knowledge sequence floor (the store lands here, the persistence is a later story and stays in deferred-work); add a crate other than `rusqlite` (feature `bundled`, `=0.41.1`) and `serde_json` (`=1.0.154`), both from the spine Stack table.
+**Never:** write, create, touch or chmod anything outside usher's own state directory; run the harness or any command on its never-call list; read file contents beyond the key names of known JSON settings files and the readable keys of AD-8; store a value of any key knowledge does not mark readable; compute which value is in effect per key or where it came from (Story 1.6); report a source as trusted or untrusted (Story 1.7); read instruction, skill or agent files (Story 1.8); discover launch directories beyond the one named (Story 1.9); add an HTTP client or any network call; persist the knowledge sequence floor (the store lands here, the persistence is a later story and stays in deferred-work); add a crate other than `rusqlite` (feature `bundled`, `=0.41.1`) and `serde_json` (`=1.0.154`), both from the spine Stack table; put the verb in `crates/usher`, which stays mode selection only (spine, Structural Seed).
 
 ## I/O & Edge-Case Matrix
 
@@ -43,22 +43,33 @@ context: ['{project-root}/_bmad-output/implementation-artifacts/epic-1-context.m
 
 </frozen-after-approval>
 
-## Rulings needed before the build
+## Rulings (architect read of 2026-11-15, sha256 5194d0ba...5406)
 
-These are decisions the spec relies on and does not make:
+1. **Knowledge item shape: settled.** Spine AD-12 and AD-6 put paths, layers and read rules in harness knowledge. Use a slow-layer `sources` class whose items carry a path pattern in the four tokens, the layer, the precedence rank or exclusivity, and the read rule, each with its own reference and `last_verified`. Raise `schema_version` from 1 to 2, extend the structural check to the new fields, and reject a token outside `${HOME}`, `${CONFIG_DIR}`, `${REPO}`, `${USER}`. The Story 1.4 "Never" line bounded Story 1.4's own diff; it is not a standing freeze.
+2. **Crates and dependencies: settled.** `usher-store`, `usher-adapter-claude-code`, `rusqlite` (bundled) and `serde_json` are in the spine's Structural Seed and Stack table. The PR's own `cargo deny check` is the evidence; a refusal is fixed by a reviewed `deny.toml` change in that PR, never an ignore.
+3. **Where the verb lives: settled, against the first draft.** `usher inventory` goes in a new `usher-cli` driving adapter; `crates/usher` stays mode selection and hands `usher <command>` to it. The port traits (the source-listing part of `HarnessAdapter`, AD-6, and a store port) go in `usher-core`; the launch environment's key comes from AD-17's one `usher-core` function; `usher-adapter-claude-code` and `usher-store` implement the ports. Dependencies point inward, and no adapter depends on another adapter.
+4. **Status vocabulary: partly settled by PRD FR-43.** in effect, unread and unknown are as proposed. The code takes a set of environments, not one, so Story 1.9 adds environments without a rewrite: in effect means in effect for at least one mapped environment, unread means no mapped environment reads it. Two points are open and go to the operator as Desk cards, and neither blocks A or B: how a managed source hidden by a higher first-wins source is reported (`shadowed`), and whether and how missing sources are shown.
 
-1. **Knowledge item shape (Story 1.3).** Sources, their layers, path tokens and the read rule per version are new harness facts. They need either a new item class (`sources`) in the knowledge schema or a new table. This changes the Story 1.3 shape and the embedded seed file, which the Story 1.4 boundary froze.
-2. **The new crates.** `usher-adapter-claude-code` and `usher-store` follow the Epic 1 naming rule; `rusqlite` and `serde_json` are in the spine's Stack table. `cargo deny` may need license or advisory entries for `rusqlite` with `bundled`.
-3. **What `usher` becomes.** `crates/usher` is mode selection only today. `usher inventory` is its first real command.
-4. **Status vocabulary.** The four statuses are applied to a source, not to a key (per-key is Story 1.6). The mapping of read rules to statuses in Design Notes is a proposal.
+## One story, four chained PRs
+
+The parts share the workspace `Cargo.toml` and `sprint-status.yaml`, so they are one chain (rule d), each a draft, each red-first, each based on the previous head.
+
+| PR | Content | Acceptance carried | Based on |
+|---|---|---|---|
+| A | knowledge: the `sources` class, schema_version 2, the check, the Claude Code seed entries with references and dates | its own matrix rows only (bad token, missing reference) | main |
+| B | `usher-store`: open from the account home, mode 0700, WAL, `synchronous=FULL`, busy timeout, inventory tables, insert-only, a test that greps every table for content | AC 2 | A |
+| C | `usher-core` ports, `usher-adapter-claude-code`, `usher-cli` `inventory`, the observation invariant run | AC 1 | B |
+| D | the seat around the harness: MCP registrations (env and headers by name), packs, fleet-tool client config, backend and auth route by presence, toolchain | AC 3 | C |
+
+C waits on the two cards, since C is where statuses print. The story moves to done when D merges, and sprint status says so in D.
 
 ## Code Map
 
-- `crates/usher-knowledge/` -- new item class for sources; embedded seed gains the Claude Code sources with references and dates (needs ruling 1)
-- `crates/usher-adapter-claude-code/` -- new: resolves paths from knowledge, reads known JSON for key names only, returns sources and the seat inventory
-- `crates/usher-store/` -- new: opens the store, creates the inventory tables, inserts runs; no update or delete of inventory rows
-- `crates/usher/src/main.rs` -- the `inventory` mode
-- `crates/usher-testkit/` -- reuse `ScratchHome` and the invariant; add Claude Code fixtures under the scratch home
+- PR A: `crates/usher-knowledge/` -- the `sources` class, `schema_version` 2, the check, the Claude Code seed entries with references and dates
+- PR B: `crates/usher-store/` -- new: opens the store, creates the inventory tables, inserts runs; no update or delete of inventory rows
+- PR C: `crates/usher-core/` -- the ports (source listing, store) and the environment key function (AD-17); `crates/usher-adapter-claude-code/` -- new: resolves paths from knowledge, reads known JSON for key names only; `crates/usher-cli/` -- new: the `inventory` verb; `crates/usher/src/main.rs` -- hands the command to `usher-cli`, no logic of its own
+- PR D: the seat inventory, in the adapter and the store
+- `crates/usher-testkit/` -- reuse `ScratchHome` and the invariant; add Claude Code fixtures under the scratch home as the PRs need them
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` -- 1-4 to `done` (merged as #26), 1-5 to `ready-for-dev`
 
 ## Tasks & Acceptance
