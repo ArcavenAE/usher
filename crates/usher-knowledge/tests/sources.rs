@@ -8,7 +8,7 @@ schema_version = 2
 sequence = 9
 
 [[item]]
-id = "demo.source.user-settings"
+id = "demo.user-settings"
 harness = "demo"
 layer = "slow"
 class = "sources"
@@ -111,7 +111,7 @@ fn a_token_outside_the_four_is_refused_naming_the_item_and_the_token() {
     let text = with_source(
         r#"source = { path = "${TMPDIR}/settings.json", layer = "user", read = "read", rank = 1 }"#,
     );
-    rejects(&text, &["demo.source.user-settings", "${TMPDIR}"]);
+    rejects(&text, &["demo.user-settings", "${TMPDIR}"]);
 }
 
 #[test]
@@ -119,7 +119,7 @@ fn an_unterminated_token_is_refused() {
     let text = with_source(
         r#"source = { path = "${HOME/settings.json", layer = "user", read = "read", rank = 1 }"#,
     );
-    rejects(&text, &["demo.source.user-settings", "${HOME"]);
+    rejects(&text, &["demo.user-settings", "${HOME"]);
 }
 
 #[test]
@@ -127,7 +127,7 @@ fn a_relative_path_is_refused() {
     let text = with_source(
         r#"source = { path = "settings.json", layer = "user", read = "read", rank = 1 }"#,
     );
-    rejects(&text, &["demo.source.user-settings", "settings.json"]);
+    rejects(&text, &["demo.user-settings", "settings.json"]);
 }
 
 #[test]
@@ -136,34 +136,34 @@ fn a_sources_item_without_a_source_table_is_refused_naming_the_item() {
         r#"source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", rank = 1 }"#,
         "",
     );
-    rejects(&text, &["demo.source.user-settings", "source"]);
+    rejects(&text, &["demo.user-settings", "source"]);
 }
 
 #[test]
 fn a_source_table_on_an_item_of_another_class_is_refused() {
     let text = FILE.replace(r#"class = "sources""#, r#"class = "paths""#);
-    rejects(&text, &["demo.source.user-settings", "source"]);
+    rejects(&text, &["demo.user-settings", "source"]);
 }
 
 #[test]
 fn the_sources_class_belongs_to_the_slow_layer() {
     let text = FILE.replace(r#"layer = "slow""#, r#"layer = "fast""#);
-    rejects(&text, &["demo.source.user-settings", "other layer"]);
+    rejects(&text, &["demo.user-settings", "other layer"]);
 }
 
 #[test]
 fn an_unknown_layer_read_rule_or_key_is_refused() {
     rejects(
         &with_source(r#"source = { path = "${HOME}/x", layer = "enterprise", read = "read", rank = 1 }"#),
-        &["demo.source.user-settings", "enterprise"],
+        &["demo.user-settings", "enterprise"],
     );
     rejects(
         &with_source(r#"source = { path = "${HOME}/x", layer = "user", read = "sometimes", rank = 1 }"#),
-        &["demo.source.user-settings", "sometimes"],
+        &["demo.user-settings", "sometimes"],
     );
     rejects(
         &with_source(r#"source = { path = "${HOME}/x", layer = "user", read = "read", rank = 1, mode = "0600" }"#),
-        &["demo.source.user-settings", "mode"],
+        &["demo.user-settings", "mode"],
     );
 }
 
@@ -171,12 +171,39 @@ fn an_unknown_layer_read_rule_or_key_is_refused() {
 fn a_rank_below_one_or_missing_is_refused() {
     rejects(
         &with_source(r#"source = { path = "${HOME}/x", layer = "user", read = "read", rank = 0 }"#),
-        &["demo.source.user-settings", "rank"],
+        &["demo.user-settings", "rank"],
     );
     rejects(
         &with_source(r#"source = { path = "${HOME}/x", layer = "user", read = "read" }"#),
-        &["demo.source.user-settings", "rank"],
+        &["demo.user-settings", "rank"],
     );
+}
+
+#[test]
+fn the_read_rule_follows_the_version_range() {
+    let text = format!(
+        "{}{}",
+        FILE.replace(r#"versions = ">=1.0.0, <2.0.0""#, r#"versions = ">=1.0.0, <1.5.0""#),
+        r#"
+[[item]]
+id = "demo.user-settings-later"
+harness = "demo"
+layer = "slow"
+class = "sources"
+versions = ">=1.5.0, <2.0.0"
+summary = "The user settings file, no longer read."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/settings" }
+last_verified = 2026-11-02
+source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "not-read", rank = 1 }
+"#
+    );
+    let file = KnowledgeFile::parse(&text).expect("one source, two version ranges");
+    let rules = |v: &str| {
+        let v = Version::parse(v).expect("a version");
+        file.items_for("demo", &v).filter_map(|i| i.source()).map(|s| s.read()).collect::<Vec<_>>()
+    };
+    assert_eq!(rules("1.2.0"), vec![ReadRule::Read]);
+    assert_eq!(rules("1.7.0"), vec![ReadRule::NotRead]);
 }
 
 #[test]

@@ -156,7 +156,7 @@ impl fmt::Display for Date {
 }
 
 // RED-STAGE STUB (Story 1.5, PR A): the types below give the red tests something to compile
-// against and do nothing else. The implementation commit replaces them and removes the allows.
+// against and do nothing else. The implementation commit replaces them and removes the allow.
 
 /// The harness layer a settings source belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -188,7 +188,6 @@ pub enum ReadRule {
 
 /// What harness knowledge says about one settings source.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)] // red-stage stub, see above
 pub struct SourceFact {
     path: String,
     layer: SourceLayer,
