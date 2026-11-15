@@ -1,6 +1,7 @@
 //! Story 1.5, PR B: the store (AD-7). Runs against the public API, and opens the
 //! database file with a second connection where a test must look at the file itself.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
@@ -12,12 +13,11 @@ use usher_testkit::ScratchHome;
 const DB: &str = "usher.db";
 
 fn state_dir(scratch: &ScratchHome) -> PathBuf {
-    scratch.home().join("Library/Application Support/usher")
+    scratch.home().join(".local/state/usher")
 }
 
 fn open(scratch: &ScratchHome) -> (Store, PathBuf) {
     let dir = state_dir(scratch);
-    fs::create_dir_all(dir.parent().expect("a parent")).expect("the parent chain exists");
     let store = Store::open(&dir).expect("the store opens in a fresh state directory");
     (store, dir)
 }
@@ -74,39 +74,70 @@ fn a_first_open_creates_the_state_directory_at_0700_and_the_database_at_0600() {
     assert_eq!(mode(&dir.join(DB)), 0o600);
 }
 
+fn listing(root: &Path) -> BTreeSet<PathBuf> {
+    fn walk(dir: &Path, root: &Path, out: &mut BTreeSet<PathBuf>) {
+        for entry in fs::read_dir(dir).expect("read_dir") {
+            let entry = entry.expect("entry");
+            let path = entry.path();
+            out.insert(path.strip_prefix(root).expect("under root").to_path_buf());
+            if entry.file_type().expect("type").is_dir() {
+                walk(&path, root, out);
+            }
+        }
+    }
+    let mut out = BTreeSet::new();
+    walk(root, root, &mut out);
+    out
+}
+
 #[test]
-fn a_missing_parent_is_refused_naming_the_path_and_nothing_is_created() {
+fn missing_standard_parents_are_created_at_0700_and_nothing_else_is_created() {
     let scratch = ScratchHome::new().expect("scratch home");
     let dir = state_dir(&scratch);
-    let parent = dir.parent().expect("a parent");
-    assert!(!parent.exists(), "the parent is missing to begin with");
-    let parent_text = parent.display().to_string();
-    refused(
-        Store::open(&dir),
-        &[parent_text.as_str(), "mkdir -p -m 0700"],
-    );
+    let before = listing(scratch.home());
     assert!(
-        !parent.exists(),
-        "usher creates nothing above the state directory"
+        !scratch.home().join(".local").exists(),
+        "no .local to begin with"
     );
-    assert!(!scratch.home().join("Library").exists());
+    let _store = Store::open(&dir).expect("opens and creates the missing parents");
+    assert_eq!(mode(&scratch.home().join(".local")), 0o700);
+    assert_eq!(mode(&scratch.home().join(".local/state")), 0o700);
+    assert_eq!(mode(&dir), 0o700);
+    let after = listing(scratch.home());
+    let new: Vec<&PathBuf> = after.difference(&before).collect();
+    assert!(!new.is_empty(), "the open created something");
+    for path in new {
+        assert!(
+            path == Path::new(".local")
+                || path == Path::new(".local/state")
+                || path.starts_with(".local/state/usher"),
+            "created outside the state directory and its standard parents: {}",
+            path.display()
+        );
+    }
+    assert!(before.is_subset(&after), "nothing that existed was removed");
 }
 
 #[test]
 fn an_existing_parent_directory_is_never_changed() {
     let scratch = ScratchHome::new().expect("scratch home");
-    let parent = scratch.home().join("Library");
+    let parent = scratch.home().join(".local");
     fs::DirBuilder::new()
         .mode(0o755)
         .create(&parent)
         .expect("an existing parent");
     fs::set_permissions(&parent, fs::Permissions::from_mode(0o755)).expect("lax parent");
-    let dir = parent.join("usher");
+    let dir = state_dir(&scratch);
     let _store = Store::open(&dir).expect("opens under an existing parent");
     assert_eq!(
         mode(&parent),
         0o755,
         "the parent that existed keeps its mode"
+    );
+    assert_eq!(
+        mode(&parent.join("state")),
+        0o700,
+        "the missing one is created owner-only"
     );
     assert_eq!(mode(&dir), 0o700);
 }
