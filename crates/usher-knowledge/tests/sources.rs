@@ -293,3 +293,29 @@ fn the_embedded_user_config_directory_source_moves_with_claude_config_dir() {
         user.path()
     );
 }
+
+#[test]
+fn a_path_may_start_at_the_launch_directory() {
+    let text = with_source(
+        r#"source = { path = "${LAUNCH_DIR}/.claude/settings.json", layer = "project", read = "read", rank = 1 }"#,
+    );
+    let file = KnowledgeFile::parse(&text).expect("the fifth path token");
+    let source = file.items()[0].source().expect("a source fact");
+    assert_eq!(source.path(), "${LAUNCH_DIR}/.claude/settings.json");
+}
+
+#[test]
+fn the_embedded_project_settings_file_is_read_from_the_launch_directory() {
+    let file = KnowledgeFile::embedded().expect("the embedded file passes the check");
+    let item = file
+        .items()
+        .iter()
+        .find(|i| i.id() == "claude-code.source-project-settings")
+        .expect("the project settings item");
+    let source = item.source().expect("a source fact");
+    assert_eq!(
+        source.path(),
+        "${LAUNCH_DIR}/.claude/settings.json",
+        "the vendor reads the shared file from the directory the session starts in"
+    );
+}
