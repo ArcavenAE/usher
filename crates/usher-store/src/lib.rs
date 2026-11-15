@@ -300,6 +300,11 @@ fn prepare_state_dir(dir: &Path) -> Result<(), UsherError> {
     make_private_dir(dir)
 }
 
+// RED-STAGE STUB (story 1.5, change B2): accepts any mode. The fix compares it with `wal`.
+fn require_wal(_returned: &str) -> Result<(), UsherError> {
+    Ok(())
+}
+
 fn is_utc_second(text: &str) -> bool {
     let bytes = text.as_bytes();
     bytes.len() == 20
@@ -400,8 +405,10 @@ impl Store {
         }
         conn.busy_timeout(BUSY_TIMEOUT)
             .map_err(|err| db_error("set the busy timeout", &err))?;
-        conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get::<_, String>(0))
+        let journal_mode = conn
+            .query_row("PRAGMA journal_mode = WAL", [], |r| r.get::<_, String>(0))
             .map_err(|err| db_error("set WAL mode", &err))?;
+        require_wal(&journal_mode)?;
         conn.pragma_update(None, "synchronous", "FULL")
             .map_err(|err| db_error("set synchronous=FULL", &err))?;
         conn.pragma_update(None, "foreign_keys", "ON")
@@ -549,5 +556,23 @@ impl Store {
             out.push(source);
         }
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_wal_pragma_must_return_wal() {
+        require_wal("wal").expect("wal is the mode we asked for");
+        for other in ["delete", "memory", "truncate", "persist", "off", ""] {
+            let err = require_wal(other).expect_err(other);
+            let shown = err.to_string();
+            assert!(shown.contains("journal mode"), "{other}: {shown}");
+            assert!(shown.contains("WAL"), "{other}: {shown}");
+            assert!(!err.step().is_empty() && !err.check().is_empty());
+            assert!(!err.status().is_empty() && !err.next_action().is_empty());
+        }
     }
 }
