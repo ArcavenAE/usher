@@ -17,6 +17,7 @@ fn state_dir(scratch: &ScratchHome) -> PathBuf {
 
 fn open(scratch: &ScratchHome) -> (Store, PathBuf) {
     let dir = state_dir(scratch);
+    fs::create_dir_all(dir.parent().expect("a parent")).expect("the parent chain exists");
     let store = Store::open(&dir).expect("the store opens in a fresh state directory");
     (store, dir)
 }
@@ -74,14 +75,21 @@ fn a_first_open_creates_the_state_directory_at_0700_and_the_database_at_0600() {
 }
 
 #[test]
-fn missing_parent_directories_are_created_at_0700() {
+fn a_missing_parent_is_refused_naming_the_path_and_nothing_is_created() {
     let scratch = ScratchHome::new().expect("scratch home");
-    let (_store, dir) = open(&scratch);
+    let dir = state_dir(&scratch);
     let parent = dir.parent().expect("a parent");
-    let grandparent = parent.parent().expect("a grandparent");
-    assert_eq!(mode(parent), 0o700, "the parent the open created");
-    assert_eq!(mode(grandparent), 0o700, "the grandparent the open created");
-    assert!(grandparent.starts_with(scratch.home()));
+    assert!(!parent.exists(), "the parent is missing to begin with");
+    let parent_text = parent.display().to_string();
+    refused(
+        Store::open(&dir),
+        &[parent_text.as_str(), "mkdir -p -m 0700"],
+    );
+    assert!(
+        !parent.exists(),
+        "usher creates nothing above the state directory"
+    );
+    assert!(!scratch.home().join("Library").exists());
 }
 
 #[test]
@@ -93,7 +101,8 @@ fn an_existing_parent_directory_is_never_changed() {
         .create(&parent)
         .expect("an existing parent");
     fs::set_permissions(&parent, fs::Permissions::from_mode(0o755)).expect("lax parent");
-    let (_store, dir) = open(&scratch);
+    let dir = parent.join("usher");
+    let _store = Store::open(&dir).expect("opens under an existing parent");
     assert_eq!(
         mode(&parent),
         0o755,
