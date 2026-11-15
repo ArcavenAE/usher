@@ -667,3 +667,46 @@ fn the_store_holds_derived_state_only() {
         }
     }
 }
+
+#[test]
+fn two_first_opens_at_once_both_succeed_and_leave_one_schema() {
+    for round in 0..20 {
+        let scratch = ScratchHome::new().expect("scratch home");
+        let dir = state_dir(&scratch);
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&dir)
+            .expect("an owner-only directory");
+        let barrier = std::sync::Barrier::new(4);
+        let results: Vec<Result<Store, usher_core::UsherError>> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..4)
+                .map(|_| {
+                    scope.spawn(|| {
+                        barrier.wait();
+                        Store::open(&dir)
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|h| h.join().expect("thread"))
+                .collect()
+        });
+        for result in &results {
+            assert!(
+                result.is_ok(),
+                "round {round}: a first open failed: {:?}",
+                result.as_ref().err()
+            );
+        }
+        let tables: i64 = raw(&dir)
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name LIKE 'inventory_%'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("count");
+        assert_eq!(tables, 2, "round {round}: one schema");
+    }
+}
