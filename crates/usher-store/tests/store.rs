@@ -184,6 +184,34 @@ fn missing_standard_parents_are_created_at_0700_and_nothing_else_is_created() {
 }
 
 #[test]
+fn missing_macos_standard_parents_are_created_at_0700_and_nothing_else_is_created() {
+    let scratch = ScratchHome::new().expect("scratch home");
+    let dir = scratch.home().join("Library/Application Support/usher");
+    let before = listing(scratch.home());
+    let _store = Store::open(&dir).expect("opens and creates the macOS chain on any platform");
+    assert_eq!(mode(&scratch.home().join("Library")), 0o700);
+    assert_eq!(
+        mode(&scratch.home().join("Library/Application Support")),
+        0o700
+    );
+    assert_eq!(mode(&dir), 0o700);
+    let after = listing(scratch.home());
+    for path in after.difference(&before) {
+        assert!(
+            path == Path::new("Library")
+                || path == Path::new("Library/Application Support")
+                || path.starts_with("Library/Application Support/usher"),
+            "created outside the state directory and its standard parents: {}",
+            path.display()
+        );
+    }
+    assert!(
+        !scratch.home().join(".local").exists(),
+        "the Linux chain is not created too"
+    );
+}
+
+#[test]
 fn an_existing_grandparent_keeps_its_mode_and_only_the_missing_part_of_the_chain_is_created() {
     let scratch = ScratchHome::new().expect("scratch home");
     let parent = scratch.home().join(".local");
