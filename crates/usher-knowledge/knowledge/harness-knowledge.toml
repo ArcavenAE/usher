@@ -5,8 +5,8 @@
 # research map of 2026-11-02 and cite the sources it cites. Support entries are
 # usher's own statement: no adapter exists yet, so nothing is offered.
 
-schema_version = 1
-sequence = 1
+schema_version = 2
+sequence = 2
 
 [[item]]
 id = "claude-code.config-dir-variable"
@@ -17,6 +17,83 @@ versions = ">=2.1.317, <3.0.0"
 summary = "CLAUDE_CONFIG_DIR relocates the user config home."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/env-vars" }
 last_verified = 2026-11-02
+
+[[item]]
+id = "claude-code.source-managed-file"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The managed settings file on macOS. Managed sources are first-wins; the file ranks below server-managed and MDM delivery."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/managed-settings" }
+last_verified = 2026-11-15
+source = { path = "/Library/Application Support/ClaudeCode/managed-settings.json", layer = "managed", read = "first-wins", rank = 3 }
+
+[[item]]
+id = "claude-code.source-managed-file-linux"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The managed settings file on Linux and WSL; same tier and rank as the macOS file. The Windows path is not listed yet."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/managed-settings" }
+last_verified = 2026-11-15
+source = { path = "/etc/claude-code/managed-settings.json", layer = "managed", read = "first-wins", rank = 3 }
+
+[[item]]
+id = "claude-code.source-user-settings"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The user settings file; CLAUDE_CONFIG_DIR relocates the folder it lives in."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
+last_verified = 2026-11-15
+source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", rank = 1 }
+
+[[item]]
+id = "claude-code.source-project-settings"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The shared project settings file, read from the directory the session starts in, which is the repository root only when the session starts there."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
+last_verified = 2026-11-15
+source = { path = "${LAUNCH_DIR}/.claude/settings.json", layer = "project", read = "read", rank = 1 }
+
+[[item]]
+id = "claude-code.source-local-settings"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The personal project settings file, kept out of git. Claude Code reads and writes it at the repository root; it stays beside .claude/settings.json outside a git repository, when the root is the home directory, on Windows, or when the root, .git or .claude is not owned by the user, and a copy an earlier version left in the starting directory is still read."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
+last_verified = 2026-11-15
+source = { path = "${REPO}/.claude/settings.local.json", layer = "local", read = "read", rank = 1 }
+
+[[item]]
+id = "claude-code.source-global-state"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The file Claude Code writes for itself: account details, MCP server configurations, per-project state. Whether CLAUDE_CONFIG_DIR relocates it is not stated on the settings page."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
+last_verified = 2026-11-15
+source = { path = "${HOME}/.claude.json", layer = "global-state", read = "read", rank = 1 }
+
+[[item]]
+id = "claude-code.source-server-managed-cache"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The cache of server-managed settings, written to ~/.claude/remote-settings.json. Whether CLAUDE_CONFIG_DIR relocates it is not stated; the path uses the config-directory token on the reading that ~/.claude names that folder."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/server-managed-settings" }
+last_verified = 2026-11-15
+source = { path = "${CONFIG_DIR}/remote-settings.json", layer = "server-managed-cache", read = "read", rank = 1 }
 
 [[item]]
 id = "codex.home-variable"
