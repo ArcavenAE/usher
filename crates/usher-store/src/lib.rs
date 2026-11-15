@@ -6,7 +6,7 @@
 use std::fs::{self, DirBuilder, OpenOptions};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rusqlite::{Connection, params};
 use usher_core::UsherError;
@@ -300,6 +300,41 @@ fn prepare_state_dir(dir: &Path) -> Result<(), UsherError> {
     make_private_dir(dir)
 }
 
+/// Asks for WAL mode and returns the mode in force. Switching to WAL needs a lock that SQLite
+/// refuses at once, without running the busy handler, when another first open holds it, so a
+/// busy answer is retried until the busy timeout has passed.
+fn set_wal(conn: &Connection) -> Result<String, UsherError> {
+    let deadline = Instant::now() + BUSY_TIMEOUT;
+    loop {
+        match conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get::<_, String>(0)) {
+            Ok(mode) => return Ok(mode),
+            Err(rusqlite::Error::SqliteFailure(failure, _))
+                if matches!(
+                    failure.code,
+                    rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+                ) && Instant::now() < deadline =>
+            {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(err) => return Err(db_error("set WAL mode", &err)),
+        }
+    }
+}
+
+/// `PRAGMA journal_mode = WAL` returns the mode now in force, which is not `wal` when SQLite
+/// could not make the change; the store does not run without it.
+fn require_wal(returned: &str) -> Result<(), UsherError> {
+    if returned.eq_ignore_ascii_case("wal") {
+        Ok(())
+    } else {
+        Err(fail(
+            "set WAL mode",
+            format!("the database stayed in `{returned}` journal mode; the store needs WAL"),
+            "move the state directory to a local disk that supports WAL, then run the command again",
+        ))
+    }
+}
+
 fn is_utc_second(text: &str) -> bool {
     let bytes = text.as_bytes();
     bytes.len() == 20
@@ -346,6 +381,69 @@ fn json_names(names: &[&str]) -> String {
     out
 }
 
+/// The version and the number of schema rows, read in one statement so both come from the
+/// same snapshot: a version read first and a schema read later could straddle another open's
+/// commit. A fresh file has no schema rows, even when an earlier open switched it to WAL (which
+/// makes it 4096 bytes at version 0), so freshness is decided by this and never by the file's
+/// size.
+fn read_state(conn: &Connection) -> Result<(i64, i64), UsherError> {
+    conn.query_row(
+        "SELECT (SELECT user_version FROM pragma_user_version), count(*) FROM sqlite_master",
+        [],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )
+    .map_err(|err| db_error("read the database version", &err))
+}
+
+fn not_a_store(db_path: &Path) -> UsherError {
+    fail(
+        "check the database version",
+        format!(
+            "`{}` is not an usher store: it holds data and has no usher version",
+            db_path.display()
+        ),
+        "move that file away, then run the command again",
+    )
+}
+
+/// Creates the schema under the write lock. The version and the schema are read again inside
+/// the lock, so two first opens at once both succeed and the second finds the schema the
+/// first made, and a file another program filled in the meantime is refused.
+fn create_schema(conn: &Connection, db_path: &Path) -> Result<(), UsherError> {
+    let step = |err: &rusqlite::Error| db_error("create the inventory tables", err);
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|err| step(&err))?;
+    let result = (|| -> Result<bool, rusqlite::Error> {
+        let (now, rows) = conn.query_row(
+            "SELECT (SELECT user_version FROM pragma_user_version), count(*) FROM sqlite_master",
+            [],
+            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+        )?;
+        if now != 0 {
+            return Ok(true);
+        }
+        if rows > 0 {
+            return Ok(false);
+        }
+        conn.execute_batch(&format!("{SCHEMA}PRAGMA user_version = {USER_VERSION};"))?;
+        Ok(true)
+    })();
+    match result {
+        Ok(true) => conn.execute_batch("COMMIT").map_err(|err| step(&err)),
+        Ok(false) => {
+            // The ROLLBACK result is dropped on purpose: the open returns the refusal next and
+            // the connection goes with it, which ends the transaction either way.
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(not_a_store(db_path))
+        }
+        Err(err) => {
+            // As above: the connection is dropped with the error, so a failed ROLLBACK changes nothing.
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(step(&err))
+        }
+    }
+}
+
 impl Store {
     /// Opens the store in `state_dir`, creating the directory and the database.
     ///
@@ -371,13 +469,8 @@ impl Store {
                 ));
             }
         }
-        let empty = fs::metadata(&db_path)
-            .map(|m| m.len() == 0)
-            .unwrap_or(false);
         let conn = Connection::open(&db_path).map_err(|err| db_error("open the database", &err))?;
-        let version: i64 = conn
-            .query_row("PRAGMA user_version", [], |r| r.get(0))
-            .map_err(|err| db_error("read the database version", &err))?;
+        let (version, schema_rows) = read_state(&conn)?;
         if version > USER_VERSION {
             return Err(fail(
                 "check the database version",
@@ -388,29 +481,18 @@ impl Store {
                 "update usher, then run the command again",
             ));
         }
-        if version == 0 && !empty {
-            return Err(fail(
-                "check the database version",
-                format!(
-                    "`{}` is not an usher store: it holds data and has no usher version",
-                    db_path.display()
-                ),
-                "move that file away, then run the command again",
-            ));
+        if version == 0 && schema_rows > 0 {
+            return Err(not_a_store(&db_path));
         }
         conn.busy_timeout(BUSY_TIMEOUT)
             .map_err(|err| db_error("set the busy timeout", &err))?;
-        conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get::<_, String>(0))
-            .map_err(|err| db_error("set WAL mode", &err))?;
+        require_wal(&set_wal(&conn)?)?;
         conn.pragma_update(None, "synchronous", "FULL")
             .map_err(|err| db_error("set synchronous=FULL", &err))?;
         conn.pragma_update(None, "foreign_keys", "ON")
             .map_err(|err| db_error("turn on foreign keys", &err))?;
         if version == 0 {
-            conn.execute_batch(&format!(
-                "BEGIN IMMEDIATE;{SCHEMA}PRAGMA user_version = {USER_VERSION};COMMIT;"
-            ))
-            .map_err(|err| db_error("create the inventory tables", &err))?;
+            create_schema(&conn, &db_path)?;
         }
         Ok(Self { conn })
     }
@@ -549,5 +631,23 @@ impl Store {
             out.push(source);
         }
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_wal_pragma_must_return_wal() {
+        require_wal("wal").expect("wal is the mode the open asks for");
+        for other in ["delete", "memory", "truncate", "persist", "off", ""] {
+            let err = require_wal(other).expect_err(other);
+            let shown = err.to_string();
+            assert!(shown.contains("journal mode"), "{other}: {shown}");
+            assert!(shown.contains("WAL"), "{other}: {shown}");
+            assert!(!err.step().is_empty() && !err.check().is_empty());
+            assert!(!err.status().is_empty() && !err.next_action().is_empty());
+        }
     }
 }
