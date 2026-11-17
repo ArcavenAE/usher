@@ -118,6 +118,16 @@ content: |
   number lifted from someone else's instrument arrives without its caveats,
   which is how an unpublishable claim and an untrustworthy claim turn out to
   be the same sentence.
+
+  Harvest 2026-11-17 (I-532): the design adopted this node's first concrete
+  analyze output and two of its hazards, so the adoption is recorded here and
+  the question stays open. FR-26 (`_bmad-output/planning-artifacts/epics.md`,
+  line 63) is "Cache reuse per session: cache read versus full-cost write, with
+  model and environment; unpriced models reported; throttled calls counted
+  apart", marked MVP, and SPEC.md (line 55) says the same: "An unpriced model is
+  reported, not dropped; throttled calls are counted apart". That matches the
+  cache efficiency output above and hazards f and g. Sub-question e, whether the
+  signals predict cost, is untested at 781f6ad. No confidence change.
 provenance:
   created_by: human
   session: usher-design-review-2026-07-26
