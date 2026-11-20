@@ -13,6 +13,7 @@ pub mod harness;
 pub mod invariant;
 pub mod scratch;
 pub mod signer;
+pub mod transport;
 
 pub use harness::{Probe, Skip, probe, skip, skipped};
 pub use invariant::{
@@ -20,6 +21,7 @@ pub use invariant::{
 };
 pub use scratch::ScratchHome;
 pub use signer::Signer;
+pub use transport::RecordingTransport;
 
 /// The crate name, for tests that assert the workspace layout.
 pub const CRATE_NAME: &str = "usher-testkit";
