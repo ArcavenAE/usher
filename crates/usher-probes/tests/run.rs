@@ -9,7 +9,7 @@ use common::fake_harness;
 use usher_probes::{
     codex_home::probe_home,
     fragment::{Date, Network},
-    run::{Spec, run, run_or_panic},
+    run::{Spec, Unmeasured, run, run_or_panic},
 };
 use usher_testkit::ScratchHome;
 
@@ -108,7 +108,11 @@ fn a_claim_that_cannot_be_measured_is_not_run() {
         &scratch,
         today(),
         |_| Ok(()),
-        |_| Err("the count could not be read".to_string()),
+        |_| {
+            Err(Unmeasured::Broken(
+                "the count could not be read".to_string(),
+            ))
+        },
     )
     .expect_err("an unmeasurable claim is not a result");
     assert!(

@@ -6,9 +6,23 @@ use usher_testkit::ScratchHome;
 
 use crate::fragment::{Date, Fragment, Network};
 
+/// Why a claim could not be measured.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Unmeasured {
+    /// The claim needs credentials the probe must not have.
+    NeedsCredentials,
+    /// The claim needs a network the probe runs without.
+    NeedsNetwork,
+    /// The run broke; the text says how.
+    Broken(String),
+}
+
 /// A probe that could not run. It is never a pass and never a refutation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NotRun(String);
+pub struct NotRun {
+    kind: Unmeasured,
+    text: String,
+}
 
 /// What a probe is about and where its harness is looked for.
 #[derive(Debug, Clone, Copy)]
@@ -34,16 +48,36 @@ pub struct Harness<'a> {
     pub scratch: &'a ScratchHome,
 }
 
+impl fmt::Display for Unmeasured {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Unmeasured::NeedsCredentials => f.write_str("needs credentials"),
+            Unmeasured::NeedsNetwork => f.write_str("needs network"),
+            Unmeasured::Broken(text) => f.write_str(text),
+        }
+    }
+}
+
 impl NotRun {
+    fn new(kind: Unmeasured) -> NotRun {
+        let text = kind.to_string();
+        NotRun { kind, text }
+    }
+
+    /// The kind of reason.
+    pub fn kind(&self) -> &Unmeasured {
+        &self.kind
+    }
+
     /// The reason, without the `not run:` prefix.
     pub fn reason(&self) -> &str {
-        &self.0
+        &self.text
     }
 }
 
 impl fmt::Display for NotRun {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "not run: {}", self.0)
+        write!(f, "not run: {}", self.text)
     }
 }
 
@@ -59,9 +93,9 @@ pub fn run<C, K>(
 ) -> Result<Fragment, NotRun>
 where
     C: FnOnce(&Harness<'_>) -> Result<(), String>,
-    K: FnOnce(&Harness<'_>) -> Result<bool, String>,
+    K: FnOnce(&Harness<'_>) -> Result<bool, Unmeasured>,
 {
-    Err(NotRun("unimplemented".to_string()))
+    Err(NotRun::new(Unmeasured::Broken("unimplemented".to_string())))
 }
 
 /// Runs one probe and panics with the `not run:` message when it cannot run,
@@ -76,7 +110,7 @@ pub fn run_or_panic<C, K>(
 ) -> Fragment
 where
     C: FnOnce(&Harness<'_>) -> Result<(), String>,
-    K: FnOnce(&Harness<'_>) -> Result<bool, String>,
+    K: FnOnce(&Harness<'_>) -> Result<bool, Unmeasured>,
 {
     match run(spec, scratch, today, control, claim) {
         Ok(fragment) => fragment,
