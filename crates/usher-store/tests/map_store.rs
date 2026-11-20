@@ -1024,3 +1024,22 @@ fn a_failure_in_the_version_three_step_leaves_a_version_one_store_at_version_one
         .expect("count");
     assert_eq!(rows, 1, "the rows are untouched");
 }
+
+#[test]
+fn a_version_one_store_has_every_later_trigger_after_it_migrates() {
+    let scratch = ScratchHome::new().expect("scratch");
+    let dir = version_one(&scratch, "");
+    drop(Store::open(&dir).expect("migrated"));
+    let triggers = names(&dir, "trigger");
+    for name in [
+        "inventory_seat_no_update",
+        "inventory_seat_no_delete",
+        "map_setting_no_update",
+        "map_setting_no_delete",
+    ] {
+        assert!(
+            triggers.contains(&name.to_string()),
+            "{name} in {triggers:?}"
+        );
+    }
+}
