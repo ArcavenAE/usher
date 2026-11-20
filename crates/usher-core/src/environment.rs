@@ -152,7 +152,9 @@ mod tests {
         assert_ne!(unset.to_string(), empty.to_string(), "unset against empty");
         assert_ne!(empty.to_string(), dash.to_string(), "empty against a dash");
 
-        let one = key(&[("CODEX_HOME", Some("/x&CLAUDE_CONFIG_DIR=/c"))]);
+        // The payload sits on the name that sorts first, so an unescaped text form
+        // is `?CLAUDE_CONFIG_DIR=/c&CODEX_HOME=/x` for both and they collide.
+        let one = key(&[("CLAUDE_CONFIG_DIR", Some("/c&CODEX_HOME=/x"))]);
         let two = key(&[
             ("CLAUDE_CONFIG_DIR", Some("/c")),
             ("CODEX_HOME", Some("/x")),
@@ -169,6 +171,39 @@ mod tests {
             percent.to_string(),
             ampersand.to_string(),
             "an escape sequence against the character it escapes"
+        );
+    }
+
+    /// A separator inside the directory, host or user must not read as a boundary.
+    #[test]
+    fn a_separator_inside_a_field_never_collides_with_a_boundary() {
+        let dir = |dir: &str, launch: &[(&str, Option<&str>)]| {
+            environment_key("h", "u", "claude-code", Path::new(dir), launch).expect("absolute")
+        };
+        let question = dir("/Users/alex/work/repo?CODEX_HOME", &[]);
+        let unset = dir("/Users/alex/work/repo", &[("CODEX_HOME", None)]);
+        assert_ne!(question, unset);
+        assert_ne!(
+            question.to_string(),
+            unset.to_string(),
+            "a ? in the directory against an unset variable"
+        );
+
+        let ampersand = dir("/a?X=1&Y", &[]);
+        let two = dir("/a", &[("X", Some("1")), ("Y", None)]);
+        assert_ne!(
+            ampersand.to_string(),
+            two.to_string(),
+            "a ?, = and & in the directory against two variables"
+        );
+
+        let host = |host: &str, user: &str| {
+            environment_key(host, user, "claude-code", Path::new("/a"), &[]).expect("absolute")
+        };
+        assert_ne!(
+            host("a/b", "c").to_string(),
+            host("a", "b/c").to_string(),
+            "a / in the host against a / in the user"
         );
     }
 

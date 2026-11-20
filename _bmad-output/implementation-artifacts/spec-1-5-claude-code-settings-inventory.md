@@ -104,6 +104,8 @@ C waits on the two cards, since C is where statuses print. The story moves to do
 
 Proposed status rule (ruling 4): in effect, a present source of a layer the knowledge says the version reads; shadowed, a present source that an exclusive higher source hides (managed sources are first-wins); unread, a present source in a place the knowledge says the version does not read; unknown, any source whose version or format the knowledge cannot place. Absent sources are shown only for the layers knowledge says always exist on the platform, so the listing answers "what exists" without padding.
 
+One lookup feeds the environment key (AD-17, Red Gate round 2 Q1). `environment_key` keeps exactly the variables its caller passes and filters none, so two callers that read the variable list differently would key one environment two ways. Every caller therefore takes the list from a single `usher-knowledge` function, `Knowledge::launch_variables(harness)` (a name PR C adds; knowledge lists no variable names today, only the `${CONFIG_DIR}` path token that one of them feeds), and no caller keeps its own list. The inventory verb, the store recording and the later modes pass that function's result to `environment_key` unchanged.
+
 The invariant test runs the command against a scratch home with the real harness homes guarded, as Story 1.2 built it. The `deferred-work.md` note that the watched set may miss `~/.claude.json` is settled here, because this is the first story that reads it.
 
 ## Verification
