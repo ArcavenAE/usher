@@ -1044,11 +1044,7 @@ fn a_header_value_with_a_control_or_non_ascii_byte_or_edge_space_is_refused_with
     ] {
         let (result, transport) = header_call(value);
         let err = result.expect_err("an unprintable header value must fail");
-        assert!(
-            err.step().starts_with("send "),
-            "{value:?}: step is {}",
-            err.step()
-        );
+        assert_eq!(err.step(), "send test-extra-header", "{value:?}");
         assert_eq!(err.check(), "a header value holds only printable ASCII");
         assert_eq!(
             err.status(),
