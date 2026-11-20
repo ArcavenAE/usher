@@ -1652,6 +1652,7 @@ fn an_unplaced_file_with_a_scalar_at_a_prefix_of_the_path_does_not_block_the_key
     let map = fixture_map_with_unplaced_managed(&rig);
     let user = reading(&map, "fx.nested.leaf", "user");
     assert_eq!(user.status, ReadingStatus::InEffect, "{user:?}");
+}
 
 // ---- a file that could not be read leaves a trace -------------------------------------
 
