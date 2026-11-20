@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod paths;
+mod seat;
 pub mod version;
 
 pub use version::{VersionReading, read_version};
@@ -297,7 +298,14 @@ impl SourceLister for ClaudeCodeAdapter {
             sources,
             absent_layers: absent,
             not_checked,
-            seat: Vec::new(),
+            seat: seat::read_seat(
+                &self.knowledge,
+                context,
+                &self.system_root,
+                self.platform,
+                installed.as_ref(),
+                &variable,
+            ),
         })
     }
 }
