@@ -39,3 +39,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5-claude-code-settings-inventory.md`
   summary: the host id is the output of `hostname`, run once per inventory.
   evidence: std has no hostname call and the dependency list for PR C is `nix` for the account-home resolver only; a later change can read it from the account database tooling.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-5-claude-code-settings-inventory.md`
+  summary: knowledge accepts `${CONFIG_DIR}` in a `version_from` launcher or layout; the binder rule checks source paths only. A knowledge refusal at parse time is the next step.
+  evidence: nothing in the seeded knowledge does it, and the reader resolves the token with the config directory it is given, so an accepted file reads correctly today.
