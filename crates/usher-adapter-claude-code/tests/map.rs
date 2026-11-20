@@ -102,6 +102,17 @@ last_verified = 2026-11-20
 settings_key = { key = "fx.plain", merge = "scalar", sensitive = false, scopes = ["any"] }
 
 [[item]]
+id = "claude-code.fx-token"
+harness = "claude-code"
+layer = "fast"
+class = "settings-keys"
+versions = ">=2.1.317, <3.0.0"
+summary = "A sensitive scalar that any file may set."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/token" }
+last_verified = 2026-11-20
+settings_key = { key = "fx.token", merge = "scalar", sensitive = true, scopes = ["any"] }
+
+[[item]]
 id = "claude-code.fx-secret"
 harness = "claude-code"
 layer = "fast"
@@ -1063,4 +1074,64 @@ fn a_list_key_set_in_managed_and_user_keeps_both_entries() {
         ],
         "{rows:?}"
     );
+}
+
+// ---- a sensitive scalar ----------------------------------------------------------------
+
+/// A sensitive scalar set in two layers: the map names the winner and never shows the value.
+/// The highest layer is in effect with no value and "value not read (sensitive)", and the
+/// lower layer is shadowed with no value.
+#[test]
+fn a_sensitive_scalar_names_its_winner_and_shows_no_value() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.user_file(),
+        r#"{"fx": {"token": "canary-user-token"}}"#,
+    );
+    rig.write(
+        &rig.project_file(),
+        r#"{"fx": {"token": "canary-project-token"}}"#,
+    );
+    let map = rig.fixture_map();
+    let project = reading(&map, "fx.token", "project");
+    assert_eq!(project.status, ReadingStatus::InEffect, "{project:?}");
+    assert_eq!(project.value, None);
+    assert_eq!(project.note.as_deref(), Some("value not read (sensitive)"));
+    let user = reading(&map, "fx.token", "user");
+    assert_eq!(user.status, ReadingStatus::Shadowed, "{user:?}");
+    assert_eq!(user.value, None);
+    assert_eq!(
+        user.note.as_deref(),
+        Some(format!("shadowed by project ({})", rig.project_file().display()).as_str())
+    );
+    assert!(!format!("{map:?}").contains("canary"));
+}
+
+// ---- keys knowledge does not list ------------------------------------------------------
+
+/// An unlisted key reads value not read in every layer that sets it, whether it is a
+/// top-level key or a child of a listed parent: one row per layer, never not decided.
+#[test]
+fn an_unlisted_key_reads_value_not_read_in_every_layer_that_sets_it() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.user_file(),
+        r#"{"theme": "canary-user", "autoMode": {"someNewArray": ["canary-new"]}}"#,
+    );
+    rig.write(
+        &rig.project_file(),
+        r#"{"theme": "canary-project", "autoMode": {"someNewArray": ["canary-new-2"]}}"#,
+    );
+    let map = rig.seed_map(&[]);
+    for key in ["theme", "autoMode.someNewArray"] {
+        let rows = readings(&map, key);
+        let layers: Vec<&str> = rows.iter().map(|r| r.layer.as_str()).collect();
+        assert_eq!(layers, ["project", "user"], "{key}: {rows:?}");
+        for row in rows {
+            assert_eq!(row.status, ReadingStatus::ValueNotRead, "{row:?}");
+            assert_eq!(row.note.as_deref(), Some("key not marked readable"));
+            assert_eq!(row.value, None);
+        }
+    }
+    assert!(!format!("{map:?}").contains("canary"));
 }
