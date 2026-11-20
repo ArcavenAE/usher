@@ -148,3 +148,128 @@ fn the_launcher_has_no_method_that_sets_an_environment_variable() {
         .expect("run.rs reads");
     assert!(find_env_setters(&run).is_empty());
 }
+
+// One scan covers all of this crate's src with the eleven needles. The one
+// exemption is the launcher's spawn site: the `run` method of `Launcher`, in
+// the file `run.rs`.
+const SPAWN_SITE: &str = "impl Launcher<'_> {
+    /// Starts `program` with `args` and returns its output.
+    pub fn run(&self, program: impl AsRef<OsStr>, args: &[&str]) -> io::Result<Output> {
+        self.starts.set(self.starts.get() + 1);
+        self.scratch.command(program).args(args).output()
+    }
+
+    /// How many processes this launcher has started.
+    pub fn starts(&self) -> usize {
+        self.starts.get()
+    }
+}
+";
+
+fn tree_with(scratch: &ScratchHome, name: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
+    let root = scratch.root().join(name).join("src");
+    for (file, text) in files {
+        write(&root.join(file), text);
+    }
+    root
+}
+
+#[test]
+fn the_launchers_spawn_site_passes_and_a_needle_anywhere_else_in_src_fails() {
+    let scratch = ScratchHome::new().expect("scratch home");
+    let site = tree_with(
+        &scratch,
+        "site",
+        &[("run.rs", SPAWN_SITE), ("lib.rs", "pub mod run;\n")],
+    );
+    assert!(
+        find_bypasses_in_tree(&site)
+            .expect("the tree reads")
+            .is_empty(),
+        "the launcher's own spawn site was refused"
+    );
+
+    for (file, text) in [
+        ("lib.rs", "fn f() { Command::new(\"x\"); }\n"),
+        (
+            "deep/er/mod.rs",
+            "fn f(s: &S) { s.thing.command(\"x\"); }\n",
+        ),
+        ("network.rs", "use std::process::Command;\n"),
+    ] {
+        let tree = tree_with(
+            &scratch,
+            &format!("needle-{}", file.replace('/', "-")),
+            &[("run.rs", SPAWN_SITE), (file, text)],
+        );
+        let found = find_bypasses_in_tree(&tree).expect("the tree reads");
+        assert_eq!(found.len(), 1, "for {file}: {found:?}");
+        assert!(found[0].0.ends_with(file), "for {file}: {found:?}");
+    }
+}
+
+#[test]
+fn a_second_spawn_in_the_exempt_file_fails_wherever_it_sits() {
+    let scratch = ScratchHome::new().expect("scratch home");
+    // Control: the file with only the spawn site is clean.
+    let clean = tree_with(&scratch, "clean", &[("run.rs", SPAWN_SITE)]);
+    assert!(
+        find_bypasses_in_tree(&clean)
+            .expect("the tree reads")
+            .is_empty()
+    );
+
+    let second = [
+        // A free function in the same file.
+        format!("{SPAWN_SITE}\nfn sneaky() {{ std::process::Command::new(\"y\"); }}\n"),
+        // Another method of the same impl.
+        SPAWN_SITE.replace(
+            "    /// How many processes",
+            "    pub fn other(&self) {\n        self.scratch.command(\"y\");\n    }\n\n    /// How many processes",
+        ),
+        // A second spawn inside the exempt function itself.
+        SPAWN_SITE.replace(
+            "        self.scratch.command(program).args(args).output()",
+            "        self.scratch.command(\"y\").output().ok();\n        self.scratch.command(program).args(args).output()",
+        ),
+    ];
+    for (n, text) in second.iter().enumerate() {
+        assert_ne!(text, SPAWN_SITE, "case {n} changed nothing");
+        let tree = tree_with(&scratch, &format!("second-{n}"), &[("run.rs", text)]);
+        let found = find_bypasses_in_tree(&tree).expect("the tree reads");
+        assert!(!found.is_empty(), "a second spawn went unseen (case {n})");
+        assert!(found.iter().all(|(path, _)| path.ends_with("run.rs")));
+    }
+
+    // The spawn site's own text in another file is not exempt there.
+    let moved = tree_with(&scratch, "moved", &[("other.rs", SPAWN_SITE)]);
+    assert!(
+        !find_bypasses_in_tree(&moved)
+            .expect("the tree reads")
+            .is_empty(),
+        "the exemption followed the function's text into another file"
+    );
+}
+
+#[test]
+fn all_of_this_crates_src_is_clean_under_the_one_scan() {
+    // Control: the scan sees a bypass in a tree before its silence here means anything.
+    let scratch = ScratchHome::new().expect("scratch home");
+    let dirty = tree_with(
+        &scratch,
+        "dirty",
+        &[("lib.rs", "fn f() { Command::new(\"x\"); }\n")],
+    );
+    assert!(
+        !find_bypasses_in_tree(&dirty)
+            .expect("the tree reads")
+            .is_empty()
+    );
+
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let found = find_bypasses_in_tree(&src).expect("the real src reads");
+    assert!(
+        found.is_empty(),
+        "src starts a process on its own: {found:?}"
+    );
+}
