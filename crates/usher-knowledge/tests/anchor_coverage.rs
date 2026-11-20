@@ -83,6 +83,16 @@ fn an_anchor_on_other_platforms_than_the_item_is_refused_naming_platforms() {
 }
 
 #[test]
+fn an_anchor_that_covers_only_one_of_the_items_platforms_is_refused_naming_platforms() {
+    let anchor = names(">=1.0.0, <2.0.0", r#", platforms = ["macos"]"#);
+    let ask = keys(">=1.0.0, <2.0.0", r#", platforms = ["macos", "linux"]"#);
+    let err = parse(&anchor, &ask).expect_err("an anchor that omits one platform is refused");
+    let shown = err.to_string();
+    assert!(shown.contains("platforms"), "{shown}");
+    assert!(shown.contains("demo.seat-ask"), "{shown}");
+}
+
+#[test]
 fn an_anchor_with_equal_versions_and_no_platforms_is_accepted() {
     let anchor = names(">=1.0.0, <2.0.0", "");
     let ask = keys(">=1.0.0, <2.0.0", "");
