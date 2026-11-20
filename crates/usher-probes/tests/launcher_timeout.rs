@@ -3,7 +3,12 @@
 
 mod common;
 
-use std::time::{Duration, Instant};
+use std::{
+    fs,
+    os::unix::fs::PermissionsExt,
+    process::{Command, Stdio},
+    time::{Duration, Instant},
+};
 
 use common::{fake_harness, hold};
 use usher_probes::{
@@ -165,4 +170,82 @@ fn a_control_that_outlives_the_timeout_ends_timed_out_and_the_claim_is_never_cal
     )
     .expect_err("a failed control is not a result");
     assert_eq!(wrong.to_string(), "not run: the control failed: it said no");
+}
+
+/// Whether a process with this id still exists, asked of the system.
+fn alive(pid: &str) -> bool {
+    Command::new("/bin/kill")
+        .args(["-0", pid])
+        .stderr(Stdio::null())
+        .status()
+        .expect("kill runs")
+        .success()
+}
+
+/// Waits up to `limit` for the process to be gone.
+fn gone_within(pid: &str, limit: Duration) -> bool {
+    let deadline = Instant::now() + limit;
+    while Instant::now() < deadline {
+        if !alive(pid) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    !alive(pid)
+}
+
+#[test]
+fn a_start_that_outlives_the_timeout_is_gone_afterwards() {
+    // Control: the check sees a live process as alive and a killed one as gone.
+    let mut control = Command::new("/bin/sleep")
+        .arg("20")
+        .spawn()
+        .expect("a control process");
+    let control_pid = control.id().to_string();
+    assert!(
+        alive(&control_pid),
+        "control: a live process reads as alive"
+    );
+    control.kill().expect("the control is killed");
+    control.wait().expect("the control is reaped");
+    assert!(
+        gone_within(&control_pid, Duration::from_secs(2)),
+        "control: a killed process reads as gone"
+    );
+
+    // A harness that records its own pid and then sleeps well past the timeout.
+    let scratch = ScratchHome::new().expect("scratch home");
+    let bin = scratch.root().join("bin");
+    fs::create_dir_all(&bin).expect("bin dir");
+    let path = bin.join("fakeh");
+    fs::write(
+        &path,
+        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'fakeh 1.2.3'; exit 0; fi\necho $$ > \"$TMPDIR/hang.pid\"\nexec /bin/sleep 20\n",
+    )
+    .expect("script written");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("chmod");
+    let spec = Spec::new("demo-probe", "fakeh")
+        .search_path(bin.as_os_str())
+        .timeout(Duration::from_secs(1));
+    let not_run = run(
+        &spec,
+        &scratch,
+        today(),
+        |_, _| Ok(()),
+        |harness, launcher| {
+            let _ = launcher.run(&harness.path, &["hang"]);
+            Ok(true)
+        },
+    )
+    .expect_err("a timed-out start is not a result");
+    assert_eq!(not_run.to_string(), "not run: timed out after 1 s");
+
+    let pid =
+        fs::read_to_string(scratch.tmp().join("hang.pid")).expect("the harness wrote its pid");
+    let pid = pid.trim();
+    assert!(!pid.is_empty());
+    assert!(
+        gone_within(pid, Duration::from_secs(2)),
+        "the timed-out process {pid} is still running"
+    );
 }
