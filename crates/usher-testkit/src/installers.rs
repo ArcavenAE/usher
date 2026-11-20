@@ -41,3 +41,216 @@ impl InstallerGuard {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{fs, os::unix::fs::symlink, path::Path};
+
+    use super::*;
+    use crate::ScratchHome;
+
+    struct Rig {
+        _scratch: ScratchHome,
+        paths: InstallerPaths,
+    }
+
+    fn rig() -> Rig {
+        let scratch = ScratchHome::new().expect("scratch");
+        let root = scratch.root().to_path_buf();
+        let paths = InstallerPaths {
+            brew_repository: root.join("brew"),
+            brew_prefix: root.join("brew"),
+            brew_cache: root.join("brew-cache"),
+            mise_data: root.join("mise/data"),
+            mise_cache: root.join("mise/cache"),
+            mise_state: root.join("mise/state"),
+        };
+        for dir in [
+            paths.brew_repository.join(".git"),
+            paths
+                .brew_repository
+                .join("Library/Taps/acme/homebrew-tools"),
+            paths.brew_prefix.join("Cellar/jq/1.7.1/bin"),
+            paths.brew_prefix.join("Caskroom"),
+            paths.brew_prefix.join("var/homebrew/linked"),
+            paths.brew_cache.join("api"),
+            paths.mise_data.join("installs/go/1.23.0/bin"),
+            paths.mise_data.join("shims"),
+            paths.mise_cache.clone(),
+            paths.mise_state.clone(),
+        ] {
+            fs::create_dir_all(dir).expect("dir");
+        }
+        fs::write(
+            paths.brew_repository.join(".git/HEAD"),
+            "ref: refs/heads/aaa",
+        )
+        .expect("head");
+        fs::write(paths.brew_repository.join(".git/FETCH_HEAD"), "one").expect("fetch head");
+        fs::write(paths.brew_cache.join("api/formula.json"), "12345").expect("api");
+        fs::write(paths.mise_cache.join("c"), "1").expect("mise cache file");
+        Rig {
+            _scratch: scratch,
+            paths,
+        }
+    }
+
+    fn digest(rig: &Rig) -> InstallerDigest {
+        digest_installers(&rig.paths).expect("a digest")
+    }
+
+    fn write(path: &Path, text: &str) {
+        fs::create_dir_all(path.parent().expect("a parent")).expect("dirs");
+        fs::write(path, text).expect("write");
+    }
+
+    #[test]
+    fn an_untouched_installer_state_digests_the_same_twice() {
+        let rig = rig();
+        assert_eq!(digest(&rig), digest(&rig));
+    }
+
+    #[test]
+    fn a_state_that_is_absent_digests_without_error_and_creating_it_is_a_change() {
+        let rig = rig();
+        let missing = InstallerPaths {
+            brew_repository: rig.paths.brew_repository.join("none"),
+            brew_prefix: rig.paths.brew_prefix.join("none"),
+            brew_cache: rig.paths.brew_cache.join("none"),
+            mise_data: rig.paths.mise_data.join("none"),
+            mise_cache: rig.paths.mise_cache.join("none"),
+            mise_state: rig.paths.mise_state.join("none"),
+        };
+        let before = digest_installers(&missing).expect("absent state is not an error");
+        fs::create_dir_all(missing.mise_data.join("installs/go/1.0.0")).expect("create");
+        assert_ne!(before, digest_installers(&missing).expect("a digest"));
+    }
+
+    #[test]
+    fn the_contents_of_the_repository_head_are_digested() {
+        let rig = rig();
+        let before = digest(&rig);
+        write(
+            &rig.paths.brew_repository.join(".git/HEAD"),
+            "ref: refs/heads/bbb",
+        );
+        assert_ne!(before, digest(&rig), "same size, different content");
+    }
+
+    #[test]
+    fn the_contents_of_the_fetch_head_are_digested() {
+        let rig = rig();
+        let before = digest(&rig);
+        write(&rig.paths.brew_repository.join(".git/FETCH_HEAD"), "two");
+        assert_ne!(before, digest(&rig));
+    }
+
+    #[test]
+    fn a_new_tap_is_a_change() {
+        let rig = rig();
+        let before = digest(&rig);
+        fs::create_dir_all(
+            rig.paths
+                .brew_repository
+                .join("Library/Taps/other/homebrew-extras"),
+        )
+        .expect("tap");
+        assert_ne!(before, digest(&rig));
+    }
+
+    #[test]
+    fn a_new_cellar_version_is_a_change() {
+        let rig = rig();
+        let before = digest(&rig);
+        fs::create_dir_all(rig.paths.brew_prefix.join("Cellar/jq/1.7.2")).expect("version");
+        assert_ne!(before, digest(&rig));
+    }
+
+    #[test]
+    fn a_file_deep_inside_a_cellar_version_is_not_watched() {
+        let rig = rig();
+        let before = digest(&rig);
+        write(&rig.paths.brew_prefix.join("Cellar/jq/1.7.1/bin/jq"), "x");
+        assert_eq!(
+            before,
+            digest(&rig),
+            "the digest reads names to depth 2 only"
+        );
+    }
+
+    #[test]
+    fn a_new_cask_version_is_a_change() {
+        let rig = rig();
+        let before = digest(&rig);
+        fs::create_dir_all(rig.paths.brew_prefix.join("Caskroom/app/3.0")).expect("cask");
+        assert_ne!(before, digest(&rig));
+    }
+
+    #[test]
+    fn a_new_link_is_a_change() {
+        let rig = rig();
+        let before = digest(&rig);
+        symlink(
+            "../../../Cellar/jq/1.7.1",
+            rig.paths.brew_prefix.join("var/homebrew/linked/jq"),
+        )
+        .expect("link");
+        assert_ne!(before, digest(&rig));
+    }
+
+    #[test]
+    fn a_rewritten_formula_index_in_the_brew_cache_is_a_change() {
+        let rig = rig();
+        let before = digest(&rig);
+        write(&rig.paths.brew_cache.join("api/formula.json"), "123456789");
+        assert_ne!(before, digest(&rig), "size or mtime differs");
+    }
+
+    #[test]
+    fn a_new_mise_install_is_a_change() {
+        let rig = rig();
+        let before = digest(&rig);
+        fs::create_dir_all(rig.paths.mise_data.join("installs/go/1.24.0")).expect("install");
+        assert_ne!(before, digest(&rig));
+    }
+
+    #[test]
+    fn a_new_shim_is_a_change() {
+        let rig = rig();
+        let before = digest(&rig);
+        write(&rig.paths.mise_data.join("shims/go"), "#!/bin/sh");
+        assert_ne!(before, digest(&rig));
+    }
+
+    #[test]
+    fn a_changed_mise_cache_file_is_a_change() {
+        let rig = rig();
+        let before = digest(&rig);
+        write(&rig.paths.mise_cache.join("c"), "22222");
+        assert_ne!(before, digest(&rig));
+    }
+
+    #[test]
+    fn a_changed_mise_state_directory_is_a_change() {
+        let rig = rig();
+        let before = digest(&rig);
+        write(&rig.paths.mise_state.join("trusted"), "x");
+        assert_ne!(before, digest(&rig));
+    }
+
+    #[test]
+    fn the_guard_passes_when_nothing_changed() {
+        let rig = rig();
+        let guard = InstallerGuard::snapshot(&rig.paths).expect("a snapshot");
+        guard.verify().expect("nothing changed");
+    }
+
+    #[test]
+    fn the_guard_fails_naming_the_change_when_a_watched_path_changes() {
+        let rig = rig();
+        let guard = InstallerGuard::snapshot(&rig.paths).expect("a snapshot");
+        fs::create_dir_all(rig.paths.brew_prefix.join("Cellar/jq/1.7.2")).expect("version");
+        let err = guard.verify().expect_err("a positive control must fire");
+        assert!(err.contains("installer state changed"), "{err}");
+    }
+}
