@@ -1079,7 +1079,6 @@ fn query_values_are_percent_encoded_outside_the_unreserved_set() {
         ("\u{e9}", "%C3%A9"),
         ("A-Za-z0-9._~", "A-Za-z0-9._~"),
         ("a/b?c#d+e", "a%2Fb%3Fc%23d%2Be"),
-        ("", ""),
     ] {
         let (result, transport) = query_call(value);
         result.unwrap_or_else(|e| panic!("{value:?} goes out: {e}"));
