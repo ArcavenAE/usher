@@ -18,7 +18,7 @@ fn main() -> ExitCode {
         .skip(1)
         .map(|a| a.to_string_lossy().into_owned())
         .collect();
-    let result = if args.first().map(String::as_str) == Some("inventory") {
+    let result = if matches!(args.first().map(String::as_str), Some("inventory" | "map")) {
         usher_cli::run_process(&args)
     } else {
         run(args.into_iter())

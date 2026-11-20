@@ -1,4 +1,4 @@
-//! The usher command line (Story 1.5): the `inventory` verb. A driving adapter over
+//! The usher command line (Stories 1.5 and 1.6): the `inventory` and `map` verbs. A driving adapter over
 //! the ports in `usher-core`; `crates/usher` hands `usher <command>` to it and holds no
 //! logic of its own.
 
@@ -131,12 +131,20 @@ pub fn inventory_platform() -> usher_knowledge::Platform {
 
 const NO_ARGUMENTS: &str = "usher inventory takes no arguments";
 const INVENTORY_NEXT: &str = "run `usher inventory`";
+const MAP_USAGE: &str = "run `usher map <directory>`";
+const COMMANDS_NEXT: &str = "run `usher inventory` or `usher --version`";
+
+/// A command the arguments name, once they are checked.
+enum Command {
+    Inventory,
+    Map(PathBuf),
+}
 
 /// Checks the arguments of a command before anything is read, and says which verb they
 /// name.
-fn parse_command(args: &[String]) -> Result<(), UsherError> {
+fn parse_command(args: &[String]) -> Result<Command, UsherError> {
     match args.first().map(String::as_str) {
-        Some("inventory") if args.len() == 1 => Ok(()),
+        Some("inventory") if args.len() == 1 => Ok(Command::Inventory),
         Some("inventory") => Err(UsherError::new(
             "run inventory",
             "the verb takes no arguments",
@@ -146,25 +154,41 @@ fn parse_command(args: &[String]) -> Result<(), UsherError> {
             ),
             INVENTORY_NEXT,
         )),
+        Some("map") if args.len() == 2 => Ok(Command::Map(PathBuf::from(&args[1]))),
+        Some("map") => Err(UsherError::new(
+            "run map",
+            "the verb takes one directory",
+            if args.len() == 1 {
+                "usher map takes one directory; got none".to_string()
+            } else {
+                format!(
+                    "usher map takes one directory; got `{}`",
+                    args[1..].join(" ").escape_debug()
+                )
+            },
+            MAP_USAGE,
+        )),
         Some(other) => Err(UsherError::new(
             "select command",
             "the command is one this build has",
             format!("`{}` is not a usher command", other.escape_debug()),
-            "run `usher inventory` or `usher --version`",
+            COMMANDS_NEXT,
         )),
         None => Err(UsherError::new(
             "select command",
             "a command was given",
             "no command",
-            "run `usher inventory` or `usher --version`",
+            COMMANDS_NEXT,
         )),
     }
 }
 
 /// Hands one command and its arguments to its verb.
 pub fn run(args: &[String], env: &InventoryEnv) -> Result<String, UsherError> {
-    parse_command(args)?;
-    inventory(env, inventory_system_root())
+    match parse_command(args)? {
+        Command::Inventory => inventory(env, inventory_system_root()),
+        Command::Map(dir) => map(env, &dir, inventory_system_root()),
+    }
 }
 
 /// As [`run`], reading the environment from this process after the arguments check out,
