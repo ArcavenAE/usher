@@ -63,3 +63,31 @@ fn the_host_name_is_not_answered_by_a_program_on_the_path() {
         "the host name came from a program on the PATH"
     );
 }
+
+/// The refusal for a host name that cannot be read says the system host name could not be
+/// read, and names no program. The system call cannot be made to fail from a test, so the
+/// text is pinned by reading the source that holds it.
+#[test]
+fn the_host_refusal_names_the_system_host_name_and_no_program() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/inventory.rs");
+    let source = fs::read_to_string(&path).expect("the inventory source");
+    let start = source
+        .find("fn host_name()")
+        .expect("the host name function");
+    let body = &source[start..];
+    let body = &body[..body.find("\n}\n").expect("the function ends")];
+    assert!(
+        body.contains(r#""the system host name can be read""#),
+        "the check text changed:\n{body}"
+    );
+    assert!(
+        body.contains(
+            "fix the system host name so it can be read, then run `usher inventory` again"
+        ),
+        "the next action changed:\n{body}"
+    );
+    assert!(
+        !body.contains("`hostname`") && !body.contains("hostname command"),
+        "the refusal names a program:\n{body}"
+    );
+}
