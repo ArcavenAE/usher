@@ -114,3 +114,11 @@ expect pass "a member that depends on a crate with a test-seam feature, without 
 depends_on_seamed leaky with
 workspace usher-testkit clean seamed quiet leaky
 expect fail "a member whose normal dependency enables test-seam fails" "leaky enables test-seam"
+
+# An optional feature of a member can enable test-seam too: it shows only when
+# the guard asks for all features.
+mkdir -p "$scratch/ws/optional/src"
+printf '[package]\nname = "optional"\nversion = "0.0.0"\nedition = "2024"\n[dependencies]\nseamed = { path = "../seamed" }\n[features]\nx = ["seamed/test-seam"]\n' > "$scratch/ws/optional/Cargo.toml"
+: > "$scratch/ws/optional/src/lib.rs"
+workspace usher-testkit clean seamed quiet optional
+expect fail "a member whose optional feature enables test-seam fails" "optional"
