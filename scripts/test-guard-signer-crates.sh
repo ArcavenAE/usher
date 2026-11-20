@@ -156,3 +156,14 @@ printf '[package]\nname = "targeted"\nversion = "0.0.0"\nedition = "2024"\n[targ
 : > "$scratch/ws/targeted/src/lib.rs"
 workspace usher-testkit clean seamed targeted
 expect fail "test-seam from a target-specific dependency is named as outside [dev-dependencies]" "targeted declares test-seam outside [dev-dependencies]"
+
+# The signing-crate exemption of usher-testkit does not reach the test-seam
+# rule: the manifest scan reads every package, usher-testkit included.
+mkdir -p "$scratch/ws/usher-testkit/src"
+{
+  printf '[package]\nname = "usher-testkit"\nversion = "0.0.0"\nedition = "2024"\n'
+  printf '[dependencies]\nblake2 = { path = "../../vendor/blake2" }\n'
+  printf 'seamed = { path = "../seamed", features = ["test-seam"] }\n'
+} > "$scratch/ws/usher-testkit/Cargo.toml"
+workspace usher-testkit clean seamed
+expect fail "test-seam from usher-testkit's [dependencies] is named as outside [dev-dependencies]" "usher-testkit declares test-seam outside [dev-dependencies]"
