@@ -7,11 +7,11 @@ use std::fs;
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 
-use usher_cli::{InventoryEnv, LaunchEnvironment, inventory, map, run};
+use usher_cli::{InventoryEnv, LaunchEnvironment, inventory, map, map_with, run};
 use usher_core::{ReadingStatus, SystemRoot};
-use usher_knowledge::Platform;
+use usher_knowledge::{Knowledge, Platform, TrustedKeys};
 use usher_store::Store;
-use usher_testkit::{NamedHome, RealHomeGuard, RealHomes, ScratchHome};
+use usher_testkit::{NamedHome, RealHomeGuard, RealHomes, ScratchHome, Signer};
 
 const NOW: &str = "2026-11-20T12:00:00Z";
 
@@ -586,4 +586,194 @@ fn a_map_changes_no_harness_home_and_no_managed_directory() {
         out.contains("etc/claude-code/managed-settings.json"),
         "the run did look at the watched managed directory:\n{out}"
     );
+}
+
+// ---- the lines the map adds around the readings ------------------------------------------
+
+/// Fixture knowledge goes through the signed update path, never in unsigned.
+fn signed(text: &str) -> Knowledge {
+    let signer = Signer::new();
+    let trusted = TrustedKeys::for_tests(&signer.public_key_base64(), None).expect("keys");
+    let mut knowledge = Knowledge::embedded().expect("embedded");
+    knowledge
+        .update(
+            text.as_bytes(),
+            &signer.sign(text.as_bytes(), "map fixture"),
+            &trusted,
+        )
+        .expect("a signed update is taken");
+    knowledge
+}
+
+/// A layer that took no part prints as `not used: <layer> (<reason>)`, the reason being the
+/// whole skipped-layer reason: the listing's, then that the harness gave none. The path is
+/// not repeated, since the sources block names it. Both a source knowledge never reads and
+/// a managed source that a higher-ranked one hides are pinned in full.
+///
+/// Provisional: the wording is not final.
+#[test]
+fn a_layer_that_took_no_part_prints_its_whole_reason() {
+    let rig = Rig::new();
+    let managed_a = rig.write(
+        &rig.system.join("etc/claude-code/managed-settings.json"),
+        r#"{"model": "managed-a"}"#,
+    );
+    let managed_b = rig.write(
+        &rig.system.join("etc/claude-code/managed-alt.json"),
+        r#"{"model": "managed-b"}"#,
+    );
+    rig.write(&rig.user_file(), r#"{"model": "user-model"}"#);
+    rig.write(&rig.project_file(), r#"{"model": "project-model"}"#);
+    let knowledge = signed(&format!(
+        "{}{}",
+        r#"
+schema_version = 5
+sequence = 40
+"#,
+        r#"
+[[item]]
+id = "claude-code.fx-launcher"
+harness = "claude-code"
+layer = "slow"
+class = "paths"
+versions = ">=2.1.317, <3.0.0"
+summary = "The native installer's launcher."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/launcher" }
+last_verified = 2026-11-20
+version_from = { launcher = "${HOME}/.local/bin/claude", rule = "symlink-target-last-component", layout = "${HOME}/.local/share/claude/versions/${VERSION}" }
+
+[[item]]
+id = "claude-code.fx-user"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The user file."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/user" }
+last_verified = 2026-11-20
+source = { path = "${HOME}/.claude/settings.json", layer = "user", read = "read", rank = 1, always_present = true }
+
+[[item]]
+id = "claude-code.fx-project"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "A project file knowledge does not read."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/project" }
+last_verified = 2026-11-20
+source = { path = "${LAUNCH_DIR}/.claude/settings.json", layer = "project", read = "not-read", rank = 1, always_present = false }
+
+[[item]]
+id = "claude-code.fx-managed-a"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The managed file."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/managed" }
+last_verified = 2026-11-20
+source = { path = "/etc/claude-code/managed-settings.json", layer = "managed", read = "first-wins", rank = 1, always_present = false, platforms = ["linux"] }
+
+[[item]]
+id = "claude-code.fx-managed-b"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "A lower-ranked managed file."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/managed-alt" }
+last_verified = 2026-11-20
+source = { path = "/etc/claude-code/managed-alt.json", layer = "managed", read = "first-wins", rank = 2, always_present = false, platforms = ["linux"] }
+
+[[item]]
+id = "claude-code.fx-stack"
+harness = "claude-code"
+layer = "slow"
+class = "layers"
+versions = ">=2.1.317, <3.0.0"
+summary = "The stack."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/stack" }
+last_verified = 2026-11-20
+stack = ["managed", "user", "project"]
+
+[[item]]
+id = "claude-code.fx-model"
+harness = "claude-code"
+layer = "fast"
+class = "settings-keys"
+versions = ">=2.1.317, <3.0.0"
+summary = "A plain key."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/model" }
+last_verified = 2026-11-20
+settings_key = { key = "model", merge = "scalar", sensitive = false, scopes = ["any"] }
+"#
+    ));
+    let out = map_with(
+        &rig.env(),
+        &rig.repo,
+        SystemRoot::at(rig.system.clone()),
+        &knowledge,
+    )
+    .expect("a map");
+    let tail = "reason: not given (usher does not call /status)";
+    let not_read = format!("not used: project (knowledge item claude-code.fx-project; {tail})");
+    let shadowed = format!(
+        "not used: managed (shadowed by {}; {tail})",
+        managed_a.display()
+    );
+    let lines: Vec<&str> = out.lines().map(str::trim_end).collect();
+    assert!(lines.contains(&not_read.as_str()), "{not_read}\n{out}");
+    assert!(lines.contains(&shadowed.as_str()), "{shadowed}\n{out}");
+    let _ = managed_b;
+}
+
+/// A directory that resolves somewhere else is headed by the whole line, naming both.
+///
+/// Provisional: the wording is not final.
+#[test]
+fn a_directory_that_resolves_elsewhere_prints_the_whole_header_line() {
+    let rig = Rig::new();
+    let link = rig.scratch.home().join("work/link");
+    symlink(&rig.repo, &link).expect("symlink");
+    let out = map(&rig.env(), &link, SystemRoot::at(rig.system.clone())).expect("a map");
+    let target = fs::canonicalize(&rig.repo).expect("a target");
+    let expected = format!(
+        "settings of {} (the directory resolves to {})",
+        link.display(),
+        target.display()
+    );
+    assert!(
+        out.lines().any(|l| l.trim_end() == expected),
+        "{expected}\n{out}"
+    );
+}
+
+/// A directory that is already its own canonical path gets no such line.
+///
+/// Provisional: the wording is not final.
+#[test]
+fn a_plain_directory_prints_no_header_line() {
+    let rig = Rig::new();
+    let plain = fs::canonicalize(&rig.repo).expect("a canonical directory");
+    let out = map(&rig.env(), &plain, SystemRoot::at(rig.system.clone())).expect("a map");
+    assert!(!out.contains("settings of "), "{out}");
+    assert!(!out.contains("resolves to"), "{out}");
+}
+
+/// A segment that holds a quote or a space is one segment: it prints as a JSON string and
+/// is stored as the exact JSON array of its segments.
+///
+/// Provisional: the printed form rests on the row layout, which is not final.
+#[test]
+fn a_segment_with_a_quote_or_a_space_round_trips_through_the_output_and_the_store() {
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"a": {"b c": 1, "d\"e": 2}}"#);
+    let env = rig.env();
+    let out = rig.map(&env);
+    assert!(out.contains(r#"a."b c""#), "{out}");
+    assert!(out.contains(r#"a."d\"e""#), "{out}");
+    let keys: Vec<String> = last_run_settings(&env).into_iter().map(|r| r.key).collect();
+    assert!(keys.contains(&r#"["a","b c"]"#.to_string()), "{keys:?}");
+    assert!(keys.contains(&r#"["a","d\"e"]"#.to_string()), "{keys:?}");
 }
