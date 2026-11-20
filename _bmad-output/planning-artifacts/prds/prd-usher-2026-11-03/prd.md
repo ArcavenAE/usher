@@ -278,8 +278,10 @@ harness, the layer it would belong to, and its status.
 
 **Consequences (testable):**
 - Each source has one status: in effect for at least one mapped
-  environment, shadowed (read but overridden), unread (no mapped
-  environment reads it), or unknown (usher cannot tell).
+  environment, shadowed (hidden by a higher-ranked source that wins: under
+  first-wins, a managed source below one that delivers a policy key is not
+  applied), unread (no mapped environment reads it), or unknown (usher
+  cannot tell).
 - Sources are found at the locations harness knowledge names for each
   harness and under the roots the person configures (FR-5).
 - Keys usher does not recognize for the harness version are listed, never
