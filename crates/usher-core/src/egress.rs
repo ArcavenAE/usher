@@ -290,6 +290,16 @@ impl<T: Transport, P: Policy> Port<T, P> {
         if !is_redirect(first.status) {
             return finish(descriptor, first);
         }
+        if descriptor.method != Method::Get {
+            return Err(refuse(
+                "a redirect is followed only for a read",
+                format!(
+                    "{} answered {} to a call that is not a GET; nothing was resent",
+                    descriptor.host, first.status
+                ),
+                "ask the publisher for a direct address",
+            ));
+        }
         let target = redirect_target(descriptor, &first)?;
         let follow = WireRequest {
             method: Method::Get,
