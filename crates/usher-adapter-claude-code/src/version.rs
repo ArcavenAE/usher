@@ -256,20 +256,29 @@ mod tests {
         assert!(reason.contains("not the native launcher"), "{reason}");
     }
 
+    /// `sh` passes over a dangling `claude`, so the lookup does too.
     #[test]
-    fn a_launcher_that_cannot_be_resolved_for_the_path_check_reads_as_unknown_naming_it() {
+    fn a_dangling_claude_earlier_on_path_is_passed_over() {
         let scratch = ScratchHome::new().expect("scratch");
-        // A dangling PATH hit cannot be resolved, so the identity check fails on it.
-        let other = scratch.home().join("other-bin");
-        fs::create_dir_all(&other).expect("dirs");
         link(&scratch, &install(&scratch, "2.1.317"));
-        symlink(scratch.home().join("gone"), other.join("claude")).expect("symlink");
-        let reading = read_version(&from(), &context(&scratch), Some(other.as_os_str()));
-        let reason = unknown(&reading);
-        assert!(
-            reason.contains(&other.join("claude").display().to_string()),
-            "{reason}"
-        );
+        let broken = scratch.home().join("broken-bin");
+        fs::create_dir_all(&broken).expect("dirs");
+        symlink(scratch.home().join("gone"), broken.join("claude")).expect("symlink");
+        let path =
+            std::env::join_paths([broken, scratch.home().join(".local/bin")]).expect("a path");
+        let reading = read_version(&from(), &context(&scratch), Some(&path));
+        assert_eq!(reading, VersionReading::Known("2.1.317".to_string()));
+    }
+
+    #[test]
+    fn a_path_whose_only_claude_is_dangling_reads_as_not_on_path() {
+        let scratch = ScratchHome::new().expect("scratch");
+        link(&scratch, &install(&scratch, "2.1.317"));
+        let broken = scratch.home().join("broken-bin");
+        fs::create_dir_all(&broken).expect("dirs");
+        symlink(scratch.home().join("gone"), broken.join("claude")).expect("symlink");
+        let reading = read_version(&from(), &context(&scratch), Some(broken.as_os_str()));
+        assert!(unknown(&reading).contains("not on PATH"), "{reading:?}");
     }
 
     /// `sh` skips a `claude` without an execute bit, so the lookup does too.
