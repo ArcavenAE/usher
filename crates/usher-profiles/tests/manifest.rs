@@ -414,7 +414,7 @@ fn a_quoted_segment_is_a_json_string_and_is_quoted_only_when_it_has_to_be() {
         ("claude-code:a.\"b\"", "\"b\""),
         ("claude-code:a.\"b", "\"b"),
         ("claude-code:a.\"\"", "\"\""),
-        ("claude-code:a.\"b\\u0001\"", "\"b\\u0001\""),
+        ("claude-code:a.\"b c\\u0001\"", "\"b c\\u0001\""),
     ];
     for (key, segment) in bad {
         let err = refusal(&note_with_key(key));
