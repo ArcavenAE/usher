@@ -1061,3 +1061,87 @@ fn a_header_value_with_a_control_or_non_ascii_byte_or_edge_space_is_refused_with
         );
     }
 }
+
+// ---- query values ----
+
+fn query_call(value: &str) -> (Result<Response, UsherError>, RecordingTransport) {
+    let transport = RecordingTransport::new().answering_ok("body");
+    let result = port(&transport).call_described(&SHAPED, described_request().with("q1", value));
+    (result, transport)
+}
+
+#[test]
+fn query_values_are_percent_encoded_outside_the_unreserved_set() {
+    for (value, wanted) in [
+        ("a b&c=d", "a%20b%26c%3Dd"),
+        ("50%", "50%25"),
+        ("\u{e9}", "%C3%A9"),
+        ("A-Za-z0-9._~", "A-Za-z0-9._~"),
+        ("a/b?c#d+e", "a%2Fb%3Fc%23d%2Be"),
+        ("", ""),
+    ] {
+        let (result, transport) = query_call(value);
+        result.unwrap_or_else(|e| panic!("{value:?} goes out: {e}"));
+        assert_eq!(
+            transport.sent()[0].query(),
+            [("q1".to_string(), wanted.to_string())],
+            "{value:?}"
+        );
+    }
+}
+
+#[test]
+fn a_control_character_in_a_query_value_is_refused_without_echo() {
+    let (control, _) = query_call("fine");
+    control.expect("the control call goes through");
+    for value in ["secret\nvalue", "secret\u{0}", "secret\u{7f}", "secret\r"] {
+        let (result, transport) = query_call(value);
+        let err = result.expect_err("a control character must fail");
+        assert_eq!(err.status(), "query q1 holds a control character");
+        assert!(!err.to_string().contains("secret"), "{err}");
+        assert!(
+            transport.sent().is_empty(),
+            "{value:?} reached the transport"
+        );
+    }
+}
+
+#[test]
+fn encoded_query_fields_keep_the_descriptor_order() {
+    let transport = RecordingTransport::new().answering_ok("body");
+    port(&transport)
+        .call_described(
+            &SHAPED,
+            described_request().with("q1", "b c").with("q2", "a b"),
+        )
+        .expect("goes out");
+    assert_eq!(
+        transport.sent()[0].query(),
+        [
+            ("q2".to_string(), "a%20b".to_string()),
+            ("q1".to_string(), "b%20c".to_string())
+        ]
+    );
+}
+
+#[test]
+fn every_registered_query_name_is_a_plain_token() {
+    assert!(!ALL.is_empty(), "ALL names no call");
+    for egress in ALL {
+        for field in descriptor(*egress)
+            .fields
+            .iter()
+            .filter(|f| f.place == Place::Query)
+        {
+            assert!(
+                !field.name.is_empty()
+                    && field
+                        .name
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-')),
+                "query name `{}` is not [A-Za-z0-9_.-]",
+                field.name
+            );
+        }
+    }
+}
