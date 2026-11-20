@@ -1,8 +1,9 @@
 //! The usher binary. Mode selection only.
 //!
-//! Story 1.1 knows one flag, `--version`. Every other argument, or none, is an
-//! unknown mode and exits nonzero with a next action. The real modes (`mcp`,
-//! `daemon`, `collector`) arrive with the stories that build them.
+//! Knows `--version` and hands `inventory` to the `usher-cli` crate, which holds the
+//! verb. Every other argument, or none, is an unknown mode and exits nonzero with a next
+//! action. The real modes (`mcp`, `daemon`, `collector`) arrive with the stories that
+//! build them.
 
 #![forbid(unsafe_code)]
 
@@ -13,10 +14,16 @@ use usher_core::UsherError;
 const STEP: &str = "select mode";
 
 fn main() -> ExitCode {
-    match run(env::args_os()
+    let args: Vec<String> = env::args_os()
         .skip(1)
-        .map(|a| a.to_string_lossy().into_owned()))
-    {
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    let result = if args.first().map(String::as_str) == Some("inventory") {
+        usher_cli::run_process(&args)
+    } else {
+        run(args.into_iter())
+    };
+    match result {
         Ok(out) => {
             println!("{out}");
             ExitCode::SUCCESS
@@ -36,13 +43,13 @@ fn run(mut args: impl Iterator<Item = String>) -> Result<String, UsherError> {
             STEP,
             format!("mode `{}` is one this build supports", other.escape_debug()),
             "unknown mode",
-            "run `usher --version`; no other mode exists in this build",
+            "run `usher --version` or `usher inventory`",
         )),
         None => Err(UsherError::new(
             STEP,
             "a mode was given",
             "no mode",
-            "run `usher --version`; no other mode exists in this build",
+            "run `usher --version` or `usher inventory`",
         )),
     }
 }

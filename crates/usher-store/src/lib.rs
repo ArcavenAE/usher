@@ -676,6 +676,11 @@ pub fn account_home_of(uid: u32) -> Result<PathBuf, UsherError> {
     Ok(PathBuf::from("unresolved"))
 }
 
+/// The account name of the current user, from the account database.
+pub fn account_name() -> Result<String, UsherError> {
+    Ok("unresolved-name".to_string())
+}
+
 /// The account home of the current user.
 pub fn account_home() -> Result<PathBuf, UsherError> {
     Ok(PathBuf::from("unresolved-current"))

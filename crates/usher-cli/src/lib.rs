@@ -4,24 +4,34 @@
 
 #![forbid(unsafe_code)]
 
+mod inventory;
+mod time;
+
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
 use usher_core::{SystemRoot, UsherError};
+
+pub use inventory::{inventory, inventory_with};
 
 /// The launch variables the verb asked for, as a name-to-value lookup. In production
 /// [`LaunchEnvironment::from_process`] fills it with the variables knowledge names and
 /// nothing else, so no other part of the process environment is held.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LaunchEnvironment {
-    values: std::collections::BTreeMap<String, String>,
+    values: BTreeMap<String, String>,
 }
 
 impl LaunchEnvironment {
     /// A lookup holding exactly these pairs, for tests.
     pub fn from_pairs(pairs: &[(&str, &str)]) -> Self {
-        let _ = pairs;
-        LaunchEnvironment::default()
+        LaunchEnvironment {
+            values: pairs
+                .iter()
+                .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+                .collect(),
+        }
     }
 
     /// Reads the named variables from the process environment. A variable that is unset
@@ -38,14 +48,27 @@ impl LaunchEnvironment {
         names: &[&str],
         lookup: impl Fn(&str) -> Option<OsString>,
     ) -> Result<Self, UsherError> {
-        let _ = (names, lookup);
-        Ok(LaunchEnvironment::default())
+        let mut values = BTreeMap::new();
+        for name in names {
+            let Some(raw) = lookup(name) else { continue };
+            let Ok(text) = raw.into_string() else {
+                return Err(UsherError::new(
+                    "read the launch environment",
+                    format!("the value of {name} is valid UTF-8 text"),
+                    format!("{name} is set to text that is not valid UTF-8"),
+                    format!(
+                        "set {name} to valid UTF-8 text or unset it, then run `usher inventory` again"
+                    ),
+                ));
+            };
+            values.insert((*name).to_string(), text);
+        }
+        Ok(LaunchEnvironment { values })
     }
 
     /// The value of `name`, when it was kept.
     pub fn get(&self, name: &str) -> Option<&str> {
-        let _ = name;
-        None
+        self.values.get(name).map(String::as_str)
     }
 }
 
@@ -73,38 +96,72 @@ pub struct InventoryEnv {
     pub platform: usher_knowledge::Platform,
 }
 
-/// The system root the `inventory` verb builds its adapter with: the host's own.
-pub fn inventory_system_root() -> SystemRoot {
-    SystemRoot::at(PathBuf::from("/scratch-stub"))
+impl InventoryEnv {
+    /// Reads the environment of this process: the host, the account the process runs as,
+    /// the launch directory, the launch variables knowledge names, `PATH` and the clock.
+    pub fn from_process() -> Result<Self, UsherError> {
+        inventory::env_from_process()
+    }
 }
 
-/// Runs `usher inventory` against `env`, placing absolute knowledge paths under `root`,
-/// and returns the text to print. Only tests pass a root other than the host's.
-pub fn inventory(env: &InventoryEnv, root: SystemRoot) -> Result<String, UsherError> {
-    let _ = (env, root);
-    Ok(String::new())
+/// The system root the `inventory` verb builds its adapter with: the host's own.
+pub fn inventory_system_root() -> SystemRoot {
+    SystemRoot::host()
 }
 
 /// The platform the `inventory` verb reads sources for: the build's own, with WSL as
 /// Linux.
 pub fn inventory_platform() -> usher_knowledge::Platform {
-    usher_knowledge::Platform::Windows
+    if cfg!(target_os = "macos") {
+        usher_knowledge::Platform::Macos
+    } else if cfg!(target_os = "windows") {
+        usher_knowledge::Platform::Windows
+    } else {
+        usher_knowledge::Platform::Linux
+    }
 }
 
-/// As [`inventory`], over a given knowledge, for tests that need a fact the seed does not
-/// hold. A [`usher_knowledge::Knowledge`] is the embedded file or a signed update, so no
-/// unsigned knowledge reaches the verb.
-pub fn inventory_with(
-    env: &InventoryEnv,
-    root: SystemRoot,
-    knowledge: &usher_knowledge::Knowledge,
-) -> Result<String, UsherError> {
-    let _ = (env, root, knowledge);
-    Ok(String::new())
+const NO_ARGUMENTS: &str = "usher inventory takes no arguments";
+const INVENTORY_NEXT: &str = "run `usher inventory`";
+
+/// Checks the arguments of a command before anything is read, and says which verb they
+/// name.
+fn parse_command(args: &[String]) -> Result<(), UsherError> {
+    match args.first().map(String::as_str) {
+        Some("inventory") if args.len() == 1 => Ok(()),
+        Some("inventory") => Err(UsherError::new(
+            "run inventory",
+            "the verb takes no arguments",
+            format!(
+                "{NO_ARGUMENTS}; got `{}`",
+                args[1..].join(" ").escape_debug()
+            ),
+            INVENTORY_NEXT,
+        )),
+        Some(other) => Err(UsherError::new(
+            "select command",
+            "the command is one this build has",
+            format!("`{}` is not a usher command", other.escape_debug()),
+            "run `usher inventory` or `usher --version`",
+        )),
+        None => Err(UsherError::new(
+            "select command",
+            "a command was given",
+            "no command",
+            "run `usher inventory` or `usher --version`",
+        )),
+    }
 }
 
 /// Hands one command and its arguments to its verb.
 pub fn run(args: &[String], env: &InventoryEnv) -> Result<String, UsherError> {
-    let _ = (args, env);
-    Ok(String::new())
+    parse_command(args)?;
+    inventory(env, inventory_system_root())
+}
+
+/// As [`run`], reading the environment from this process after the arguments check out,
+/// so a refused argument list reads nothing.
+pub fn run_process(args: &[String]) -> Result<String, UsherError> {
+    parse_command(args)?;
+    run(args, &InventoryEnv::from_process()?)
 }
