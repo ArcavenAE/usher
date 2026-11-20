@@ -681,6 +681,15 @@ pub fn account_home() -> Result<PathBuf, UsherError> {
     Ok(PathBuf::from("unresolved-current"))
 }
 
+impl Store {
+    /// As [`Store::open`], with the uid the state directory must belong to named by the
+    /// caller, so a test can check the owner wiring without changing an owner.
+    pub fn open_with_owner(state_dir: &Path, expected_uid: u32) -> Result<Self, UsherError> {
+        let _ = expected_uid;
+        Self::open(state_dir)
+    }
+}
+
 /// Refuses a state directory owned by anyone but the current user.
 pub fn ensure_owned(dir: &Path, dir_uid: u32, current_uid: u32) -> Result<(), UsherError> {
     let _ = (dir, dir_uid, current_uid);

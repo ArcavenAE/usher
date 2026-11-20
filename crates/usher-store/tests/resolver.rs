@@ -3,10 +3,10 @@
 //! database is read, never written.
 
 use std::fs;
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-use usher_store::{Platform, account_home, account_home_of, ensure_owned, state_dir_under};
+use usher_store::{Platform, Store, account_home, account_home_of, ensure_owned, state_dir_under};
 use usher_testkit::ScratchHome;
 
 /// The uid of whoever runs the tests: the owner of a file the test just made.
@@ -64,4 +64,67 @@ fn a_state_directory_owned_by_another_user_is_refused_naming_both_uids() {
     assert!(status.contains("/somewhere/usher"), "{status}");
     assert!(status.contains('0') && status.contains("501"), "{status}");
     assert!(!err.next_action().is_empty());
+}
+
+/// Run by the test below as a child process with `HOME` pointed elsewhere: it prints the
+/// account home it resolves and does nothing otherwise.
+#[test]
+fn child_reports_the_account_home() {
+    if std::env::var_os("USHER_RESOLVER_CHILD").is_some() {
+        println!(
+            "ACCOUNT_HOME={}",
+            account_home().expect("an account home").display()
+        );
+    }
+}
+
+/// The account database, not `$HOME`, names the home. Setting `HOME` in this process is
+/// unsafe in edition 2024, so a child test process runs with `HOME` elsewhere.
+#[test]
+fn the_account_home_does_not_follow_home() {
+    let scratch = ScratchHome::new().expect("scratch");
+    let elsewhere = scratch.root().join("not-the-account-home");
+    fs::create_dir_all(&elsewhere).expect("dirs");
+    let out = std::process::Command::new(std::env::current_exe().expect("this test binary"))
+        .args(["--exact", "child_reports_the_account_home", "--nocapture"])
+        .env("USHER_RESOLVER_CHILD", "1")
+        .env("HOME", &elsewhere)
+        .output()
+        .expect("the child runs");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let child_home = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("ACCOUNT_HOME="))
+        .unwrap_or_else(|| panic!("the child printed no account home: {stdout}"));
+    assert_ne!(Path::new(child_home), elsewhere, "the child followed HOME");
+    assert_eq!(
+        Path::new(child_home),
+        account_home().expect("this process's account home"),
+        "the same user resolves the same home whatever HOME says"
+    );
+    assert!(Path::new(child_home).is_absolute(), "{child_home}");
+}
+
+/// The store open checks the directory's real owner against the uid it is given.
+#[test]
+fn the_store_open_refuses_a_directory_owned_by_another_uid() {
+    let scratch = ScratchHome::new().expect("scratch");
+    let dir = scratch.home().join(".local/state/usher");
+    fs::create_dir_all(&dir).expect("dirs");
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).expect("mode");
+    let mine = fs::metadata(&dir).expect("metadata").uid();
+    Store::open_with_owner(&dir, mine).expect("the owner may open it");
+    let err = Store::open_with_owner(&dir, mine + 1).expect_err("another expected owner");
+    assert_eq!(err.step(), "check the state directory");
+    assert!(err.status().contains(&mine.to_string()), "{}", err.status());
+    assert!(
+        err.status().contains(&(mine + 1).to_string()),
+        "{}",
+        err.status()
+    );
 }
