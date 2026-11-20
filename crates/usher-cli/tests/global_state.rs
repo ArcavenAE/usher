@@ -160,3 +160,41 @@ fn the_other_layers_print_under_their_own_labels() {
         );
     }
 }
+
+const REASON: &str = "CLAUDE_CONFIG_DIR is not absolute";
+const ACCOUNT_ITEM: &str = "claude-code.seat-auth-account";
+
+#[test]
+fn a_relative_variable_prints_the_account_item_not_checked_beside_the_source_line() {
+    let rig = Rig::new();
+    rig.global_in_home();
+    let out = rig.run(&rig.env(Some("relative/dir")));
+    assert!(
+        out.lines()
+            .any(|l| l == format!("not checked: global state ({REASON})")),
+        "{out}"
+    );
+    assert!(
+        out.lines()
+            .any(|l| l
+                == format!("auth-route  not checked ({REASON}) (knowledge item {ACCOUNT_ITEM})")),
+        "the seat item says so for itself: {out}"
+    );
+}
+
+#[test]
+fn a_relative_variable_stores_the_unplaceable_item_with_no_flag_and_its_reason() {
+    let rig = Rig::new();
+    rig.global_in_home();
+    rig.run(&rig.env(Some("relative/dir")));
+    let store = Store::open(&rig.env(None).state_dir).expect("the store opens");
+    let runs = store.runs().expect("runs");
+    let rows = store.seat_of(runs.last().expect("a run").id).expect("rows");
+    let row = rows
+        .iter()
+        .find(|row| row.item_id == ACCOUNT_ITEM)
+        .unwrap_or_else(|| panic!("an unplaceable item is never dropped: {rows:?}"));
+    assert_eq!(row.present, None);
+    assert!(row.names.is_empty() && row.members.is_empty());
+    assert_eq!(row.note.as_deref(), Some(REASON));
+}

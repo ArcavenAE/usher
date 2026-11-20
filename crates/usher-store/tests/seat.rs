@@ -199,6 +199,14 @@ fn the_seat_table_joins_the_derived_state_allowlist_and_holds_names_only() {
             members: &members,
             note: None,
         },
+        SeatRecord {
+            part: "auth-route",
+            item_id: "claude-code.seat-auth-account",
+            present: None,
+            names: &[],
+            members: &[],
+            note: Some("CLAUDE_CONFIG_DIR is not absolute"),
+        },
     ];
     store
         .record_inventory_with_seat(&run(), &[], &seat)
@@ -224,10 +232,12 @@ fn the_seat_table_joins_the_derived_state_allowlist_and_holds_names_only() {
         .expect("rows");
     assert_eq!(
         columns,
-        ["run_id", "part", "item_id", "present", "names", "members"]
+        [
+            "run_id", "part", "item_id", "present", "names", "members", "note"
+        ]
     );
     let cells: Vec<String> = conn
-        .prepare("SELECT part || '|' || item_id || '|' || ifnull(present, 'null') || '|' || names || '|' || members FROM inventory_seat ORDER BY rowid")
+        .prepare("SELECT part || '|' || item_id || '|' || ifnull(present, 'null') || '|' || names || '|' || members || '|' || ifnull(note, 'null') FROM inventory_seat ORDER BY rowid")
         .expect("prepare")
         .query_map([], |r| r.get(0))
         .expect("query")
@@ -236,8 +246,33 @@ fn the_seat_table_joins_the_derived_state_allowlist_and_holds_names_only() {
     assert_eq!(
         cells,
         [
-            r#"mcp|claude-code.seat-mcp-launch-dir|1|[["mcpServers","a.b"]]|[]"#,
-            r#"auth-route|claude-code.seat-auth-env|null|[]|[["FLEET_TOKEN",true]]"#,
+            r#"mcp|claude-code.seat-mcp-launch-dir|1|[["mcpServers","a.b"]]|[]|null"#,
+            r#"auth-route|claude-code.seat-auth-env|null|[]|[["FLEET_TOKEN",true]]|null"#,
+            "auth-route|claude-code.seat-auth-account|null|[]|[]|CLAUDE_CONFIG_DIR is not absolute",
         ]
     );
+}
+
+#[test]
+fn a_note_round_trips_with_no_flag_and_empty_names_and_members() {
+    let scratch = ScratchHome::new().expect("scratch");
+    let mut store = Store::open(&scratch.home().join(".local/state/usher")).expect("a store");
+    let seat = [SeatRecord {
+        part: "auth-route",
+        item_id: "claude-code.seat-auth-account",
+        present: None,
+        names: &[],
+        members: &[],
+        note: Some("CLAUDE_CONFIG_DIR is not absolute"),
+    }];
+    let id = store
+        .record_inventory_with_seat(&run(), &[], &seat)
+        .expect("a run");
+    let rows = store.seat_of(id).expect("rows");
+    assert_eq!(rows[0].present, None);
+    assert_eq!(
+        rows[0].note.as_deref(),
+        Some("CLAUDE_CONFIG_DIR is not absolute")
+    );
+    assert!(rows[0].names.is_empty() && rows[0].members.is_empty());
 }

@@ -581,3 +581,20 @@ fn the_seed_names_its_two_mcp_json_items_by_where_they_look() {
     assert_eq!(by_launch.note.as_deref(), Some(NOT_STATED));
     assert_eq!(by_repo.note.as_deref(), Some(NOT_STATED));
 }
+
+#[test]
+fn an_item_whose_path_cannot_be_placed_gets_its_own_line_with_its_reason_and_no_path() {
+    let rig = Rig::new();
+    rig.write(&rig.home().join(".claude.json"), r#"{"oauthAccount":{}}"#);
+    let mut context = rig.context(&rig.repo, &[]);
+    context.global_state_dir = PathBuf::from("relative/dir");
+    let listing = rig.seed(&context);
+    let l = line(&listing, "claude-code.seat-auth-account");
+    assert_eq!(l.present, None);
+    assert!(l.path.is_none() && l.members.is_empty() && l.names.is_empty());
+    assert_eq!(l.note.as_deref(), Some("CLAUDE_CONFIG_DIR is not absolute"));
+    assert!(
+        !format!("{listing:?}").contains("relative/dir"),
+        "the value is held nowhere"
+    );
+}
