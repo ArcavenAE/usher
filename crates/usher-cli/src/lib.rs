@@ -132,7 +132,7 @@ pub fn inventory_platform() -> usher_knowledge::Platform {
 const NO_ARGUMENTS: &str = "usher inventory takes no arguments";
 const INVENTORY_NEXT: &str = "run `usher inventory`";
 const MAP_USAGE: &str = "run `usher map <directory>`";
-const COMMANDS_NEXT: &str = "run `usher inventory` or `usher --version`";
+const COMMANDS_NEXT: &str = "run `usher inventory`, `usher map <directory>` or `usher --version`";
 
 /// A command the arguments name, once they are checked.
 enum Command {
