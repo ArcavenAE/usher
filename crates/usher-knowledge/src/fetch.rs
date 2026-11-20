@@ -256,7 +256,7 @@ mod tests {
     }
 
     #[test]
-    fn a_signature_that_is_not_text_is_refused_and_the_knowledge_stays() {
+    fn a_signature_that_is_not_text_is_refused_in_the_updates_own_words_and_the_knowledge_stays() {
         assert_a_valid_fetch_is_taken();
         let signer = Signer::new();
         let file = file_at(sequence(&held()) + 1);
@@ -267,7 +267,14 @@ mod tests {
         let before = sequence(&knowledge);
         let err = fetch_update(&port(&transport), &mut knowledge, &trusting(&signer))
             .expect_err("a binary signature must fail");
-        assert_four_fields(&err);
+        assert_eq!(err.step(), "update harness knowledge");
+        assert_eq!(err.check(), "read the signature as UTF-8 text");
+        assert_eq!(
+            err.next_action(),
+            "usher keeps using the knowledge it has; obtain the update again, signed with minisign's default mode by a trusted key"
+        );
+        assert!(!err.status().is_empty(), "{err}");
+        assert_eq!(transport.sent().len(), 2);
         assert_eq!(sequence(&knowledge), before);
     }
 
