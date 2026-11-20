@@ -43,13 +43,13 @@ fn run(mut args: impl Iterator<Item = String>) -> Result<String, UsherError> {
             STEP,
             format!("mode `{}` is one this build supports", other.escape_debug()),
             "unknown mode",
-            "run `usher --version` or `usher inventory`",
+            "run `usher inventory`, `usher map <directory>` or `usher --version`",
         )),
         None => Err(UsherError::new(
             STEP,
             "a mode was given",
             "no mode",
-            "run `usher --version` or `usher inventory`",
+            "run `usher inventory`, `usher map <directory>` or `usher --version`",
         )),
     }
 }
