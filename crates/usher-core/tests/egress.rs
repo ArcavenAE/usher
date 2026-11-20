@@ -1421,7 +1421,7 @@ fn no_public_function_in_the_wire_request_impl_returns_self_whatever_its_qualifi
             .take_while(|c| !matches!(c, '(' | '{' | '\n'))
             .collect();
         let words: Vec<&str> = head.split_whitespace().collect();
-        if !words.iter().any(|w| *w == "fn") {
+        if !words.contains(&"fn") {
             continue;
         }
         let end = from
