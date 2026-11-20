@@ -160,7 +160,11 @@ impl InstallerPaths {
     ) -> Self {
         let _ = (get, exists, macos);
         Self {
-            brew: None,
+            brew: Some(BrewPaths {
+                repository: PathBuf::new(),
+                prefix: PathBuf::new(),
+                cache: PathBuf::new(),
+            }),
             mise_data: PathBuf::new(),
             mise_cache: PathBuf::new(),
             mise_state: PathBuf::new(),

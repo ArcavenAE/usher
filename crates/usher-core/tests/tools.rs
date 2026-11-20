@@ -4,8 +4,9 @@
 use std::path::{Path, PathBuf};
 
 use usher_core::{
-    BrewPaths, Hint, HintKind, InstallState, Installer, InstallerPaths, Reading, ToolRow, Verdict,
-    allowed_invocations, command_text, never_call, no_update_env, render_rows,
+    BrewPaths, Hint, HintKind, InstallState, Installer, InstallerPaths, Reading, Recorded, ToolRow,
+    ToolSpec, Verdict, allowed_invocations, command_text, never_call, no_update_env, render_rows,
+    tool_specs,
 };
 
 const NOT_RUN: &str = "version check not run";
@@ -28,7 +29,7 @@ fn missing(name: &str, installer: &str, command: &str) -> ToolRow {
         name: name.to_string(),
         state: InstallState::Missing,
         source: installer.to_string(),
-        installed: Reading::Unknown("not installed".to_string()),
+        installed: Reading::None,
         current: Reading::Unknown(NOT_RUN.to_string()),
         verdict: Verdict::Unknown(NOT_RUN.to_string()),
         error: None,
@@ -68,7 +69,7 @@ fn a_missing_tool_prints_the_owning_installers_install_command_and_source_under_
     let text = render_rows(&[missing("jq", "brew", "brew install jq")]);
     assert_eq!(
         text,
-        "jq  missing  brew  unknown (not installed)  unknown (version check not run)  unknown (version check not run)\n    install: brew install jq  (source brew)"
+        "jq  missing  brew  none  unknown (version check not run)  unknown (version check not run)\n    install: brew install jq  (source brew)"
     );
 }
 
@@ -98,7 +99,7 @@ fn an_error_row_says_error_and_gives_the_failing_step_on_its_own_line_never_curr
         installed: Reading::Unknown("receipt unreadable".to_string()),
         current: Reading::Unknown(NOT_RUN.to_string()),
         verdict: Verdict::Error,
-        error: Some("/p/INSTALL_RECEIPT.json: not valid JSON: eof".to_string()),
+        error: Some("/p/INSTALL_RECEIPT.json: not valid JSON".to_string()),
         hint: None,
     };
     let text = render_rows(&[row]);
@@ -107,7 +108,7 @@ fn an_error_row_says_error_and_gives_the_failing_step_on_its_own_line_never_curr
     assert!(lines[0].ends_with("  error"), "{text}");
     assert_eq!(
         lines[1],
-        "    error: /p/INSTALL_RECEIPT.json: not valid JSON: eof"
+        "    error: /p/INSTALL_RECEIPT.json: not valid JSON"
     );
     assert!(
         !text.contains("current"),
@@ -118,6 +119,75 @@ fn an_error_row_says_error_and_gives_the_failing_step_on_its_own_line_never_curr
 #[test]
 fn with_no_rows_the_text_is_empty() {
     assert_eq!(render_rows(&[]), "");
+}
+
+#[test]
+fn a_missing_tool_reads_none_for_its_installed_version_and_never_unknown() {
+    let text = render_rows(&[missing("jq", "brew", "brew install jq")]);
+    let fields: Vec<&str> = text.lines().next().expect("a row").split("  ").collect();
+    assert_eq!(fields[3], "none", "{text}");
+}
+
+#[test]
+fn a_tool_with_no_recorded_installer_prints_its_exact_row_and_no_command_lines() {
+    let row = ToolRow {
+        name: "director".to_string(),
+        state: InstallState::NoInstaller,
+        source: "unknown source".to_string(),
+        installed: Reading::Unknown("no installer recorded".to_string()),
+        current: Reading::Unknown(NOT_RUN.to_string()),
+        verdict: Verdict::Unknown("no installer recorded".to_string()),
+        error: None,
+        hint: None,
+    };
+    assert_eq!(
+        render_rows(&[row]),
+        "director  unknown (no installer recorded)  unknown source  unknown (no installer recorded)  unknown (version check not run)  unknown (no installer recorded)"
+    );
+}
+
+#[test]
+fn a_brew_entry_with_no_brew_prints_a_missing_row_with_the_reason_and_the_install_line() {
+    let mut row = missing("jq", "brew", "brew install jq");
+    row.verdict = Verdict::Unknown("brew not found".to_string());
+    assert_eq!(
+        render_rows(&[row]),
+        "jq  missing  brew  none  unknown (version check not run)  unknown (brew not found)\n    install: brew install jq  (source brew)"
+    );
+}
+
+// ---- the tools list ----
+
+fn recorded(installer: Installer, package: &'static str) -> Option<Recorded> {
+    Some(Recorded { installer, package })
+}
+
+#[test]
+fn the_tools_list_is_exactly_the_twelve_ruled_entries_in_order() {
+    let entry = |name, install| ToolSpec { name, install };
+    assert_eq!(
+        tool_specs(),
+        vec![
+            entry("codex", recorded(Installer::Mise, "codex")),
+            entry("goose", recorded(Installer::Brew, "block-goose-cli")),
+            entry("marvel", recorded(Installer::Brew, "arcavenae/tap/marvel")),
+            entry(
+                "marvel",
+                recorded(Installer::Mise, "github:ArcavenAE/marvel")
+            ),
+            entry("director", None),
+            entry(
+                "sideshow",
+                recorded(Installer::Brew, "arcavenae/tap/sideshow")
+            ),
+            entry("kos", recorded(Installer::Brew, "arcavenae/tap/kos")),
+            entry("aq", None),
+            entry("ax", None),
+            entry("akey", None),
+            entry("tmux-cmc", None),
+            entry("mise", recorded(Installer::Brew, "mise")),
+        ]
+    );
 }
 
 // ---- the installer tables ----
@@ -216,6 +286,34 @@ fn the_command_text_for_each_installer_is_pinned() {
     assert_eq!(
         command_text(Installer::Mise, HintKind::Update, "go"),
         "mise upgrade go"
+    );
+}
+
+#[test]
+fn a_tap_qualified_brew_package_prints_its_full_name_in_both_commands() {
+    assert_eq!(
+        command_text(Installer::Brew, HintKind::Install, "arcavenae/tap/marvel"),
+        "brew install arcavenae/tap/marvel"
+    );
+    assert_eq!(
+        command_text(Installer::Brew, HintKind::Update, "arcavenae/tap/marvel"),
+        "brew upgrade arcavenae/tap/marvel"
+    );
+}
+
+#[test]
+fn a_mise_backend_package_prints_its_spec_in_both_commands() {
+    assert_eq!(
+        command_text(
+            Installer::Mise,
+            HintKind::Install,
+            "github:ArcavenAE/marvel"
+        ),
+        "mise use --global github:ArcavenAE/marvel"
+    );
+    assert_eq!(
+        command_text(Installer::Mise, HintKind::Update, "github:ArcavenAE/marvel"),
+        "mise upgrade github:ArcavenAE/marvel"
     );
 }
 
@@ -335,4 +433,20 @@ fn the_mise_cache_and_state_directories_follow_their_variables_then_the_platform
     assert_eq!(state_xdg.mise_state, p("/xs/mise"));
     let state_home = resolve(&[("HOME", "/h")], &[], true);
     assert_eq!(state_home.mise_state, p("/h/.local/state/mise"));
+}
+
+#[test]
+fn with_no_brew_variable_and_no_fixed_location_there_are_no_brew_paths() {
+    let none = resolve(&[("HOME", "/h")], &[], true);
+    assert_eq!(none.brew, None);
+}
+
+#[test]
+fn a_brew_prefix_with_no_repository_gives_no_brew_paths() {
+    let prefix_only = resolve(
+        &[("HOME", "/h"), ("HOMEBREW_PREFIX", "/b/prefix")],
+        &[],
+        true,
+    );
+    assert_eq!(prefix_only.brew, None);
 }
