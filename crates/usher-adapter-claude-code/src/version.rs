@@ -485,4 +485,42 @@ mod tests {
             "{reason}"
         );
     }
+
+    /// The identity of the `claude` that runs is its real path: how a `PATH` entry is
+    /// spelled, or how many links lead to the launcher, does not change which file it is.
+    #[test]
+    fn a_path_entry_spelled_with_a_dot_dot_still_finds_the_launcher() {
+        let scratch = ScratchHome::new().expect("scratch");
+        link(&scratch, &install(&scratch, "2.1.317"));
+        let bin = scratch.home().join(".local/bin");
+        let spelled = bin.join("../bin");
+        let reading = read_version(&from(), &context(&scratch), Some(spelled.as_os_str()));
+        assert_eq!(reading, VersionReading::Known("2.1.317".to_string()));
+    }
+
+    #[test]
+    fn a_path_link_straight_to_the_version_binary_is_the_launcher_by_real_path() {
+        let scratch = ScratchHome::new().expect("scratch");
+        let binary = install(&scratch, "2.1.317");
+        link(&scratch, &binary);
+        let other = scratch.home().join("other-bin");
+        fs::create_dir_all(&other).expect("dirs");
+        symlink(&binary, other.join("claude")).expect("symlink");
+        let reading = read_version(&from(), &context(&scratch), Some(other.as_os_str()));
+        assert_eq!(reading, VersionReading::Known("2.1.317".to_string()));
+    }
+
+    #[test]
+    fn a_two_hop_link_chain_ending_at_the_launcher_is_the_launcher() {
+        let scratch = ScratchHome::new().expect("scratch");
+        link(&scratch, &install(&scratch, "2.1.317"));
+        let other = scratch.home().join("other-bin");
+        let middle = scratch.home().join("middle-bin");
+        fs::create_dir_all(&other).expect("dirs");
+        fs::create_dir_all(&middle).expect("dirs");
+        symlink(launcher(&scratch), middle.join("claude")).expect("symlink");
+        symlink(middle.join("claude"), other.join("claude")).expect("symlink");
+        let reading = read_version(&from(), &context(&scratch), Some(other.as_os_str()));
+        assert_eq!(reading, VersionReading::Known("2.1.317".to_string()));
+    }
 }
