@@ -17,7 +17,7 @@ versions = ">=1.0.0, <2.0.0"
 summary = "Keys that control how managed sources combine, so a file that holds only these delivers no policy."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/managed" }
 last_verified = 2026-11-20
-keys = ["alpha", "beta"]
+keys = ["beta", "alpha"]
 "#;
 
 fn rejects(text: &str, needles: &[&str]) {
@@ -37,7 +37,8 @@ fn a_keys_item_parses_with_its_key_names_in_file_order() {
     let item = &file.items()[0];
     assert_eq!(item.class(), Class::Keys);
     assert_eq!(item.layer(), Layer::Fast);
-    assert_eq!(item.keys(), ["alpha", "beta"]);
+    // Not sorted in the file: an implementation that sorts would fail here.
+    assert_eq!(item.keys(), ["beta", "alpha"]);
 }
 
 #[test]
@@ -50,24 +51,24 @@ fn schema_two_is_refused_and_schema_three_is_read() {
 
 #[test]
 fn a_keys_item_without_a_keys_list_is_refused_naming_the_item() {
-    let text = FILE.replace("keys = [\"alpha\", \"beta\"]\n", "");
+    let text = FILE.replace("keys = [\"beta\", \"alpha\"]\n", "");
     rejects(&text, &["demo.control-keys", "keys"]);
 }
 
 #[test]
 fn an_empty_keys_list_is_refused_naming_the_item() {
-    let text = FILE.replace("[\"alpha\", \"beta\"]", "[]");
+    let text = FILE.replace("[\"beta\", \"alpha\"]", "[]");
     rejects(&text, &["demo.control-keys", "empty"]);
 }
 
 #[test]
 fn a_key_name_must_be_a_non_empty_string() {
     rejects(
-        &FILE.replace("[\"alpha\", \"beta\"]", "[\"alpha\", \"\"]"),
+        &FILE.replace("[\"beta\", \"alpha\"]", "[\"beta\", \"\"]"),
         &["demo.control-keys", "empty"],
     );
     rejects(
-        &FILE.replace("[\"alpha\", \"beta\"]", "[\"alpha\", 3]"),
+        &FILE.replace("[\"beta\", \"alpha\"]", "[\"beta\", 3]"),
         &["demo.control-keys", "string"],
     );
 }
@@ -75,8 +76,8 @@ fn a_key_name_must_be_a_non_empty_string() {
 #[test]
 fn a_repeated_key_name_is_refused_naming_it() {
     rejects(
-        &FILE.replace("[\"alpha\", \"beta\"]", "[\"alpha\", \"beta\", \"alpha\"]"),
-        &["demo.control-keys", "alpha"],
+        &FILE.replace("[\"beta\", \"alpha\"]", "[\"beta\", \"alpha\", \"beta\"]"),
+        &["demo.control-keys", "beta"],
     );
 }
 
@@ -100,12 +101,16 @@ fn the_embedded_seed_names_the_claude_code_managed_control_keys() {
         .expect("the control-key item is in the seed");
     assert_eq!(item.class(), Class::Keys);
     assert_eq!(item.harness(), "claude-code");
-    for name in [
-        "managedSourcesBehavior",
-        "policyHelper",
-        "wslInheritsWindowsSettings",
-    ] {
-        assert!(item.keys().iter().any(|key| key == name), "{name} missing");
-    }
+    let mut names: Vec<&str> = item.keys().iter().map(String::as_str).collect();
+    names.sort_unstable();
+    assert_eq!(
+        names,
+        [
+            "managedSourcesBehavior",
+            "policyHelper",
+            "wslInheritsWindowsSettings"
+        ],
+        "exactly the three delivery controls, no more"
+    );
     assert!(item.reference().locator().contains("managed-settings"));
 }
