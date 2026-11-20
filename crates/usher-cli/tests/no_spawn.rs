@@ -33,7 +33,10 @@ fn the_cli_and_the_adapter_name_no_process_spawn_api() {
         for (number, line) in text.lines().enumerate() {
             let spawns = line.contains("process::Command")
                 || line.contains("Command::new")
-                || (line.contains("std::process") && line.contains("Command"));
+                || (line.contains("std::process") && line.contains("Command"))
+                || ["libc::", "posix_spawn", "fork(", "execv"]
+                    .iter()
+                    .any(|token| line.contains(token));
             if spawns {
                 hits.push(format!(
                     "{}:{}: {}",
@@ -48,5 +51,38 @@ fn the_cli_and_the_adapter_name_no_process_spawn_api() {
         hits.is_empty(),
         "a process-spawn API is named:\n{}",
         hits.join("\n")
+    );
+}
+
+/// The one way a spawn could arrive without a token in the source is a Cargo change that
+/// turns on a process feature of `nix`, so the feature list is pinned: exactly `user` and
+/// `hostname`, set once in the workspace and inherited by the CLI without an override.
+#[test]
+fn the_nix_features_are_exactly_user_and_hostname() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let workspace = fs::read_to_string(root.join("Cargo.toml")).expect("the workspace manifest");
+    let line = workspace
+        .lines()
+        .find(|l| l.trim_start().starts_with("nix = "))
+        .expect("a workspace nix line");
+    let start = line.find("features = [").expect("a feature list") + "features = [".len();
+    let end = start + line[start..].find(']').expect("the list ends");
+    let mut features: Vec<&str> = line[start..end]
+        .split(',')
+        .map(|f| f.trim().trim_matches('"'))
+        .filter(|f| !f.is_empty())
+        .collect();
+    features.sort_unstable();
+    assert_eq!(features, ["hostname", "user"], "{line}");
+    let cli = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
+        .expect("the CLI manifest");
+    let nix: Vec<&str> = cli
+        .lines()
+        .filter(|l| l.trim_start().starts_with("nix"))
+        .collect();
+    assert_eq!(
+        nix,
+        ["nix.workspace = true"],
+        "the CLI overrides the nix line"
     );
 }
