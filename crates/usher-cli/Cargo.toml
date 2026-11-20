@@ -13,6 +13,7 @@ usher-adapter-claude-code.workspace = true
 usher-store.workspace = true
 
 [dev-dependencies]
+rusqlite.workspace = true
 usher-testkit.workspace = true
 usher-knowledge = { workspace = true, features = ["test-keys"] }
 
