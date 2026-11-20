@@ -1393,7 +1393,7 @@ fn no_public_function_on_any_type_returns_a_wire_request_whatever_its_qualifiers
             continue;
         }
         let end = from
-            .find(|c| c == '{' || c == ';')
+            .find(['{', ';'])
             .expect("a signature ends at a brace or a semicolon");
         let signature = &from[..end];
         found += 1;
