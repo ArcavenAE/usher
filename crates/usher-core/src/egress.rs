@@ -301,6 +301,30 @@ pub trait Policy {
     fn allows(&self, class: Class) -> bool;
 }
 
+/// A policy that refuses every class. Tests only.
+#[cfg(feature = "test-seam")]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DenyAll;
+
+#[cfg(feature = "test-seam")]
+impl Policy for DenyAll {
+    fn allows(&self, _class: Class) -> bool {
+        false
+    }
+}
+
+/// A policy that allows every class. Tests only.
+#[cfg(feature = "test-seam")]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AllowAll;
+
+#[cfg(feature = "test-seam")]
+impl Policy for AllowAll {
+    fn allows(&self, _class: Class) -> bool {
+        false
+    }
+}
+
 /// The Story 1.15 policy: person-started calls only.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PersonStartedOnly;
