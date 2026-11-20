@@ -260,13 +260,13 @@ fn the_store_runs_wal_with_synchronous_full_a_busy_timeout_and_foreign_keys() {
 }
 
 #[test]
-fn a_new_store_is_at_user_version_two() {
+fn a_new_store_is_at_user_version_three() {
     let scratch = ScratchHome::new().expect("scratch home");
     let (_store, dir) = open(&scratch);
     let version: i64 = raw(&dir)
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .expect("user_version");
-    assert_eq!(version, 2);
+    assert_eq!(version, 3);
 }
 
 #[test]
@@ -335,7 +335,7 @@ fn an_existing_owner_only_directory_is_used_and_an_empty_database_file_is_initia
     let version: i64 = raw(&dir)
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .expect("user_version");
-    assert_eq!(version, 2, "the empty file was initialized");
+    assert_eq!(version, 3, "the empty file was initialized");
 }
 
 #[test]
@@ -360,13 +360,13 @@ fn a_database_from_a_newer_usher_is_refused() {
     let (store, dir) = open(&scratch);
     drop(store);
     raw(&dir)
-        .execute_batch("PRAGMA user_version = 3;")
+        .execute_batch("PRAGMA user_version = 4;")
         .expect("a newer version");
     refused(Store::open(&dir), &["newer"]);
     let version: i64 = raw(&dir)
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .expect("user_version");
-    assert_eq!(version, 3, "a refused database is left as it was");
+    assert_eq!(version, 4, "a refused database is left as it was");
 }
 
 #[test]
@@ -594,7 +594,12 @@ fn the_store_holds_derived_state_only() {
     tables.sort();
     assert_eq!(
         tables,
-        ["inventory_run", "inventory_seat", "inventory_source"],
+        [
+            "inventory_run",
+            "inventory_seat",
+            "inventory_source",
+            "map_setting"
+        ],
         "no table beyond the allowlist"
     );
 
@@ -617,7 +622,8 @@ fn the_store_holds_derived_state_only() {
             "harness_version",
             "knowledge_schema",
             "knowledge_sequence",
-            "environment_key"
+            "environment_key",
+            "verb"
         ]
     );
     assert_eq!(
@@ -646,6 +652,7 @@ fn the_store_holds_derived_state_only() {
         "claude-code",
         "2.1.317",
         "env-key-1",
+        "inventory",
         "claude-code.source-global-state",
         "/h/.claude.json",
         "user",
@@ -750,5 +757,5 @@ fn a_file_already_switched_to_wal_at_version_zero_opens_and_gets_the_schema() {
     let version: i64 = raw(&dir)
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .expect("user_version");
-    assert_eq!(version, 2);
+    assert_eq!(version, 3);
 }
