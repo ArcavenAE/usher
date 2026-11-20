@@ -260,13 +260,13 @@ fn the_store_runs_wal_with_synchronous_full_a_busy_timeout_and_foreign_keys() {
 }
 
 #[test]
-fn a_new_store_is_at_user_version_one() {
+fn a_new_store_is_at_user_version_two() {
     let scratch = ScratchHome::new().expect("scratch home");
     let (_store, dir) = open(&scratch);
     let version: i64 = raw(&dir)
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .expect("user_version");
-    assert_eq!(version, 1);
+    assert_eq!(version, 2);
 }
 
 #[test]
@@ -335,7 +335,7 @@ fn an_existing_owner_only_directory_is_used_and_an_empty_database_file_is_initia
     let version: i64 = raw(&dir)
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .expect("user_version");
-    assert_eq!(version, 1, "the empty file was initialized");
+    assert_eq!(version, 2, "the empty file was initialized");
 }
 
 #[test]
@@ -360,13 +360,13 @@ fn a_database_from_a_newer_usher_is_refused() {
     let (store, dir) = open(&scratch);
     drop(store);
     raw(&dir)
-        .execute_batch("PRAGMA user_version = 2;")
+        .execute_batch("PRAGMA user_version = 3;")
         .expect("a newer version");
     refused(Store::open(&dir), &["newer"]);
     let version: i64 = raw(&dir)
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .expect("user_version");
-    assert_eq!(version, 2, "a refused database is left as it was");
+    assert_eq!(version, 3, "a refused database is left as it was");
 }
 
 #[test]
@@ -743,5 +743,5 @@ fn a_file_already_switched_to_wal_at_version_zero_opens_and_gets_the_schema() {
     let version: i64 = raw(&dir)
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .expect("user_version");
-    assert_eq!(version, 1);
+    assert_eq!(version, 2);
 }
