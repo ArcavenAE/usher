@@ -137,6 +137,28 @@ versions = ">=1.57.0, <2.0.0"
 summary = "GOOSE_PATH_ROOT, when absolute, relocates goose config, data and state."
 reference = { kind = "source", locator = "https://raw.githubusercontent.com/aaif-goose/goose/main/crates/goose/src/config/paths.rs" }
 last_verified = 2026-11-02
+[[item]]
+id = "claude-code.seat-auth-env"
+harness = "claude-code"
+layer = "slow"
+class = "seat"
+versions = ">=2.1.317, <3.0.0"
+summary = "Environment variables that select the backend and the credential Claude Code uses: an API key, an auth token, an OAuth token, or one of three cloud providers. Only whether each is set is read, never its value. Applies to a fleet seat."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/env-vars" }
+last_verified = 2026-11-20
+seat = { part = "auth-route", read = "env", variables = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"] }
+
+[[item]]
+id = "claude-code.seat-auth-account"
+harness = "claude-code"
+layer = "slow"
+class = "seat"
+versions = ">=2.1.317, <3.0.0"
+summary = "Whether the global state file has a top-level oauthAccount key, which marks a subscription login. The vendor page says the file holds account details; the key name itself was observed on one host on 2026-11-20 and is not documented. Only membership is read, never the value or anything under it. Applies to a fleet seat."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/claude-directory" }
+last_verified = 2026-11-20
+seat = { part = "auth-route", path = "${HOME}/.claude.json", read = "keys-present", keys = ["oauthAccount"] }
+
 
 [[support]]
 harness = "claude-code"
