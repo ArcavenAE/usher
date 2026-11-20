@@ -357,3 +357,48 @@ fn the_seat_block_follows_the_sources_and_the_seed_lines_end_with_their_items() 
         assert!(!out.contains(leaked), "{leaked}");
     }
 }
+
+#[test]
+fn an_empty_environment_value_counts_as_not_set() {
+    let rig = Rig::new();
+    let out = rig.fixture_run(&rig.env(&[("FLEET_TOKEN", ""), ("FLEET_API_KEY", "k")]));
+    assert_eq!(
+        line_for(&out, "claude-code.fx-env"),
+        "auth-route  env  FLEET_API_KEY present, FLEET_TOKEN absent (knowledge item claude-code.fx-env)"
+    );
+    let rows = rig.rows();
+    assert_eq!(
+        row(&rows, "claude-code.fx-env").members,
+        [
+            ("FLEET_API_KEY".to_string(), true),
+            ("FLEET_TOKEN".to_string(), false)
+        ]
+    );
+}
+
+#[test]
+fn two_differing_mcp_json_files_print_two_lines_with_names_first_then_the_stamp() {
+    let rig = Rig::new();
+    let launch = rig.repo.join("pkg");
+    fs::create_dir_all(&launch).expect("dirs");
+    let repo_file = rig.write(&rig.repo.join(".mcp.json"), r#"{"mcpServers":{"s2":{}}}"#);
+    let launch_file = rig.write(&launch.join(".mcp.json"), r#"{"mcpServers":{"s1":{}}}"#);
+    let mut env = rig.env(&[]);
+    env.launch_dir = launch;
+    let out = inventory(&env, SystemRoot::at(rig.system.clone())).expect("an inventory");
+    let stamp = "which of the two Claude Code loads from a subdirectory launch is not stated";
+    assert_eq!(
+        line_for(&out, "claude-code.seat-mcp-launch-dir"),
+        format!(
+            "mcp  {}  present (names: mcpServers.s1; {stamp}) (knowledge item claude-code.seat-mcp-launch-dir)",
+            launch_file.display()
+        )
+    );
+    assert_eq!(
+        line_for(&out, "claude-code.seat-mcp-repo-root"),
+        format!(
+            "mcp  {}  present (names: mcpServers.s2; {stamp}) (knowledge item claude-code.seat-mcp-repo-root)",
+            repo_file.display()
+        )
+    );
+}

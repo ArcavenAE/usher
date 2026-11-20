@@ -88,6 +88,28 @@ summary = "A login marker."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/keys" }
 last_verified = 2026-11-20
 seat = { part = "auth-route", path = "${HOME}/.state.json", read = "keys-present", keys = ["oauthAccount"] }
+
+[[item]]
+id = "claude-code.fx-deep"
+harness = "claude-code"
+layer = "slow"
+class = "seat"
+versions = ">=2.1.317, <3.0.0"
+summary = "A wildcard over a nested key."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/deep" }
+last_verified = 2026-11-20
+seat = { part = "toolchain", path = "${HOME}/.deep.json", read = "names", key_paths = ["servers.*.env"] }
+
+[[item]]
+id = "claude-code.fx-plain"
+harness = "claude-code"
+layer = "slow"
+class = "seat"
+versions = ">=2.1.317, <3.0.0"
+summary = "A plain wildcard."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/plain" }
+last_verified = 2026-11-20
+seat = { part = "toolchain", path = "${HOME}/.plain.json", read = "names", key_paths = ["servers.*"] }
 "#;
 
 struct Rig {
@@ -441,4 +463,121 @@ fn the_seed_reads_the_auth_route_by_variable_presence_and_the_login_key_by_membe
     assert_eq!(account.path.as_deref(), Some(global.as_path()));
     assert_eq!(account.members, [("oauthAccount".to_string(), true)]);
     assert!(!format!("{listing:?}").contains("alex@example.test"));
+}
+
+#[test]
+fn a_wildcard_lists_a_credential_childs_own_name_and_reads_nothing_under_it() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.home().join(".deep.json"),
+        r#"{"servers":{"oauthAccount":{"env":{"K":"v"}},"ok":{"env":{"K":"v2"}}}}"#,
+    );
+    let listing = rig.fixture(&rig.context(&rig.repo, &[]));
+    let l = line(&listing, "claude-code.fx-deep");
+    assert!(
+        l.names.contains(&seg(&["servers", "oauthAccount"])),
+        "{:?}",
+        l.names
+    );
+    assert!(
+        l.names.contains(&seg(&["servers", "ok", "env", "K"])),
+        "{:?}",
+        l.names
+    );
+    assert!(
+        !l.names
+            .iter()
+            .any(|n| n.len() > 2 && n[0] == "servers" && n[1] == "oauthAccount"),
+        "no env and no K under the credential child: {:?}",
+        l.names
+    );
+    assert!(!format!("{listing:?}").contains("\"v\""), "no value");
+}
+
+#[test]
+fn a_plain_wildcard_lists_the_credential_childs_name() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.home().join(".plain.json"),
+        r#"{"servers":{"oauthAccount":{"secret-inner":"v"},"ok":{}}}"#,
+    );
+    let listing = rig.fixture(&rig.context(&rig.repo, &[]));
+    let l = line(&listing, "claude-code.fx-plain");
+    assert_eq!(
+        l.names,
+        vec![seg(&["servers", "oauthAccount"]), seg(&["servers", "ok"])]
+    );
+    assert!(!format!("{listing:?}").contains("secret-inner"));
+}
+
+#[test]
+fn a_credential_key_at_any_depth_is_listed_by_name_only() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.home().join(".deep.json"),
+        r#"{"servers":{"a":{"env":{"oauthAccount":{"INNER":"v"}}}}}"#,
+    );
+    let listing = rig.fixture(&rig.context(&rig.repo, &[]));
+    let l = line(&listing, "claude-code.fx-deep");
+    assert!(
+        l.names
+            .contains(&seg(&["servers", "a", "env", "oauthAccount"])),
+        "{:?}",
+        l.names
+    );
+    assert!(!format!("{listing:?}").contains("INNER"));
+}
+
+#[test]
+fn seat_lines_follow_the_part_declaration_order_then_the_item_id() {
+    let rig = Rig::new();
+    let listing = rig.fixture(&rig.context(&rig.repo, &[]));
+    let ids: Vec<&str> = listing
+        .seat
+        .iter()
+        .map(|l| l.item_id.as_str())
+        .filter(|id| id.starts_with("claude-code.fx-"))
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "claude-code.fx-servers",
+            "claude-code.fx-packs",
+            "claude-code.fx-client",
+            "claude-code.fx-env",
+            "claude-code.fx-keys",
+            "claude-code.fx-deep",
+            "claude-code.fx-plain",
+            "claude-code.fx-wide",
+        ]
+    );
+}
+
+#[test]
+fn the_seed_names_its_two_mcp_json_items_by_where_they_look() {
+    let rig = Rig::new();
+    let launch = rig.repo.join("pkg");
+    rig.write(
+        &rig.repo.join(".mcp.json"),
+        r#"{"mcpServers":{"repo-server":{}}}"#,
+    );
+    rig.write(
+        &launch.join(".mcp.json"),
+        r#"{"mcpServers":{"launch-server":{}}}"#,
+    );
+    let listing = rig.seed(&rig.context(&launch, &[]));
+    let by_launch = line(&listing, "claude-code.seat-mcp-launch-dir");
+    let by_repo = line(&listing, "claude-code.seat-mcp-repo-root");
+    assert_eq!(
+        by_launch.path.as_deref(),
+        Some(launch.join(".mcp.json").as_path())
+    );
+    assert_eq!(
+        by_repo.path.as_deref(),
+        Some(rig.repo.join(".mcp.json").as_path())
+    );
+    assert_eq!(by_launch.names, vec![seg(&["mcpServers", "launch-server"])]);
+    assert_eq!(by_repo.names, vec![seg(&["mcpServers", "repo-server"])]);
+    assert_eq!(by_launch.note.as_deref(), Some(NOT_STATED));
+    assert_eq!(by_repo.note.as_deref(), Some(NOT_STATED));
 }

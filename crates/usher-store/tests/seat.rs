@@ -126,3 +126,38 @@ fn a_run_with_no_seat_lines_has_none() {
     let id = store.record_inventory(&run(), &[]).expect("a run");
     assert!(store.seat_of(id).expect("rows").is_empty());
 }
+
+#[test]
+fn environment_and_key_members_round_trip_as_pairs_with_absent_ones_included() {
+    let scratch = ScratchHome::new().expect("scratch");
+    let mut store = Store::open(&scratch.home().join(".local/state/usher")).expect("a store");
+    let vars = vec![
+        ("FLEET_API_KEY".to_string(), false),
+        ("FLEET_TOKEN".to_string(), true),
+    ];
+    let keys = vec![("oauthAccount".to_string(), false)];
+    let seat = [
+        SeatRecord {
+            part: "auth-route",
+            item_id: "claude-code.seat-auth-env",
+            present: None,
+            names: &[],
+            members: &vars,
+        },
+        SeatRecord {
+            part: "auth-route",
+            item_id: "claude-code.seat-auth-account",
+            present: Some(false),
+            names: &[],
+            members: &keys,
+        },
+    ];
+    let id = store
+        .record_inventory_with_seat(&run(), &[], &seat)
+        .expect("a run");
+    let rows = store.seat_of(id).expect("rows");
+    assert_eq!(rows[0].present, None);
+    assert_eq!(rows[0].members, vars);
+    assert_eq!(rows[1].present, Some(false));
+    assert_eq!(rows[1].members, keys);
+}
