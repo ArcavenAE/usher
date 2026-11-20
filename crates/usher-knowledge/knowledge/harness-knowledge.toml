@@ -5,8 +5,8 @@
 # research map of 2026-11-02 and cite the sources it cites. Support entries are
 # usher's own statement: no adapter exists yet, so nothing is offered.
 
-schema_version = 2
-sequence = 2
+schema_version = 3
+sequence = 3
 
 [[item]]
 id = "claude-code.config-dir-variable"
@@ -16,7 +16,8 @@ class = "paths"
 versions = ">=2.1.317, <3.0.0"
 summary = "CLAUDE_CONFIG_DIR relocates the user config home."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/env-vars" }
-last_verified = 2026-11-02
+last_verified = 2026-11-20
+variable = { name = "CLAUDE_CONFIG_DIR", binds = "${CONFIG_DIR}", default = "${HOME}/.claude" }
 
 [[item]]
 id = "claude-code.source-managed-file"
@@ -27,7 +28,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "The managed settings file on macOS. Managed sources are first-wins; the file ranks below server-managed and MDM delivery."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/managed-settings" }
 last_verified = 2026-11-15
-source = { path = "/Library/Application Support/ClaudeCode/managed-settings.json", layer = "managed", read = "first-wins", rank = 3 }
+source = { path = "/Library/Application Support/ClaudeCode/managed-settings.json", layer = "managed", read = "first-wins", rank = 3, always_present = false, platforms = ["macos"] }
 
 [[item]]
 id = "claude-code.source-managed-file-linux"
@@ -38,7 +39,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "The managed settings file on Linux and WSL; same tier and rank as the macOS file. The Windows path is not listed yet."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/managed-settings" }
 last_verified = 2026-11-15
-source = { path = "/etc/claude-code/managed-settings.json", layer = "managed", read = "first-wins", rank = 3 }
+source = { path = "/etc/claude-code/managed-settings.json", layer = "managed", read = "first-wins", rank = 3, always_present = false, platforms = ["linux"] }
 
 [[item]]
 id = "claude-code.source-user-settings"
@@ -49,7 +50,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "The user settings file; CLAUDE_CONFIG_DIR relocates the folder it lives in."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
 last_verified = 2026-11-15
-source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", rank = 1 }
+source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", rank = 1, always_present = true }
 
 [[item]]
 id = "claude-code.source-project-settings"
@@ -60,7 +61,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "The shared project settings file, read from the directory the session starts in, which is the repository root only when the session starts there."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
 last_verified = 2026-11-15
-source = { path = "${LAUNCH_DIR}/.claude/settings.json", layer = "project", read = "read", rank = 1 }
+source = { path = "${LAUNCH_DIR}/.claude/settings.json", layer = "project", read = "read", rank = 1, always_present = true }
 
 [[item]]
 id = "claude-code.source-local-settings"
@@ -71,7 +72,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "The personal project settings file, kept out of git. Claude Code reads and writes it at the repository root; it stays beside .claude/settings.json outside a git repository, when the root is the home directory, on Windows, or when the root, .git or .claude is not owned by the user, and a copy an earlier version left in the starting directory is still read."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
 last_verified = 2026-11-15
-source = { path = "${REPO}/.claude/settings.local.json", layer = "local", read = "read", rank = 1 }
+source = { path = "${REPO}/.claude/settings.local.json", layer = "local", read = "read", rank = 1, always_present = true }
 
 [[item]]
 id = "claude-code.source-global-state"
@@ -82,7 +83,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "The file Claude Code writes for itself: account details, MCP server configurations, per-project state. Whether CLAUDE_CONFIG_DIR relocates it is not stated on the settings page."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
 last_verified = 2026-11-15
-source = { path = "${HOME}/.claude.json", layer = "global-state", read = "read", rank = 1 }
+source = { path = "${HOME}/.claude.json", layer = "global-state", read = "read", rank = 1, always_present = false }
 
 [[item]]
 id = "claude-code.source-server-managed-cache"
@@ -93,7 +94,29 @@ versions = ">=2.1.317, <3.0.0"
 summary = "The cache of server-managed settings, written to ~/.claude/remote-settings.json. Whether CLAUDE_CONFIG_DIR relocates it is not stated; the path uses the config-directory token on the reading that ~/.claude names that folder."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/server-managed-settings" }
 last_verified = 2026-11-15
-source = { path = "${CONFIG_DIR}/remote-settings.json", layer = "server-managed-cache", read = "read", rank = 1 }
+source = { path = "${CONFIG_DIR}/remote-settings.json", layer = "server-managed-cache", read = "read", rank = 1, always_present = false }
+
+[[item]]
+id = "claude-code.managed-control-keys"
+harness = "claude-code"
+layer = "fast"
+class = "keys"
+versions = ">=2.1.317, <3.0.0"
+summary = "Settings that control how managed sources are delivered and combined and carry no policy of their own, so a managed file that holds only these delivers nothing."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/managed-settings" }
+last_verified = 2026-11-20
+keys = ["policyHelper", "wslInheritsWindowsSettings", "managedSourcesBehavior"]
+
+[[item]]
+id = "claude-code.native-launcher"
+harness = "claude-code"
+layer = "slow"
+class = "paths"
+versions = ">=2.1.317, <3.0.0"
+summary = "The native installer's launcher on macOS and Linux is a symlink to a file named by its version. A custom launcher or another install method reads as version unknown. Windows reads unknown."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/setup" }
+last_verified = 2026-11-20
+version_from = { launcher = "${HOME}/.local/bin/claude", rule = "symlink-target-last-component", layout = "${HOME}/.local/share/claude/versions/${VERSION}" }
 
 [[item]]
 id = "codex.home-variable"
