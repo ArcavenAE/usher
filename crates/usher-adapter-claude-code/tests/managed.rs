@@ -3,6 +3,7 @@
 //! ranks and platforms below are the test's own.
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use usher_adapter_claude_code::ClaudeCodeAdapter;
@@ -15,7 +16,30 @@ use usher_testkit::{ScratchHome, Signer};
 const TOP: &str = "etc/claude-code/managed-top.json";
 const MIDDLE: &str = "etc/claude-code/managed-middle.json";
 const LOW: &str = "etc/claude-code/managed-low.json";
+const EVERY_USER: &str = "every/user-settings.json";
+const MAC_USER: &str = "mac/user-settings.json";
 const MAC_ONLY: &str = "Library/Application Support/ClaudeCode/managed-settings.json";
+
+/// A user-layer source that always exists, limited or not to some platforms.
+fn user_item(id: &str, path: &str, platforms: Option<&str>) -> String {
+    let platforms = platforms
+        .map(|list| format!(", platforms = {list}"))
+        .unwrap_or_default();
+    format!(
+        r#"
+[[item]]
+id = "{id}"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "A user settings file."
+reference = {{ kind = "vendor-docs", locator = "https://example.test/docs/settings" }}
+last_verified = 2026-11-20
+source = {{ path = "{path}", layer = "user", read = "read", rank = 1, always_present = true{platforms} }}
+"#
+    )
+}
 
 fn item(id: &str, path: &str, rank: u32, platforms: Option<&str>) -> String {
     let platforms = platforms
@@ -44,7 +68,7 @@ fn fixture() -> KnowledgeFile {
         r#"
 schema_version = 3
 sequence = 99
-{}{}{}{}
+{}{}{}{}{}{}
 [[item]]
 id = "claude-code.managed-control-keys"
 harness = "claude-code"
@@ -65,6 +89,12 @@ keys = ["policyHelper", "wslInheritsWindowsSettings", "managedSourcesBehavior"]
         ),
         item("demo.low", &format!("/{LOW}"), 2, Some(r#"["linux"]"#)),
         item("demo.mac", &format!("/{MAC_ONLY}"), 5, Some(r#"["macos"]"#)),
+        user_item("demo.every-user", &format!("/{EVERY_USER}"), None),
+        user_item(
+            "demo.mac-user",
+            &format!("/{MAC_USER}"),
+            Some(r#"["macos"]"#)
+        ),
     );
     let signer = Signer::new();
     let trusted = TrustedKeys::for_tests(&signer.public_key_base64(), None).expect("keys");
@@ -258,11 +288,66 @@ fn another_platforms_source_never_takes_part_in_first_wins() {
 }
 
 #[test]
-fn another_platforms_absent_source_is_neither_listed_nor_named() {
+fn another_platforms_absent_always_present_source_is_not_named_while_an_every_platform_one_is() {
     let rig = Rig::new();
     let listing = rig.list();
     assert!(listing.sources.is_empty());
-    assert!(listing.absent_layers.iter().all(|a| a.layer != "managed"));
+    let user = listing
+        .absent_layers
+        .iter()
+        .find(|a| a.layer == "user")
+        .unwrap_or_else(|| panic!("the every-platform user source is named: {listing:?}"));
+    assert_eq!(user.paths, [rig.system.join(EVERY_USER)]);
     let named = format!("{:?}", listing.absent_layers);
-    assert!(!named.contains("ClaudeCode"), "{named}");
+    assert!(!named.contains(MAC_USER), "{named}");
+}
+
+#[test]
+fn an_unreadable_top_file_is_unknown_and_leaves_the_lower_ones_undecided() {
+    let rig = Rig::new();
+    let top = rig.file(TOP, POLICY);
+    fs::set_permissions(&top, fs::Permissions::from_mode(0o000)).expect("mode");
+    let middle = rig.file(MIDDLE, POLICY);
+    let listing = rig.list();
+    assert_eq!(listing.sources.len(), 2, "{:?}", listing.sources);
+    match status_of(&listing, &top) {
+        SourceStatus::Unknown { reason } => assert!(!reason.is_empty()),
+        other => panic!("expected unknown, got {other:?}"),
+    }
+    assert_eq!(
+        status_of(&listing, &middle),
+        &SourceStatus::Unknown {
+            reason: format!(
+                "first-wins not decided: {} could not be read",
+                top.display()
+            ),
+        }
+    );
+}
+
+#[test]
+fn a_non_delivering_top_then_a_bad_file_leaves_the_lowest_undecided() {
+    let rig = Rig::new();
+    let top = rig.file(TOP, "{}");
+    let middle = rig.file(MIDDLE, "{ not json");
+    let low = rig.file(LOW, POLICY);
+    let listing = rig.list();
+    assert_eq!(listing.sources.len(), 3, "{:?}", listing.sources);
+    assert_eq!(
+        status_of(&listing, &top),
+        &unread("delivers no policy key: empty")
+    );
+    assert!(matches!(
+        status_of(&listing, &middle),
+        SourceStatus::Unknown { .. }
+    ));
+    assert_eq!(
+        status_of(&listing, &low),
+        &SourceStatus::Unknown {
+            reason: format!(
+                "first-wins not decided: {} could not be read",
+                middle.display()
+            ),
+        }
+    );
 }

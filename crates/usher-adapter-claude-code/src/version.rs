@@ -296,6 +296,19 @@ mod tests {
         assert_eq!(reading, VersionReading::Known("2.1.317".to_string()));
     }
 
+    /// `sh` only runs a regular file, so a directory named `claude` is passed over.
+    #[test]
+    fn a_directory_named_claude_earlier_on_path_is_passed_over() {
+        let scratch = ScratchHome::new().expect("scratch");
+        link(&scratch, &install(&scratch, "2.1.317"));
+        let decoy = scratch.home().join("dir-bin");
+        fs::create_dir_all(decoy.join("claude")).expect("dirs");
+        let path =
+            std::env::join_paths([decoy, scratch.home().join(".local/bin")]).expect("a path");
+        let reading = read_version(&from(), &context(&scratch), Some(&path));
+        assert_eq!(reading, VersionReading::Known("2.1.317".to_string()));
+    }
+
     /// An empty entry is the launch directory, never usher's own working directory.
     #[test]
     fn an_empty_path_entry_means_the_launch_directory() {
