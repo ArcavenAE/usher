@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use common::{fake_harness, hold};
 use usher_probes::{
     fragment::Date,
-    run::{Spec, run},
+    run::{Harness, Launcher, Spec, Unmeasured, run},
 };
 use usher_testkit::ScratchHome;
 
@@ -52,4 +52,69 @@ fn a_start_that_outlives_the_timeout_is_killed_and_the_probe_is_not_run() {
         "the process was not killed at the timeout: {:?}",
         started.elapsed()
     );
+}
+
+// The timeout wins however the claim handles the failed start: it may pass the
+// io error on as Broken, name another reason, or carry on and return a result.
+#[test]
+fn the_timeout_wins_whatever_the_claim_returns_after_a_start_timed_out() {
+    let scratch = ScratchHome::new().expect("scratch home");
+    let bin = fake_harness(&scratch, "fakeh", "fakeh 1.2.3");
+    let spec = Spec::new("demo-probe", "fakeh")
+        .search_path(bin.as_os_str())
+        .timeout(Duration::from_secs(1));
+    // Control: the same claim shapes on a start that returns at once are results.
+    for held in [true, false] {
+        assert!(
+            run(
+                &spec,
+                &scratch,
+                today(),
+                |_, _| Ok(()),
+                |_, launcher| {
+                    launcher
+                        .run("/bin/sleep", &["0"])
+                        .map_err(|err| Unmeasured::Broken(err.to_string()))?;
+                    Ok(held)
+                },
+            )
+            .is_ok()
+        );
+    }
+
+    type Claim = fn(&Harness, &Launcher<'_>) -> Result<bool, Unmeasured>;
+    let claims: [(&str, Claim); 4] = [
+        ("passes the error on as Broken", |_, launcher| {
+            launcher
+                .run("/bin/sleep", &["6"])
+                .map_err(|err| Unmeasured::Broken(err.to_string()))?;
+            Ok(true)
+        }),
+        ("returns Passed after the error", |_, launcher| {
+            let _ = launcher.run("/bin/sleep", &["6"]).is_err();
+            Ok(true)
+        }),
+        ("returns Failed after the error", |_, launcher| {
+            let _ = launcher.run("/bin/sleep", &["6"]).is_err();
+            Ok(false)
+        }),
+        ("names another reason", |_, launcher| {
+            let _ = launcher.run("/bin/sleep", &["6"]).is_err();
+            Err(Unmeasured::NeedsNetwork)
+        }),
+    ];
+    for (what, claim) in claims {
+        let started = Instant::now();
+        let not_run = run(&spec, &scratch, today(), |_, _| Ok(()), claim)
+            .expect_err("a timed-out start is not a result");
+        assert_eq!(
+            not_run.to_string(),
+            "not run: timed out after 1 s",
+            "a claim that {what}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(4),
+            "a claim that {what}: the process was not killed at the timeout"
+        );
+    }
 }
