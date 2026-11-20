@@ -205,13 +205,13 @@ fn a_call_sends_exactly_the_listed_fields_and_fills_the_path() {
     let sent = transport.sent();
     assert_eq!(sent.len(), 1);
     let wire = &sent[0];
-    assert_eq!(wire.method, Method::Get);
-    assert_eq!(wire.host, FILE_URL_HOST);
-    assert_eq!(wire.path, "/knowledge.toml");
-    assert!(wire.query.is_empty());
-    assert!(wire.body.is_empty());
+    assert_eq!(wire.method(), Method::Get);
+    assert_eq!(wire.host(), FILE_URL_HOST);
+    assert_eq!(wire.path(), "/knowledge.toml");
+    assert!(wire.query().is_empty());
+    assert!(wire.body().is_empty());
     assert_eq!(
-        wire.headers,
+        wire.headers(),
         vec![("user-agent".to_string(), "usher".to_string())],
         "the headers are the listed ones and nothing else: no cookie, no accept-encoding"
     );
@@ -498,13 +498,13 @@ fn a_redirect_to_a_listed_host_is_followed_once_and_its_answer_returned() {
 
     let sent = transport.sent();
     assert_eq!(sent.len(), 2, "one call and one follow");
-    assert_eq!(sent[0].host, FILES_HOST);
-    assert_eq!(sent[0].path, "/knowledge.toml");
-    assert_eq!(sent[1].host, ASSETS_HOST);
-    assert_eq!(sent[1].path, "/release/knowledge.toml");
-    assert_eq!(sent[1].method, Method::Get);
+    assert_eq!(sent[0].host(), FILES_HOST);
+    assert_eq!(sent[0].path(), "/knowledge.toml");
+    assert_eq!(sent[1].host(), ASSETS_HOST);
+    assert_eq!(sent[1].path(), "/release/knowledge.toml");
+    assert_eq!(sent[1].method(), Method::Get);
     assert_eq!(
-        sent[1].headers,
+        sent[1].headers(),
         vec![("user-agent".to_string(), "usher".to_string())]
     );
 }
@@ -577,17 +577,17 @@ fn listed_query_and_body_fields_go_in_descriptor_order() {
         .expect("listed fields go through");
     let sent = transport.sent();
     assert_eq!(sent.len(), 1);
-    assert_eq!(sent[0].method, Method::Post);
-    assert_eq!(sent[0].path, "/report");
+    assert_eq!(sent[0].method(), Method::Post);
+    assert_eq!(sent[0].path(), "/report");
     assert_eq!(
-        sent[0].query,
+        sent[0].query(),
         vec![
             ("q2".to_string(), "one".to_string()),
             ("q1".to_string(), "three".to_string())
         ]
     );
     assert_eq!(
-        sent[0].body,
+        sent[0].body(),
         vec![
             ("b2".to_string(), "two".to_string()),
             ("b1".to_string(), "four".to_string())
@@ -681,8 +681,8 @@ fn a_303_and_a_308_to_a_listed_host_are_each_followed_once() {
         assert_eq!(response.body, b"moved body", "{status}");
         let sent = transport.sent();
         assert_eq!(sent.len(), 2, "{status}: one call and one follow");
-        assert_eq!(sent[1].host, ASSETS_HOST, "{status}");
-        assert_eq!(sent[1].path, "/moved", "{status}");
+        assert_eq!(sent[1].host(), ASSETS_HOST, "{status}");
+        assert_eq!(sent[1].path(), "/moved", "{status}");
     }
 }
 
@@ -776,7 +776,7 @@ fn a_get_with_an_extra_listed_header_follows_with_the_user_agent_only() {
     let sent = transport.sent();
     assert_eq!(sent.len(), 2);
     assert_eq!(
-        sent[0].headers,
+        sent[0].headers(),
         vec![
             ("user-agent".to_string(), "usher".to_string()),
             ("x-note".to_string(), "private".to_string())
@@ -784,11 +784,11 @@ fn a_get_with_an_extra_listed_header_follows_with_the_user_agent_only() {
         "the first request carries the listed header"
     );
     assert_eq!(
-        sent[1].headers,
+        sent[1].headers(),
         vec![("user-agent".to_string(), "usher".to_string())],
         "the follow carries the user agent and nothing else"
     );
-    assert!(sent[1].query.is_empty() && sent[1].body.is_empty());
+    assert!(sent[1].query().is_empty() && sent[1].body().is_empty());
 }
 
 #[test]
@@ -886,9 +886,9 @@ fn a_follow_carries_no_query_and_no_body_field_to_the_second_host() {
         let sent = transport.sent();
         assert_eq!(sent.len(), 2, "{name}");
         let first = if name == "q" {
-            &sent[0].query
+            &sent[0].query()
         } else {
-            &sent[0].body
+            &sent[0].body()
         };
         assert_eq!(
             first,
@@ -896,7 +896,7 @@ fn a_follow_carries_no_query_and_no_body_field_to_the_second_host() {
             "the first request carries the listed {name} field"
         );
         assert!(
-            sent[1].query.is_empty() && sent[1].body.is_empty(),
+            sent[1].query().is_empty() && sent[1].body().is_empty(),
             "{name}: the follow carried a query or body field"
         );
     }
