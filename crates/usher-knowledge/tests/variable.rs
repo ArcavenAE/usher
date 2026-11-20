@@ -95,9 +95,9 @@ fn only_a_paths_item_may_carry_a_variable() {
 
 #[test]
 fn a_variable_name_is_upper_case_letters_digits_and_underscores() {
+    for bad in [
         "demo_config_dir",
         "DEMO_dir",
-        "demo_config_dir",
         "1DEMO",
         "_DEMO",
         "DEMO-DIR",
