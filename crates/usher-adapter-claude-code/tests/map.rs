@@ -58,6 +58,28 @@ last_verified = 2026-11-20
 source = { path = "${LAUNCH_DIR}/.claude/settings.json", layer = "project", read = "read", rank = 1, always_present = true }
 
 [[item]]
+id = "claude-code.fx-managed"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The managed file."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/managed" }
+last_verified = 2026-11-20
+source = { path = "/etc/claude-code/managed-settings.json", layer = "managed", read = "first-wins", rank = 1, always_present = false, platforms = ["linux"] }
+
+[[item]]
+id = "claude-code.fx-local"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The local file."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/local" }
+last_verified = 2026-11-20
+source = { path = "${LAUNCH_DIR}/.claude/settings.local.json", layer = "local", read = "read", rank = 1, always_present = false }
+
+[[item]]
 id = "claude-code.fx-stack"
 harness = "claude-code"
 layer = "slow"
@@ -968,4 +990,26 @@ fn a_managed_source_shadowed_by_rank_is_a_skipped_layer() {
         reading(&map, "model", "user").status,
         ReadingStatus::InEffect
     );
+}
+
+// ---- order -----------------------------------------------------------------------------
+
+/// Keys come back sorted by key path, segment by segment, whatever order the files list
+/// them in. "a-b" sorts before "a.z" as a string and after it by segment, so a plain
+/// string sort fails this.
+#[test]
+fn keys_come_back_sorted_by_path_segment_by_segment() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.user_file(),
+        r#"{"b": 1, "a-b": 2, "a": {"z": 3}, "theme": "t"}"#,
+    );
+    let map = rig.seed_map(&[]);
+    let order: Vec<&str> = map
+        .readings
+        .iter()
+        .map(|r| r.key.as_str())
+        .filter(|k| ["a-b", "a.z", "b"].contains(k))
+        .collect();
+    assert_eq!(order, ["a.z", "a-b", "b"], "{:?}", map.readings);
 }
