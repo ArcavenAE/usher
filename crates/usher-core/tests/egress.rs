@@ -1353,3 +1353,12 @@ fn a_valid_host_name_of_253_characters_is_echoed() {
     assert!(text.contains(&host), "the 253-character host is not echoed");
     assert!(!text.contains("not a valid name"), "{text}");
 }
+
+#[test]
+fn no_refusal_uses_the_generic_step_because_every_one_has_a_descriptor_in_scope() {
+    let source = include_str!("../src/egress.rs");
+    assert!(
+        !source.contains("send an outbound call"),
+        "a refusal of a described call must say `send <name>`, not the generic step"
+    );
+}
