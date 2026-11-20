@@ -309,16 +309,11 @@ fn a_profile_that_covers_no_harness_is_refused() {
     let empty_table = format!("{no_table}\n[harnesses]\n");
     for text in [no_table.to_string(), empty_table] {
         let err = refusal(&text);
-        assert!(
-            err.check().contains("profile.toml") && err.check().contains("harnesses"),
-            "check: {}",
-            err.check()
+        assert_eq!(
+            err.check(),
+            "profile.toml: harnesses holds at least one harness"
         );
-        assert!(
-            err.status().contains("the profile covers no harness"),
-            "status: {}",
-            err.status()
-        );
+        assert_eq!(err.status(), "the profile covers no harness");
         assert!(err.step().contains(ORIGIN), "step: {}", err.step());
     }
 }
