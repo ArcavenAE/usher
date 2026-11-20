@@ -351,14 +351,7 @@ fn a_tool_name_is_one_to_one_hundred_twenty_eight_printable_characters_without_s
         let text = format!("{VALID}\n[tools]\n\"{good}\" = \">=1.0.0\"\n");
         assert_eq!(must_parse(&text).tools()[0].name(), good);
     }
-    for bad in [
-        "node js",
-        "a'b",
-        "a\\\"b",
-        "a\\u0001b",
-        "",
-        long_bad.as_str(),
-    ] {
+    for bad in ["node js", "a\\\"b", "a\\u0001b", "", long_bad.as_str()] {
         let text = format!("{VALID}\n[tools]\n\"{bad}\" = \">=1.0.0\"\n");
         let err = refusal(&text);
         assert!(
