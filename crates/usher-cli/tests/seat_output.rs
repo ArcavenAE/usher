@@ -459,7 +459,13 @@ fn a_source_under_an_unreadable_directory_prints_the_path_and_the_plain_kind() {
         );
         return;
     }
-    let out = rig.fixture_run(&rig.env(&[]));
+    let knowledge = Knowledge::embedded().expect("embedded");
+    let out = inventory_with(
+        &rig.env(&[]),
+        SystemRoot::at(rig.system.clone()),
+        &knowledge,
+    )
+    .expect("an inventory");
     let expected = format!(
         "not checked: user settings ({}: permission denied)",
         file.display()
