@@ -21,6 +21,10 @@ fn child_runs_the_inventory_over_the_process_environment() {
     };
     let root = PathBuf::from(root);
     let mut env = InventoryEnv::from_process().expect("this process's environment");
+    assert!(
+        env.launch.get("CLAUDE_CONFIG_DIR").is_none(),
+        "the child must not inherit a real config directory"
+    );
     env.home = root.join("home");
     env.state_dir = root.join("home/.local/state/usher");
     env.launch_dir = root.join("home/repo");
@@ -67,6 +71,7 @@ fn a_seat_only_variable_is_present_and_its_value_is_held_nowhere() {
             "child_runs_the_inventory_over_the_process_environment",
             "--nocapture",
         ])
+        .env_remove("CLAUDE_CONFIG_DIR")
         .env("USHER_SEAT_CHILD_ROOT", &root)
         .env("ANTHROPIC_API_KEY", SECRET)
         .output()
