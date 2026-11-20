@@ -536,6 +536,8 @@ name = "usher-core"
 version = "0.0.0"
 dependencies = [
  "serde_json",
+ "usher-core",
+ "usher-testkit",
 ]
 
 [[package]]
@@ -564,6 +566,7 @@ version = "0.0.0"
 dependencies = [
  "blake2",
  "ed25519-dalek",
+ "usher-core",
 ]
 
 [[package]]
