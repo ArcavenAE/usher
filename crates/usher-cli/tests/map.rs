@@ -777,3 +777,43 @@ fn a_segment_with_a_quote_or_a_space_round_trips_through_the_output_and_the_stor
     assert!(keys.contains(&r#"["a","b c"]"#.to_string()), "{keys:?}");
     assert!(keys.contains(&r#"["a","d\"e"]"#.to_string()), "{keys:?}");
 }
+
+/// A settings file that could not be read is named in the footer, with why, and what that
+/// means for the keys. Neither the file's bytes nor its canary reach the output or the
+/// store.
+///
+/// Provisional: the wording is not final.
+#[test]
+fn the_footer_names_a_settings_file_that_could_not_be_read() {
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"model": "user-model"}"#);
+    let project = rig.write(&rig.project_file(), r#"["canary-array"]"#);
+    let env = rig.env();
+    let out = rig.map(&env);
+    let expected = format!(
+        "project file {} is not a JSON object; keys set only there are not shown, and list keys may have more entries",
+        project.display()
+    );
+    assert!(
+        out.lines().any(|l| l.trim_end() == expected),
+        "{expected}\n{out}"
+    );
+    assert_nowhere(&rig, &env, &out, "canary-array");
+
+    let local = rig.write(
+        &rig.repo.join(".claude/settings.local.json"),
+        "{ canary-not-json",
+    );
+    let out = rig.map(&env);
+    let line = line_with(&out, &format!("local file {}", local.display()));
+    let head = format!(
+        "local file {} is not valid JSON at line 1 column ",
+        local.display()
+    );
+    assert!(line.starts_with(&head), "{line}");
+    assert!(
+        line.ends_with("; keys set only there are not shown, and list keys may have more entries"),
+        "{line}"
+    );
+    assert_nowhere(&rig, &env, &out, "canary-not-json");
+}
