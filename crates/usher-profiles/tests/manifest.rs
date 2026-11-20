@@ -451,3 +451,17 @@ fn an_unquoted_segment_holding_whitespace_is_refused_naming_the_segment() {
         err.status()
     );
 }
+
+#[test]
+fn an_inline_server_table_is_kept_and_read_back_in_the_order_written() {
+    let text = format!(
+        "{VALID}\n[mcp_servers]\ngithub = {{ command = \"github-mcp\", args = [\"--stdio\"], cwd = \"${{REPO}}\" }}\n"
+    );
+    let manifest = must_parse(&text);
+    assert_eq!(manifest.mcp_servers().len(), 1);
+    let server = &manifest.mcp_servers()[0];
+    assert_eq!(server.name(), "github");
+    assert_eq!(server.field_str("command"), Some("github-mcp"));
+    assert_eq!(server.field_str("cwd"), Some("${REPO}"));
+    assert_eq!(server.field_names(), ["command", "args", "cwd"]);
+}
