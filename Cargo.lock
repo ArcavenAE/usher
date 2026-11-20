@@ -546,6 +546,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "usher-profiles"
+version = "0.0.0"
+dependencies = [
+ "toml_edit",
+ "usher-core",
+]
+
+[[package]]
 name = "usher-store"
 version = "0.0.0"
 dependencies = [
