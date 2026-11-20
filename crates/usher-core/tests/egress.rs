@@ -1138,6 +1138,7 @@ fn a_control_character_in_a_query_value_is_refused_without_echo() {
     for value in ["secret\nvalue", "secret\u{0}", "secret\u{7f}", "secret\r"] {
         let (result, transport) = query_call(value);
         let err = result.expect_err("a control character must fail");
+        assert_eq!(err.step(), "send test-shaped", "{value:?}");
         assert_eq!(err.status(), "query q1 holds a control character");
         assert!(!err.to_string().contains("secret"), "{err}");
         assert!(
