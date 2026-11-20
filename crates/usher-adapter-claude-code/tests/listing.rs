@@ -93,6 +93,7 @@ fn a_present_user_file_is_listed_in_effect_with_its_key_names_and_no_value() {
     assert_eq!(listing.harness_version.as_deref(), Some(VERSION));
     let knowledge = KnowledgeFile::embedded().expect("embedded");
     assert_eq!(listing.knowledge_version, knowledge.version().to_string());
+    assert_eq!(listing.sources.len(), 1, "{:?}", listing.sources);
     let source = &listing.sources[0];
     assert_eq!(source.path, path);
     assert_eq!(source.layer, "user");
@@ -107,6 +108,11 @@ fn a_present_user_file_is_listed_in_effect_with_its_key_names_and_no_value() {
             assert_eq!(names, &["model", "permissions"]);
             assert!(
                 classification.starts_with("not classified: knowledge"),
+                "{classification}"
+            );
+            assert!(classification.contains("lists no keys"), "{classification}");
+            assert!(
+                classification.contains(&knowledge.version().to_string()),
                 "{classification}"
             );
             assert!(classification.contains(&format!("claude-code {VERSION}")));
@@ -124,6 +130,7 @@ fn an_invalid_file_is_listed_with_a_reason_and_nothing_aborts() {
     let rig = Rig::new();
     rig.user("{ not json");
     let listing = rig.list(&rig.context(Some(VERSION), true));
+    assert_eq!(listing.sources.len(), 1, "{:?}", listing.sources);
     match &listing.sources[0].keys {
         KeyNames::NotRead { reason } => assert!(!reason.is_empty()),
         other => panic!("expected not-read, got {other:?}"),
@@ -210,11 +217,17 @@ fn a_relative_config_directory_is_not_checked_and_says_why() {
 fn an_unknown_version_reads_every_status_unknown_and_says_so() {
     let rig = Rig::new();
     rig.user("{}");
+    rig.managed(MAC_MANAGED, r#"{"permissions":{}}"#);
     let listing = rig.list(&rig.context(None, true));
     assert_eq!(listing.harness_version, None);
-    match &listing.sources[0].status {
-        SourceStatus::Unknown { reason } => assert!(reason.contains("version"), "{reason}"),
-        other => panic!("expected unknown, got {other:?}"),
+    assert_eq!(listing.sources.len(), 2, "{:?}", listing.sources);
+    for source in &listing.sources {
+        match &source.status {
+            SourceStatus::Unknown { reason } => {
+                assert!(reason.contains("version"), "{}: {reason}", source.layer)
+            }
+            other => panic!("{}: expected unknown, got {other:?}", source.layer),
+        }
     }
 }
 
@@ -245,11 +258,9 @@ fn a_managed_file_holding_only_control_keys_leaves_the_next_source_in_effect() {
     let listing = rig.list(&rig.context(Some(VERSION), true));
     assert_eq!(status_of(&listing, &policy), &SourceStatus::InEffect);
     assert_eq!(status_of(&listing, &user), &SourceStatus::InEffect);
-    assert!(
-        !matches!(
-            status_of(&listing, &control_only),
-            SourceStatus::Unknown { .. }
-        ),
-        "a control-only file is still a source the version reads"
+    assert_eq!(
+        status_of(&listing, &control_only),
+        &SourceStatus::InEffect,
+        "a control-only file is read, is never shadowed, and does not win by itself"
     );
 }
