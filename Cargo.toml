@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/usher",
+    "crates/usher-adapter-claude-code",
     "crates/usher-core",
     "crates/usher-knowledge",
     "crates/usher-store",
