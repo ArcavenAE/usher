@@ -361,3 +361,45 @@ fn a_bound_variable_with_a_plain_name_is_keyed() {
     let both = KnowledgeFile::parse(&file(&[&flag, STATE, PLAIN])).expect("valid");
     assert_eq!(both.launch_variables("demo"), ["DEMO_FLAG", "DEMO_HOME"]);
 }
+
+// A seat path that uses a bindable token needs a binder of it over the same versions,
+// as a source path does.
+
+const SEAT_ON_STATE: &str = r#"
+[[item]]
+id = "demo.seat-state-presence"
+harness = "demo"
+layer = "slow"
+class = "seat"
+versions = ">=1.0.0, <2.0.0"
+summary = "Presence of the global state file."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/files" }
+last_verified = 2026-11-20
+seat = { part = "fleet-client", path = "${GLOBAL_STATE_DIR}/.demo.json", read = "presence" }
+"#;
+
+#[test]
+fn a_seat_path_using_a_bindable_token_needs_a_binder_over_its_versions() {
+    rejects(
+        &file(&[CONFIG, SEAT_ON_STATE]),
+        &[
+            "demo.seat-state-presence",
+            "${GLOBAL_STATE_DIR}",
+            "versions",
+        ],
+    );
+    let narrower = STATE.replace(">=1.0.0, <2.0.0", ">=1.0.0, <1.5.0");
+    rejects(
+        &file(&[CONFIG, &narrower, SEAT_ON_STATE]),
+        &[
+            "demo.seat-state-presence",
+            "${GLOBAL_STATE_DIR}",
+            "versions",
+        ],
+    );
+}
+
+#[test]
+fn a_seat_path_with_its_binder_over_the_same_versions_parses() {
+    KnowledgeFile::parse(&file(&[CONFIG, STATE, SEAT_ON_STATE])).expect("the token is bound");
+}
