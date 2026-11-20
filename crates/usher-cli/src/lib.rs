@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 
 mod inventory;
+mod map;
 mod time;
 
 use std::collections::BTreeMap;
@@ -14,6 +15,7 @@ use std::path::PathBuf;
 use usher_core::{SystemRoot, UsherError};
 
 pub use inventory::{inventory, inventory_with};
+pub use map::{map, map_with};
 
 /// The launch variables the verb asked for, as a name-to-value lookup. In production
 /// [`LaunchEnvironment::from_process`] fills it with the variables knowledge names and
