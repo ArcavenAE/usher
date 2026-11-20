@@ -4,7 +4,7 @@
 //! One function builds the key and every mode uses it, so one environment is never
 //! keyed two ways.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::UsherError;
 
@@ -46,6 +46,10 @@ impl EnvironmentKey {
 }
 
 /// Builds the key of an environment.
+///
+/// The directory must be absolute and free of `..`; `.`, empty and trailing segments
+/// are dropped, so one directory spelled several ways is one key. The variables are
+/// ordered by name, and a name given twice is refused.
 pub fn environment_key(
     host: &str,
     os_user: &str,
@@ -53,19 +57,92 @@ pub fn environment_key(
     directory: &Path,
     launch: &[(&str, Option<&str>)],
 ) -> Result<EnvironmentKey, UsherError> {
-    let _ = (host, os_user, harness, directory, launch);
+    let directory = normalize_directory(directory)?;
+    let mut launch: Vec<(String, Option<String>)> = launch
+        .iter()
+        .map(|(name, value)| ((*name).to_string(), value.map(str::to_string)))
+        .collect();
+    launch.sort();
+    if let Some(pair) = launch.windows(2).find(|pair| pair[0].0 == pair[1].0) {
+        return Err(key_error(
+            "the same variable is named twice",
+            format!("{} has two values", pair[0].0),
+            "pass each launch variable once",
+        ));
+    }
     Ok(EnvironmentKey {
-        host: String::new(),
-        os_user: String::new(),
-        harness: String::new(),
-        directory: PathBuf::new(),
-        launch: Vec::new(),
+        host: host.to_string(),
+        os_user: os_user.to_string(),
+        harness: harness.to_string(),
+        directory,
+        launch,
     })
 }
 
+fn key_error(check: &str, status: String, next_action: &str) -> UsherError {
+    UsherError::new("key an environment", check, status, next_action)
+}
+
+fn normalize_directory(directory: &Path) -> Result<PathBuf, UsherError> {
+    if !directory.is_absolute() {
+        return Err(key_error(
+            "the directory must be absolute",
+            format!("{} is relative", directory.display()),
+            "pass the absolute path of the launch directory",
+        ));
+    }
+    let mut out = PathBuf::from("/");
+    for component in directory.components() {
+        match component {
+            Component::Normal(part) => out.push(part),
+            Component::ParentDir => {
+                return Err(key_error(
+                    "the directory must not hold a `..` segment",
+                    format!("{} holds `..`", directory.display()),
+                    "resolve the directory, symlinks included, before keying it",
+                ));
+            }
+            _ => {}
+        }
+    }
+    Ok(out)
+}
+
+/// Percent-escapes the listed characters, and `%` itself, so a field never reads as
+/// a separator.
+fn escape(text: &str, also: &[char]) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        if ch == '%' || also.contains(&ch) {
+            out.push_str(&format!("%{:02X}", ch as u32));
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 impl std::fmt::Display for EnvironmentKey {
+    /// The text form the store keys on: `host/user/harness/<directory>?NAME=value&NAME`.
+    /// An unset variable is the bare name, an empty one is `NAME=`, and every
+    /// separator inside a field is percent-escaped, so unequal keys never share a form.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "")
+        write!(
+            f,
+            "{}/{}/{}/{}",
+            escape(&self.host, &['/']),
+            escape(&self.os_user, &['/']),
+            escape(&self.harness, &['/']),
+            escape(&self.directory.to_string_lossy(), &['?', '&', '='])
+        )?;
+        for (index, (name, value)) in self.launch.iter().enumerate() {
+            f.write_str(if index == 0 { "?" } else { "&" })?;
+            f.write_str(&escape(name, &['?', '&', '=']))?;
+            if let Some(value) = value {
+                write!(f, "={}", escape(value, &['&', '=']))?;
+            }
+        }
+        Ok(())
     }
 }
 
