@@ -224,10 +224,12 @@ fn a_source_that_uses_the_config_dir_token_needs_a_binder_for_the_same_versions(
 #[test]
 fn launch_variables_lists_every_range_sorted_and_deduplicated() {
     // Every variable the key is expected to hold binds a token; one variable that binds
-    // nothing sits beside them and stays out. The flag binds the other token, since two
-    // binders of one token may not overlap in versions.
+    // nothing sits beside them and stays out. The flag is bound in the later range only,
+    // so a lookup that reads the first range alone misses it, and it binds the other
+    // token, since two binders of one token may not overlap in versions.
     let flag = BINDER
         .replace("demo.config-dir-variable", "demo.flag")
+        .replace(">=1.0.0, <2.0.0", ">=2.0.0, <3.0.0")
         .replace(
             VARIABLE,
             r#"variable = { name = "DEMO_A_FLAG", binds = "${GLOBAL_STATE_DIR}", default = "${HOME}" }"#,
