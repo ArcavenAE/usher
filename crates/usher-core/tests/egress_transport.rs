@@ -111,6 +111,11 @@ fn a_transport_error_on_the_followed_send_is_reported_under_the_calls_step() {
         .expect_err("the followed send failed");
     assert_eq!(err.step(), "send test-limited");
     assert_eq!(err.check(), "the host answers within the limit");
+    assert_eq!(
+        err.status(),
+        "files.usher.invalid: no answer within 10 s (connect)"
+    );
+    assert_eq!(err.next_action(), "check the network, then try again");
     assert_eq!(transport.sent().len(), 2);
 }
 

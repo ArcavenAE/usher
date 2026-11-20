@@ -69,6 +69,34 @@ const BODIED: Descriptor = Descriptor {
     max_body_bytes: 1024,
 };
 
+const HEADERED: Descriptor = Descriptor {
+    name: "test-headered",
+    method: Method::Get,
+    host: "files.usher.invalid",
+    path: "/list",
+    purpose: "a test call with several header fields",
+    class: Class::PersonStarted,
+    fields: &[
+        UA,
+        field("x-trace", Place::Header),
+        field("accept", Place::Header),
+    ],
+    redirect_hosts: &[],
+    max_body_bytes: 1024,
+};
+
+const POSTING: Descriptor = Descriptor {
+    name: "test-posting",
+    method: Method::Post,
+    host: "files.usher.invalid",
+    path: "/ping",
+    purpose: "a test call that posts with no body field",
+    class: Class::PersonStarted,
+    fields: &[UA],
+    redirect_hosts: &[],
+    max_body_bytes: 1024,
+};
+
 fn recorded_wire(descriptor: &Descriptor, request: Request) -> WireRequest {
     let transport = RecordingTransport::new().answering_ok("ok");
     Port::new(transport.clone(), AllowAll)
@@ -197,6 +225,38 @@ fn the_plan_carries_exactly_the_ports_headers_in_order() {
 }
 
 #[test]
+fn the_plan_keeps_several_headers_in_the_order_the_descriptor_lists_them() {
+    let wire = recorded_wire(
+        &HEADERED,
+        Request::new(Egress::KnowledgeUpdate)
+            .with("x-trace", "t1")
+            .with("accept", "text/plain"),
+    );
+    let plan = plan_request(&wire).expect("a plan");
+    assert_eq!(
+        plan.headers,
+        [
+            ("user-agent".to_string(), "usher".to_string()),
+            ("x-trace".to_string(), "t1".to_string()),
+            ("accept".to_string(), "text/plain".to_string()),
+        ],
+        "neither sorted nor reversed"
+    );
+}
+
+#[test]
+fn a_post_with_no_body_field_plans_the_post_method_and_is_not_refused() {
+    let wire = recorded_wire(&POSTING, Request::new(Egress::KnowledgeUpdate));
+    assert!(
+        wire.body().is_empty(),
+        "the control request carries no body"
+    );
+    let plan = plan_request(&wire).expect("a bodyless post is not a body refusal");
+    assert_eq!(plan.method, Method::Post);
+    assert_eq!(plan.uri, "https://files.usher.invalid/ping");
+}
+
+#[test]
 fn no_registered_host_names_a_port_or_is_an_address() {
     assert!(!ALL.is_empty(), "ALL names no call");
     for egress in ALL {
@@ -316,36 +376,57 @@ fn local_descriptor(host: &'static str, name: &'static str) -> Descriptor {
 }
 
 #[test]
-fn a_listener_that_speaks_no_tls_gives_an_error_naming_its_host() {
+fn a_listener_that_speaks_no_tls_sees_a_tls_handshake_and_the_error_is_the_transports_own() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let port = listener.local_addr().expect("addr").port();
     listener.set_nonblocking(true).expect("nonblocking");
     // Waits up to five seconds for the one connection, so a client that never dials
-    // fails the test instead of hanging it.
+    // fails the test instead of hanging it. It reads the client's first bytes and
+    // writes nothing back, so no HTTP status can ever come back from it.
     let server = thread::spawn(move || {
         for _ in 0..50 {
             if let Ok((mut stream, _)) = listener.accept() {
-                let _ = stream.write_all(b"HTTP/1.1 400 Bad Request\r\n\r\nnot tls");
-                return true;
+                stream
+                    .set_nonblocking(false)
+                    .expect("a blocking stream for the read");
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .expect("a read timeout");
+                let mut first = [0u8; 2];
+                let read = stream.read(&mut first).unwrap_or(0);
+                return Some(first[..read].to_vec());
             }
             thread::sleep(Duration::from_millis(100));
         }
-        false
+        None
     });
     let host = leaked_host(port);
     let descriptor = local_descriptor(host, "test-local");
-    let err = Port::new(HttpTransport::new(), AllowAll)
-        .call_described(
-            &descriptor,
-            Request::new(Egress::KnowledgeUpdate).with("file", "k.toml"),
-        )
-        .expect_err("a handshake with a listener that speaks no TLS must fail");
-    assert!(
-        server.join().expect("the listener thread"),
-        "the client never dialed the listener"
+    let result = Port::new(HttpTransport::new(), AllowAll).call_described(
+        &descriptor,
+        Request::new(Egress::KnowledgeUpdate).with("file", "k.toml"),
     );
+    let first = server.join().expect("the listener thread");
+    let first = first.expect("the client never dialed the listener");
+    assert!(
+        first.len() >= 2 && first[0] == 0x16 && first[1] == 0x03,
+        "the client's first bytes are a TLS handshake record (0x16, 0x03), not plain HTTP: {first:02x?}"
+    );
+    let err = result.expect_err("a handshake with a listener that speaks no TLS must fail");
     assert_eq!(err.step(), "send test-local");
-    assert!(err.status().contains(host), "{err}");
+    assert!(
+        err.status().starts_with(&format!("{host}: ")),
+        "the transport's own status names the host first: {err}"
+    );
+    assert!(
+        !err.status().contains("answered status"),
+        "a port refusal of a status is not a TLS error: {err}"
+    );
+    assert_ne!(
+        err.check(),
+        "the host answers with a success status",
+        "the port's own refusal check is not the transport's: {err}"
+    );
     assert_four_fields(&err);
 }
 
