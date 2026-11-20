@@ -346,4 +346,28 @@ mod tests {
         assert_eq!(transport.sent().len(), 1, "the signature was asked for");
         assert_eq!(sequence(&knowledge), before);
     }
+
+    #[test]
+    fn a_failed_fetch_leaves_a_knowledge_already_updated_at_its_own_sequence() {
+        let signer = Signer::new();
+        let base = sequence(&held());
+        let first = file_at(base + 1);
+        let transport = answers(&first, &signer.sign(first.as_bytes(), "sequence"));
+        let mut knowledge = held();
+        fetch_update(&port(&transport), &mut knowledge, &trusting(&signer))
+            .expect("the first update is taken");
+        assert_eq!(sequence(&knowledge), base + 1);
+
+        let second = file_at(base + 2);
+        let signature = signer.sign(second.as_bytes(), "sequence");
+        let tampered = second.replace("goose", "g00se");
+        let transport = answers(&tampered, &signature);
+        fetch_update(&port(&transport), &mut knowledge, &trusting(&signer))
+            .expect_err("a tampered second update must fail");
+        assert_eq!(
+            sequence(&knowledge),
+            base + 1,
+            "a failed fetch must keep the knowledge already in force, not reset it"
+        );
+    }
 }
