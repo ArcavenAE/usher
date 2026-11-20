@@ -300,4 +300,50 @@ mod tests {
         assert!(transport.sent().is_empty());
         assert_eq!(sequence(&knowledge), before);
     }
+
+    const LIMIT: usize = 1_048_576;
+
+    /// A valid update file padded with a comment to exactly `len` bytes.
+    fn padded_to(len: usize) -> String {
+        let mut file = file_at(sequence(&held()) + 1);
+        if !file.ends_with('\n') {
+            file.push('\n');
+        }
+        let pad = len - file.len();
+        file.push('#');
+        file.push_str(&"x".repeat(pad - 2));
+        file.push('\n');
+        assert_eq!(file.len(), len);
+        file
+    }
+
+    #[test]
+    fn a_file_of_exactly_the_limit_is_passed_to_the_update_and_taken() {
+        let signer = Signer::new();
+        let file = padded_to(LIMIT);
+        let transport = answers(&file, &signer.sign(file.as_bytes(), "sequence"));
+        let mut knowledge = held();
+        fetch_update(&port(&transport), &mut knowledge, &trusting(&signer))
+            .expect("a file of exactly the limit is taken");
+        assert_eq!(sequence(&knowledge), sequence(&held()) + 1);
+    }
+
+    #[test]
+    fn a_file_one_byte_over_the_limit_is_refused_with_no_signature_request() {
+        assert_a_valid_fetch_is_taken();
+        let signer = Signer::new();
+        let file = padded_to(LIMIT + 1);
+        let transport = answers(&file, &signer.sign(file.as_bytes(), "sequence"));
+        let mut knowledge = held();
+        let before = sequence(&knowledge);
+        let err = fetch_update(&port(&transport), &mut knowledge, &trusting(&signer))
+            .expect_err("a file over the limit must fail");
+        assert_four_fields(&err);
+        assert!(
+            err.to_string().contains("answer larger than the limit"),
+            "{err}"
+        );
+        assert_eq!(transport.sent().len(), 1, "the signature was asked for");
+        assert_eq!(sequence(&knowledge), before);
+    }
 }
