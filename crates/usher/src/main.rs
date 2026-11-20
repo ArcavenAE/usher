@@ -80,6 +80,16 @@ mod tests {
         assert!(err.next_action().contains("usher --version"));
     }
 
+    /// A mistyped or missing mode is told every mode there is, including the map verb.
+    #[test]
+    fn a_mistyped_or_missing_mode_is_told_the_next_action_names_every_verb() {
+        let expected = "run `usher inventory`, `usher map <directory>` or `usher --version`";
+        let err = run(args(&["mpa"])).expect_err("mpa is not a mode");
+        assert_eq!(err.next_action(), expected);
+        let err = run(args(&[])).expect_err("a mode is required");
+        assert_eq!(err.next_action(), expected);
+    }
+
     #[test]
     fn missing_mode_is_an_error_with_a_next_action() {
         let err = run(args(&[])).expect_err("a mode is required");
