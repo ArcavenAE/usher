@@ -202,4 +202,62 @@ mod tests {
         let reading = read_version(&from(), &context(&scratch), None);
         assert!(unknown(&reading).contains("not on PATH"), "{reading:?}");
     }
+    /// The version comes only from a target that is a regular file.
+    #[test]
+    fn a_target_that_is_a_directory_reads_as_unknown_saying_it_is_not_a_file() {
+        let scratch = ScratchHome::new().expect("scratch");
+        let target = versions(&scratch).join("2.1.317");
+        fs::create_dir_all(&target).expect("dirs");
+        link(&scratch, &target);
+        let reading = read_version(&from(), &context(&scratch), Some(&path_of(&scratch)));
+        assert!(unknown(&reading).contains("not a file"), "{reading:?}");
+    }
+
+    #[test]
+    fn a_path_entry_that_links_to_the_launcher_counts_as_the_launcher() {
+        let scratch = ScratchHome::new().expect("scratch");
+        link(&scratch, &install(&scratch, "2.1.317"));
+        let other = scratch.home().join("other-bin");
+        fs::create_dir_all(&other).expect("dirs");
+        symlink(launcher(&scratch), other.join("claude")).expect("symlink");
+        let reading = read_version(&from(), &context(&scratch), Some(other.as_os_str()));
+        assert_eq!(reading, VersionReading::Known("2.1.317".to_string()));
+    }
+
+    #[test]
+    fn a_path_entry_that_links_to_another_file_reads_as_unknown_naming_the_hit() {
+        let scratch = ScratchHome::new().expect("scratch");
+        link(&scratch, &install(&scratch, "2.1.317"));
+        let other = scratch.home().join("other-bin");
+        fs::create_dir_all(&other).expect("dirs");
+        let elsewhere = scratch.home().join("elsewhere");
+        fs::write(&elsewhere, b"#!/bin/sh\n").expect("file");
+        symlink(&elsewhere, other.join("claude")).expect("symlink");
+        let reading = read_version(&from(), &context(&scratch), Some(other.as_os_str()));
+        let reason = unknown(&reading);
+        assert!(
+            reason.contains(&format!(
+                "claude on PATH is {}",
+                other.join("claude").display()
+            )),
+            "{reason}"
+        );
+        assert!(reason.contains("not the native launcher"), "{reason}");
+    }
+
+    #[test]
+    fn a_launcher_that_cannot_be_resolved_for_the_path_check_reads_as_unknown_naming_it() {
+        let scratch = ScratchHome::new().expect("scratch");
+        // A dangling PATH hit cannot be resolved, so the identity check fails on it.
+        let other = scratch.home().join("other-bin");
+        fs::create_dir_all(&other).expect("dirs");
+        link(&scratch, &install(&scratch, "2.1.317"));
+        symlink(scratch.home().join("gone"), other.join("claude")).expect("symlink");
+        let reading = read_version(&from(), &context(&scratch), Some(other.as_os_str()));
+        let reason = unknown(&reading);
+        assert!(
+            reason.contains(&other.join("claude").display().to_string()),
+            "{reason}"
+        );
+    }
 }
