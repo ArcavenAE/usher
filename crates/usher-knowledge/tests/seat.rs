@@ -93,8 +93,8 @@ fn accepts(text: &str) {
 }
 
 #[test]
-fn a_schema_4_file_carries_the_five_seat_parts() {
-    let file = KnowledgeFile::parse(FILE).expect("a valid schema 4 file");
+fn a_schema_5_file_carries_the_five_seat_parts() {
+    let file = KnowledgeFile::parse(FILE).expect("a valid schema 5 file");
     assert_eq!(file.version().schema_version(), 5);
     let seats: Vec<_> = file.items().iter().map(|item| item.seat()).collect();
     assert!(
@@ -143,12 +143,12 @@ fn a_schema_4_file_carries_the_five_seat_parts() {
 fn a_schema_3_file_is_refused_naming_both_schemas() {
     rejects(
         &with("schema_version = 5", "schema_version = 3"),
-        &["schema 3", "schema 4"],
+        &["schema 3", "schema 5"],
     );
 }
 
 #[test]
-fn the_embedded_file_is_schema_4() {
+fn the_embedded_file_is_schema_5() {
     let file = KnowledgeFile::embedded().expect("the embedded file");
     assert_eq!(file.version().schema_version(), 5);
 }

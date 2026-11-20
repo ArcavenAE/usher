@@ -32,7 +32,7 @@ fn rejects(text: &str, needles: &[&str]) {
 
 #[test]
 fn a_keys_item_parses_with_its_key_names_in_file_order() {
-    let file = KnowledgeFile::parse(FILE).expect("a valid schema 4 file");
+    let file = KnowledgeFile::parse(FILE).expect("a valid schema 5 file");
     assert_eq!(file.version().schema_version(), 5);
     let item = &file.items()[0];
     assert_eq!(item.class(), Class::Keys);

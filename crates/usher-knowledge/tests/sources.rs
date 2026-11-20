@@ -49,7 +49,7 @@ fn with_source(source: &str) -> String {
 
 #[test]
 fn a_sources_item_parses_with_path_layer_read_rule_and_rank() {
-    let file = KnowledgeFile::parse(FILE).expect("a valid schema 4 file");
+    let file = KnowledgeFile::parse(FILE).expect("a valid schema 5 file");
     assert_eq!(file.version().schema_version(), 5);
     let item = &file.items()[0];
     assert_eq!(item.class(), Class::Sources);
