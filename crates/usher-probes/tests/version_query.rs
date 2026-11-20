@@ -135,10 +135,12 @@ fn a_version_query_that_outlives_the_timeout_ends_timed_out() {
     // Control: a script that answers at once is a result.
     let quick = ScratchHome::new().expect("scratch home");
     let bin = script_harness(&quick, "true");
+    // A generous timeout, so a loaded machine cannot turn the control into a timeout.
     let spec = Spec::new("demo-probe", "fakeh")
         .search_path(bin.as_os_str())
-        .timeout(Duration::from_secs(1));
-    assert!(run(&spec, &quick, today(), |_, _| Ok(()), claim_true).is_ok());
+        .timeout(Duration::from_secs(30));
+    let quick_result = run(&spec, &quick, today(), |_, _| Ok(()), claim_true);
+    assert!(quick_result.is_ok(), "{quick_result:?}");
 
     let scratch = ScratchHome::new().expect("scratch home");
     let bin = script_harness(&scratch, "exec /bin/sleep 6");
