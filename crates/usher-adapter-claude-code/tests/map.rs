@@ -634,3 +634,23 @@ fn no_value_of_an_unlisted_key_reaches_the_map_at_any_depth() {
         "the listed key beside them is read"
     );
 }
+
+// ---- keys set nowhere ------------------------------------------------------------------
+
+/// A readable key set in no file gets no row: what applies then is the harness's built-in
+/// default, which usher does not observe. The unlisted key beside it shows the file was
+/// read.
+#[test]
+fn a_readable_key_set_in_no_file_gets_no_row() {
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"theme": "dark"}"#);
+    let map = rig.seed_map(&[]);
+    assert_eq!(
+        reading(&map, "theme", "user").status,
+        ReadingStatus::ValueNotRead,
+        "the file was read"
+    );
+    for key in ["model", "permissions.allow", "permissions.defaultMode"] {
+        assert!(readings(&map, key).is_empty(), "{key}: {:?}", map.readings);
+    }
+}
