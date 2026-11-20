@@ -494,7 +494,7 @@ fn finish(descriptor: &Descriptor, response: Response) -> Result<Response, Usher
     ))
 }
 
-const PATH_VALUE_CHECK: &str = "a path value holds no `/`, `?`, `#`, `%`, whitespace or control character, and is not `.`, `..` or empty";
+const PATH_VALUE_CHECK: &str = "a path value holds no `/`, `?`, `#`, `%`, whitespace or control character, and is not `.` or `..`";
 
 fn path_value_ok(value: &str) -> bool {
     !value.is_empty()

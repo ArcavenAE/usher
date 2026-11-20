@@ -626,7 +626,7 @@ fn a_percent_sign_or_dot_segment_in_a_path_value_is_refused_naming_the_field_and
         );
         assert_eq!(
             err.check(),
-            "a path value holds no `/`, `?`, `#`, `%`, whitespace or control character, and is not `.`, `..` or empty",
+            "a path value holds no `/`, `?`, `#`, `%`, whitespace or control character, and is not `.` or `..`",
             "{value:?}"
         );
         assert!(
