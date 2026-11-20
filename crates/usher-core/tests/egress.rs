@@ -685,3 +685,19 @@ fn a_303_and_a_308_to_a_listed_host_are_each_followed_once() {
         assert_eq!(sent[1].path, "/moved", "{status}");
     }
 }
+
+#[test]
+fn a_redirect_with_no_location_on_a_descriptor_that_lists_a_host_is_refused_with_one_send() {
+    let transport = RecordingTransport::new()
+        .answering(Ok(Response {
+            status: 302,
+            location: None,
+            body: Vec::new(),
+        }))
+        .answering_ok("never reached");
+    let err = port(&transport)
+        .call_described(&REDIRECTING, described_request().with("file", "k.toml"))
+        .expect_err("a redirect with no target must fail");
+    assert_four_fields(&err);
+    assert_eq!(transport.sent().len(), 1, "the port sent a second request");
+}
