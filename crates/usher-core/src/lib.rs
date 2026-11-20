@@ -8,8 +8,12 @@
 use std::{error::Error, fmt};
 
 mod environment;
+mod listing;
 
 pub use environment::{EnvironmentKey, environment_key};
+pub use listing::{
+    AbsentLayer, KeyNames, LaunchContext, ListedSource, SourceLister, SourceListing, SourceStatus,
+};
 
 /// The one error type every usher surface reports through.
 ///
