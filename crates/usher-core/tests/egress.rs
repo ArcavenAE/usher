@@ -1215,6 +1215,7 @@ fn a_host_that_is_not_a_valid_name_is_never_echoed() {
         "assets.invalid:443".to_string(),
         "caf\u{e9}.invalid".to_string(),
         "a b.invalid".to_string(),
+        "a_b.invalid".to_string(),
         String::new(),
         long,
     ] {
