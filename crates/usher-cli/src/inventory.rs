@@ -19,6 +19,7 @@ use crate::{InventoryEnv, LaunchEnvironment, inventory_platform};
 
 const HARNESS: &str = "claude-code";
 const CONFIG_DIR_TOKEN: &str = "${CONFIG_DIR}";
+const GLOBAL_STATE_TOKEN: &str = "${GLOBAL_STATE_DIR}";
 
 /// Runs `usher inventory` against `env`, placing absolute knowledge paths under `root`,
 /// and returns the text to print. Only tests pass a root other than the host's.
@@ -51,7 +52,7 @@ pub fn inventory_with(
         key,
         home: env.home.clone(),
         config_dir: config_dir(file, None, env),
-        global_state_dir: env.home.clone(),
+        global_state_dir: global_state_dir(file, None, env),
         set_variables: Default::default(),
         repo: find_repo(&env.launch_dir),
         user: env.user.clone(),
@@ -62,6 +63,7 @@ pub fn inventory_with(
         context.harness_version = Some(version.clone());
         if let Ok(parsed) = Version::parse(version) {
             context.config_dir = config_dir(file, Some(&parsed), env);
+            context.global_state_dir = global_state_dir(file, Some(&parsed), env);
         }
     }
 
@@ -72,13 +74,40 @@ pub fn inventory_with(
     Ok(render(file, &listing, &reading))
 }
 
-/// The variable that moves the config directory, and the default the directory takes
-/// while it is unset or empty. At a known version the version-scoped binding is used;
-/// with none, any binder knowledge lists for the harness.
+/// The directory the config token takes: the variable knowledge binds to it, or its
+/// default while the variable is unset or empty.
 fn config_dir(file: &KnowledgeFile, version: Option<&Version>, env: &InventoryEnv) -> PathBuf {
+    bound_dir(
+        file,
+        version,
+        env,
+        CONFIG_DIR_TOKEN,
+        env.home.join(".claude"),
+    )
+}
+
+/// The directory the global state token takes, by the same rule as the config directory.
+fn global_state_dir(
+    file: &KnowledgeFile,
+    version: Option<&Version>,
+    env: &InventoryEnv,
+) -> PathBuf {
+    bound_dir(file, version, env, GLOBAL_STATE_TOKEN, env.home.clone())
+}
+
+/// The variable that moves a directory, and the default the directory takes while it is
+/// unset or empty. At a known version the version-scoped binding is used; with none, any
+/// binder knowledge lists for the harness. With no binder at all, `fallback` is used.
+fn bound_dir(
+    file: &KnowledgeFile,
+    version: Option<&Version>,
+    env: &InventoryEnv,
+    token: &str,
+    fallback: PathBuf,
+) -> PathBuf {
     let binder = version
         .and_then(|v| {
-            file.binding(HARNESS, v, CONFIG_DIR_TOKEN)
+            file.binding(HARNESS, v, token)
                 .map(|b| (b.variable().to_string(), b.default().to_string()))
         })
         .or_else(|| {
@@ -86,7 +115,7 @@ fn config_dir(file: &KnowledgeFile, version: Option<&Version>, env: &InventoryEn
                 .iter()
                 .filter(|item| item.harness() == HARNESS)
                 .filter_map(|item| item.variable())
-                .find(|variable| variable.binds() == Some(CONFIG_DIR_TOKEN))
+                .find(|variable| variable.binds() == Some(token))
                 .and_then(|variable| {
                     variable
                         .default()
@@ -94,7 +123,7 @@ fn config_dir(file: &KnowledgeFile, version: Option<&Version>, env: &InventoryEn
                 })
         });
     let Some((variable, default)) = binder else {
-        return env.home.join(".claude");
+        return fallback;
     };
     match env.launch.get(&variable).filter(|value| !value.is_empty()) {
         Some(value) => PathBuf::from(value),
@@ -243,8 +272,8 @@ fn render(file: &KnowledgeFile, listing: &SourceListing, reading: &VersionReadin
         for checked in &absent.checked {
             let _ = writeln!(
                 out,
-                "no file: {} settings ({})",
-                absent.layer,
+                "no file: {} ({})",
+                layer_label(&absent.layer),
                 checked.path.display()
             );
         }
@@ -252,11 +281,21 @@ fn render(file: &KnowledgeFile, listing: &SourceListing, reading: &VersionReadin
     for layer in &listing.not_checked {
         let _ = writeln!(
             out,
-            "not checked: {} settings ({})",
-            layer.layer, layer.reason
+            "not checked: {} ({})",
+            layer_label(&layer.layer),
+            layer.reason
         );
     }
     out.trim_end().to_string()
+}
+
+/// How a layer reads in a line of output. A presentation table, not a harness fact.
+fn layer_label(layer: &str) -> String {
+    match layer {
+        "global-state" => "global state".to_string(),
+        "server-managed-cache" => "server-managed cache".to_string(),
+        other => format!("{other} settings"),
+    }
 }
 
 fn source_row(source: &ListedSource) -> String {

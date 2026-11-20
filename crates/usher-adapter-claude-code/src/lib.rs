@@ -148,6 +148,12 @@ impl SourceLister for ClaudeCodeAdapter {
                 continue;
             }
             match resolve(fact.path(), context, &self.system_root, &variable) {
+                // One file is one source: a second item of the same layer that places
+                // at the same path adds no row.
+                Ok(path)
+                    if candidates
+                        .iter()
+                        .any(|c| c.fact.layer() == fact.layer() && c.path == path) => {}
                 Ok(path) => candidates.push(Candidate {
                     item,
                     fact,
@@ -155,7 +161,10 @@ impl SourceLister for ClaudeCodeAdapter {
                     platform_ok,
                 }),
                 Err(reason) => {
-                    if fact.always_present() && platform_ok {
+                    // A layer that is always present, and the global state file that the
+                    // seat's account item also reads, are named when they cannot be placed.
+                    let named = fact.always_present() || fact.layer() == SourceLayer::GlobalState;
+                    if named && platform_ok {
                         not_checked.push(NotCheckedLayer {
                             layer: layer_name(fact.layer()).to_string(),
                             reason,
