@@ -930,3 +930,97 @@ fn four_opens_at_once_of_a_version_two_store_migrate_it_once() {
         assert_eq!(verbs, 1, "round {round}: the column was added once");
     }
 }
+
+/// The version 1 schema as the first inventory shipped it: runs and sources only.
+const V1: &str = "
+CREATE TABLE inventory_run (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recorded_at TEXT NOT NULL,
+    harness TEXT NOT NULL,
+    harness_version TEXT,
+    knowledge_schema INTEGER NOT NULL,
+    knowledge_sequence INTEGER NOT NULL,
+    environment_key TEXT NOT NULL
+);
+CREATE TABLE inventory_source (
+    run_id INTEGER NOT NULL REFERENCES inventory_run(id),
+    item_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    layer TEXT NOT NULL,
+    present INTEGER NOT NULL CHECK (present IN (0, 1)),
+    size INTEGER,
+    modified TEXT,
+    key_names TEXT NOT NULL
+);
+CREATE TRIGGER inventory_run_no_update BEFORE UPDATE ON inventory_run
+BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
+CREATE TRIGGER inventory_run_no_delete BEFORE DELETE ON inventory_run
+BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
+CREATE TRIGGER inventory_source_no_update BEFORE UPDATE ON inventory_source
+BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
+CREATE TRIGGER inventory_source_no_delete BEFORE DELETE ON inventory_source
+BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
+INSERT INTO inventory_run VALUES (1, '2026-11-15T10:00:00Z', 'claude-code', '2.1.317', 3, 3, 'env-key-1');
+INSERT INTO inventory_source VALUES (1, 'claude-code.source-user-settings', '/h/.claude/settings.json', 'user', 1, 120, '2026-11-15T09:00:00Z', '[\"model\",\"theme\"]');
+PRAGMA user_version = 1;
+";
+
+fn version_one(scratch: &ScratchHome, extra: &str) -> PathBuf {
+    let dir = state_dir(scratch);
+    fs::create_dir_all(&dir).expect("dirs");
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).expect("mode");
+    let conn = Connection::open(dir.join(DB)).expect("a database");
+    conn.execute_batch(V1).expect("the version 1 schema");
+    if !extra.is_empty() {
+        conn.execute_batch(extra).expect("extra setup");
+    }
+    drop(conn);
+    fs::set_permissions(dir.join(DB), fs::Permissions::from_mode(0o600)).expect("mode");
+    dir
+}
+
+#[test]
+fn a_version_one_store_opens_at_version_three_with_its_rows_intact() {
+    let scratch = ScratchHome::new().expect("scratch");
+    let dir = version_one(&scratch, "");
+    let store = Store::open(&dir).expect("a version 1 store is migrated straight to 3");
+    let runs = store.runs().expect("runs");
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].environment_key, "env-key-1");
+    assert_eq!(runs[0].verb, "inventory");
+    let sources = store.sources_of(runs[0].id).expect("sources");
+    assert_eq!(sources[0].key_names, ["model", "theme"]);
+    assert!(store.seat_of(runs[0].id).expect("seat").is_empty());
+    assert!(store.settings_of(runs[0].id).expect("readings").is_empty());
+    drop(store);
+    assert_eq!(user_version(&dir), 3);
+    let tables = names(&dir, "table");
+    assert!(tables.contains(&"inventory_seat".to_string()), "{tables:?}");
+    assert!(tables.contains(&"map_setting".to_string()), "{tables:?}");
+}
+
+#[test]
+fn a_failure_in_the_version_three_step_leaves_a_version_one_store_at_version_one() {
+    let scratch = ScratchHome::new().expect("scratch");
+    // The map trigger name on the run table: the seat step succeeds and the map step
+    // fails, so only one transaction over both steps leaves the store at version 1.
+    let dir = version_one(
+        &scratch,
+        "CREATE TRIGGER map_setting_no_delete BEFORE DELETE ON inventory_run BEGIN SELECT 1; END;",
+    );
+    let err = Store::open(&dir).expect_err("the migration cannot complete");
+    assert!(!err.step().is_empty() && !err.check().is_empty());
+    assert!(!err.status().is_empty() && !err.next_action().is_empty());
+    assert_eq!(user_version(&dir), 1, "the version did not move");
+    let tables = names(&dir, "table");
+    assert!(
+        !tables.contains(&"inventory_seat".to_string())
+            && !tables.contains(&"map_setting".to_string()),
+        "no table of a later version was left behind: {tables:?}"
+    );
+    assert!(!columns(&dir, "inventory_run").contains(&"verb".to_string()));
+    let rows: i64 = raw(&dir)
+        .query_row("SELECT count(*) FROM inventory_run", [], |r| r.get(0))
+        .expect("count");
+    assert_eq!(rows, 1, "the rows are untouched");
+}
