@@ -899,3 +899,20 @@ fn a_follow_carries_no_query_and_no_body_field_to_the_second_host() {
         );
     }
 }
+
+#[test]
+fn a_redirect_on_a_post_with_no_body_field_is_refused_with_one_send() {
+    let transport = RecordingTransport::new()
+        .answering(Ok(Response {
+            status: 307,
+            location: Some(format!("https://{ASSETS_HOST}/moved")),
+            body: Vec::new(),
+        }))
+        .answering_ok("never reached");
+    let err = port(&transport)
+        .call_described(&POSTING, described_request())
+        .expect_err("a redirect on a POST must fail");
+    assert_four_fields(&err);
+    assert!(err.to_string().contains("307"), "{err}");
+    assert_eq!(transport.sent().len(), 1, "the port followed");
+}
