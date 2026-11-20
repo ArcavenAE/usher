@@ -792,16 +792,18 @@ fn a_get_with_an_extra_listed_header_follows_with_the_user_agent_only() {
 }
 
 #[test]
-fn a_redirect_path_holding_a_space_is_refused_with_one_send() {
+fn a_redirect_path_holding_a_space_a_control_character_or_a_fragment_is_refused_with_one_send() {
     assert_a_valid_call_goes_through();
-    let transport = RecordingTransport::new()
-        .answering_redirect(format!("https://{ASSETS_HOST}/a b"))
-        .answering_ok("never reached");
-    let err = port(&transport)
-        .call_described(&REDIRECTING, described_request().with("file", "k.toml"))
-        .expect_err("a path with a space must fail");
-    assert_four_fields(&err);
-    assert_eq!(transport.sent().len(), 1, "the port followed");
+    for path in ["/a b", "/a\u{0}b", "/a#b"] {
+        let transport = RecordingTransport::new()
+            .answering_redirect(format!("https://{ASSETS_HOST}{path}"))
+            .answering_ok("never reached");
+        let err = port(&transport)
+            .call_described(&REDIRECTING, described_request().with("file", "k.toml"))
+            .expect_err("a refused path must fail");
+        assert_four_fields(&err);
+        assert_eq!(transport.sent().len(), 1, "{path:?}: the port followed");
+    }
 }
 
 #[test]
