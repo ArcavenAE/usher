@@ -30,6 +30,7 @@ fn child_prints_the_launched_environment() {
         std::env::var_os("HTTPS_PROXY").is_some()
     );
     println!("SCRATCH_HOME={}", scratch.home().display());
+    println!("SCRATCH_TMP={}", scratch.tmp().display());
     let spec = Spec::new("demo-probe", "fakeh").search_path(bin.as_os_str());
     run_or_panic(
         &spec,
@@ -116,4 +117,51 @@ fn a_launched_process_gets_only_home_path_tmpdir_and_lang() {
             "missing {name}:\n{launched:?}"
         );
     }
+}
+
+#[test]
+fn the_launched_environment_is_exactly_home_lang_path_and_tmpdir_with_the_scratch_tmp() {
+    let output = run_child();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "the control child must succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    // Control: the parent held variables beyond the four, so "only" is a real claim.
+    assert!(stdout.contains("PARENT_SAW_PROXY=true"), "{stdout}");
+
+    let launched: Vec<&str> = stdout
+        .lines()
+        .filter_map(|line| line.strip_prefix("LAUNCHED:"))
+        .collect();
+    assert!(
+        !launched.is_empty(),
+        "the launched process printed nothing:\n{stdout}"
+    );
+    let names: Vec<&str> = launched
+        .iter()
+        .map(|line| line.split('=').next().unwrap_or(""))
+        .collect();
+    // Only names are printed, never values: the parent holds secrets.
+    let extra: Vec<&str> = names
+        .iter()
+        .copied()
+        .filter(|name| !["HOME", "LANG", "PATH", "TMPDIR"].contains(name))
+        .collect();
+    assert!(
+        extra.is_empty(),
+        "the launched environment holds variables beyond HOME, LANG, PATH and TMPDIR: {extra:?}"
+    );
+    for want in ["HOME", "LANG", "PATH", "TMPDIR"] {
+        assert!(names.contains(&want), "missing {want}");
+    }
+    let scratch_tmp = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("SCRATCH_TMP="))
+        .expect("the child printed its scratch tmp");
+    assert!(
+        launched.contains(&format!("TMPDIR={scratch_tmp}").as_str()),
+        "TMPDIR is not the scratch tmp {scratch_tmp}:\n{launched:?}"
+    );
 }
