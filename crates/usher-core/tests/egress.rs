@@ -219,6 +219,7 @@ fn a_field_the_descriptor_does_not_list_is_refused_before_the_transport() {
         .call(knowledge_request().with("cookie", "x"))
         .expect_err("an unlisted field must fail");
     assert_four_fields(&err);
+    assert_eq!(err.step(), "send knowledge-update");
     assert!(
         err.to_string().contains("cookie"),
         "the error names the field: {err}"
