@@ -12,7 +12,9 @@ mod schema;
 mod support;
 mod trust;
 mod update;
-mod version;
+mod version {
+    pub use usher_core::{Version, VersionRange};
+}
 
 #[cfg(test)]
 #[path = "../build/keys.rs"]
