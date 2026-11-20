@@ -7,6 +7,10 @@
 
 use std::{error::Error, fmt};
 
+mod environment;
+
+pub use environment::{EnvironmentKey, environment_key};
+
 /// The one error type every usher surface reports through.
 ///
 /// A person who hits a failure learns four things: the step that was running,
