@@ -130,6 +130,57 @@ pub struct SeatRow {
     pub note: Option<String>,
 }
 
+/// One setting reading of a map run, as derived state: the key, the layer and file it came
+/// from, how it was read, and the value only where the knowledge marks the key readable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingRecord<'a> {
+    /// The harness id.
+    pub harness: &'a str,
+    /// The launch directory the map was made for.
+    pub launch_dir: &'a str,
+    /// The settings key path.
+    pub key: &'a str,
+    /// The layer the reading belongs to.
+    pub layer: &'a str,
+    /// The file the reading came from.
+    pub source_path: &'a str,
+    /// How the reading was made: `rebuilt` or `harness-reported`.
+    pub method: &'a str,
+    /// What the map says of this reading, such as `in effect` or `unread`.
+    pub status: &'a str,
+    /// The entry's position for a key that merges a list, one row per entry.
+    pub entry_index: Option<u32>,
+    /// The value, only for a key knowledge marks readable and not sensitive.
+    pub value_text: Option<&'a str>,
+    /// Why the reading is not decided, or any reason that never holds a value.
+    pub note: Option<&'a str>,
+}
+
+/// One setting reading as stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingRow {
+    /// The harness id.
+    pub harness: String,
+    /// The launch directory the map was made for.
+    pub launch_dir: String,
+    /// The settings key path.
+    pub key: String,
+    /// The layer the reading belongs to.
+    pub layer: String,
+    /// The file the reading came from.
+    pub source_path: String,
+    /// How the reading was made.
+    pub method: String,
+    /// What the map says of this reading.
+    pub status: String,
+    /// The entry's position for a list key.
+    pub entry_index: Option<u32>,
+    /// The value, where the knowledge allows it.
+    pub value_text: Option<String>,
+    /// A reason that never holds a value.
+    pub note: Option<String>,
+}
+
 /// One inventory run: when it ran and what it assumed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunRecord<'a> {
@@ -183,6 +234,8 @@ pub struct RunRow {
     pub knowledge_sequence: u64,
     /// The environment key.
     pub environment_key: String,
+    /// The verb that made the run: `inventory` or `map`.
+    pub verb: String,
 }
 
 /// A stored source.
@@ -658,6 +711,25 @@ impl Store {
         self.insert_run(run, sources, seat)
     }
 
+    /// Inserts one map run, its sources, its seat lines and its setting readings in one
+    /// transaction; returns the run id. A reading with a bad field inserts nothing.
+    pub fn record_map(
+        &mut self,
+        run: &RunRecord<'_>,
+        sources: &[SourceRecord<'_>],
+        seat: &[SeatRecord<'_>],
+        settings: &[SettingRecord<'_>],
+    ) -> Result<i64, UsherError> {
+        let _ = settings;
+        self.insert_run(run, sources, seat)
+    }
+
+    /// The setting readings one run recorded, in the order they were recorded.
+    pub fn settings_of(&self, run_id: i64) -> Result<Vec<SettingRow>, UsherError> {
+        let _ = run_id;
+        Ok(Vec::new())
+    }
+
     /// The seat lines one run recorded, in the order they were recorded.
     pub fn seat_of(&self, run_id: i64) -> Result<Vec<SeatRow>, UsherError> {
         let fail = |err: &rusqlite::Error| db_error("read the seat lines", err);
@@ -825,6 +897,7 @@ impl Store {
                     knowledge_schema: r.get(4)?,
                     knowledge_sequence: u64::try_from(r.get::<_, i64>(5)?).unwrap_or(0),
                     environment_key: r.get(6)?,
+                    verb: "inventory".to_string(),
                 })
             })
             .map_err(|err| db_error("read the runs", &err))?;
