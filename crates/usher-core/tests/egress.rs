@@ -790,3 +790,35 @@ fn a_get_with_an_extra_listed_header_follows_with_the_user_agent_only() {
     );
     assert!(sent[1].query.is_empty() && sent[1].body.is_empty());
 }
+
+#[test]
+fn a_redirect_path_holding_a_space_is_refused_with_one_send() {
+    assert_a_valid_call_goes_through();
+    let transport = RecordingTransport::new()
+        .answering_redirect(format!("https://{ASSETS_HOST}/a b"))
+        .answering_ok("never reached");
+    let err = port(&transport)
+        .call_described(&REDIRECTING, described_request().with("file", "k.toml"))
+        .expect_err("a path with a space must fail");
+    assert_four_fields(&err);
+    assert_eq!(transport.sent().len(), 1, "the port followed");
+}
+
+#[test]
+fn the_test_seam_method_is_compiled_only_under_its_feature() {
+    let source = include_str!("../src/egress.rs");
+    let lines: Vec<&str> = source.lines().map(str::trim).collect();
+    let at = lines
+        .iter()
+        .position(|l| l.starts_with("pub fn call_described"))
+        .expect("call_described is in egress.rs");
+    let attribute = lines[..at]
+        .iter()
+        .rev()
+        .find(|l| !l.starts_with("///") && !l.is_empty());
+    assert_eq!(
+        attribute,
+        Some(&"#[cfg(feature = \"test-seam\")]"),
+        "call_described must sit directly under its cfg"
+    );
+}
