@@ -252,15 +252,22 @@ fn a_relative_config_directory_is_not_checked_and_says_why() {
     let mut context = rig.context(Some(VERSION), true);
     context.config_dir = PathBuf::from("relative/claude");
     let listing = rig.list(&context);
-    assert_eq!(listing.not_checked.len(), 1);
-    assert_eq!(listing.not_checked[0].layer, "user");
-    assert!(
-        listing.not_checked[0]
-            .reason
-            .contains("CLAUDE_CONFIG_DIR is not absolute"),
-        "{}",
-        listing.not_checked[0].reason
-    );
+    // The user layer and the server-managed cache both sit under the config directory, and
+    // not checked is never silent for either.
+    let mut layers: Vec<&str> = listing
+        .not_checked
+        .iter()
+        .map(|n| n.layer.as_str())
+        .collect();
+    layers.sort_unstable();
+    assert_eq!(layers, ["server-managed-cache", "user"]);
+    for named in &listing.not_checked {
+        assert!(
+            named.reason.contains("CLAUDE_CONFIG_DIR is not absolute"),
+            "{}",
+            named.reason
+        );
+    }
     assert!(listing.absent_layers.iter().all(|a| a.layer != "user"));
 }
 
