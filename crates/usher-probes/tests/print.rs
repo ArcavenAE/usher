@@ -15,9 +15,9 @@ use usher_testkit::ScratchHome;
 
 const MODE: &str = "USHER_PROBE_PRINT_CHILD";
 
-/// Run by the tests below as a child process, which sets the mode.
+/// Run by the tests below as a child process, which sets the mode; it returns
+/// at once when the mode is not set, so a plain run of this file passes it.
 #[test]
-#[ignore = "run only by the tests below, as a child process"]
 fn child_runs_one_probe() {
     let Some(mode) = std::env::var_os(MODE) else {
         return;
@@ -49,12 +49,7 @@ fn child_runs_one_probe() {
 fn run_child(mode: &str) -> Output {
     let exe = std::env::current_exe().expect("this test binary");
     Command::new(exe)
-        .args([
-            "--ignored",
-            "--exact",
-            "child_runs_one_probe",
-            "--nocapture",
-        ])
+        .args(["--exact", "child_runs_one_probe", "--nocapture"])
         .env(MODE, mode)
         .output()
         .expect("the child runs")

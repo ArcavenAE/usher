@@ -17,9 +17,10 @@ use usher_testkit::ScratchHome;
 const MODE: &str = "USHER_PROBE_ENV_CHILD";
 const HARNESS: &str = "USHER_PROBE_ENV_HARNESS";
 
-/// Run by the test below as a child process, with variables set around it.
+/// Run by the tests below as a child process, with variables set around it;
+/// it returns at once when the mode is not set, so a plain run of this file
+/// passes it.
 #[test]
-#[ignore = "run only by the test below, as a child process"]
 fn child_prints_the_launched_environment() {
     if std::env::var_os(MODE).is_none() {
         return;
@@ -69,7 +70,6 @@ fn run_child_for(harness: Option<&str>) -> Output {
     let mut command = Command::new(exe);
     command
         .args([
-            "--ignored",
             "--exact",
             "child_prints_the_launched_environment",
             "--nocapture",
