@@ -169,6 +169,21 @@ impl SourceLister for ClaudeCodeAdapter {
         for candidate in &candidates {
             match fs::metadata(&candidate.path) {
                 Ok(meta) => present.push((candidate, meta)),
+                // Any other error is not evidence of absence: the path may exist behind a
+                // directory this process cannot look into. It is named as not checked,
+                // with the error kind and never any content.
+                Err(error) if error.kind() != io::ErrorKind::NotFound => {
+                    if candidate.platform_ok {
+                        not_checked.push(NotCheckedLayer {
+                            layer: layer_name(candidate.fact.layer()).to_string(),
+                            reason: format!(
+                                "{} could not be checked: {:?}",
+                                candidate.path.display(),
+                                error.kind()
+                            ),
+                        });
+                    }
+                }
                 Err(_) => {
                     // Project and local settings belong to a repository, so their absence
                     // is named only when the directory is in one.
