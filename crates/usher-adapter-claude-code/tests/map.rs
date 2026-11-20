@@ -1816,3 +1816,96 @@ fn a_broken_layer_below_the_one_that_sets_a_list_still_adds_the_note() {
     assert_eq!(files.len(), 1, "{files:?}");
     assert_eq!((files[0].0.as_str(), &files[0].1), ("user", &broken));
 }
+
+/// A source the listing marks as not read, or as shadowed by a higher-ranked managed file,
+/// contributes nothing whatever its file holds, so a broken file there gives a skipped
+/// entry and no not-read item: the gap it would state does not exist.
+#[test]
+fn a_broken_file_in_a_skipped_source_is_skipped_and_not_named_as_not_read() {
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"model": "user-model"}"#);
+    rig.write(&rig.project_file(), "{ not json");
+    rig.write(
+        &rig.system.join("etc/claude-code/managed-settings.json"),
+        "{ also not json",
+    );
+    let adapter = rig.adapter(KnowledgeFile::embedded().expect("embedded"));
+    let context = rig.context(&[]);
+    let mut listing = rig.listing(&adapter, &context);
+    for source in &mut listing.sources {
+        match source.layer.as_str() {
+            "project" => {
+                source.status = SourceStatus::Unread {
+                    reason: "knowledge item claude-code.fx-unread".to_string(),
+                };
+            }
+            "managed" => {
+                source.status = SourceStatus::Shadowed {
+                    by: PathBuf::from("/higher/ranked/managed-settings.json"),
+                };
+            }
+            _ => {}
+        }
+    }
+    let map = adapter.map_settings(&listing, &context).expect("a map");
+    for layer in ["project", "managed"] {
+        assert!(
+            map.skipped_layers.iter().any(|s| s.layer == layer),
+            "no skipped {layer} in {:?}",
+            map.skipped_layers
+        );
+    }
+    assert!(
+        files_not_read(&map).is_empty(),
+        "a skipped source is named as not read: {:?}",
+        map.not_observed
+    );
+    let user = reading(&map, "model", "user");
+    assert_eq!(user.status, ReadingStatus::InEffect, "{user:?}");
+}
+
+/// With two broken layers the note names each, in stack order, joined with semicolons. A
+/// list entry that is also set elsewhere says so first and ends with the closing clause; an
+/// own-rule key has no closing clause.
+///
+/// Provisional: the wording is not final.
+#[test]
+fn two_broken_layers_are_each_named_in_stack_order_with_the_also_set_note_first() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.system.join("etc/claude-code/managed-settings.json"),
+        r#"{"permissions": {"deny": ["Read(x)"]}}"#,
+    );
+    rig.write(
+        &rig.user_file(),
+        r#"{"permissions": {"deny": ["Read(x)"]}, "fallbackModel": "user-fallback"}"#,
+    );
+    rig.write(&rig.local_file(), "{ not json");
+    rig.write(&rig.project_file(), "[1]");
+    let map = rig.seed_map(&[]);
+    let rows = readings(&map, "permissions.deny");
+    let note = |layer: &str| {
+        rows.iter()
+            .find(|r| r.layer == layer)
+            .unwrap_or_else(|| panic!("no {layer} entry in {rows:?}"))
+            .note
+            .clone()
+    };
+    assert_eq!(
+        note("managed").as_deref(),
+        Some(
+            "local file could not be read; project file could not be read; more entries may apply"
+        )
+    );
+    assert_eq!(
+        note("user").as_deref(),
+        Some(
+            "also set in managed; local file could not be read; project file could not be read; more entries may apply"
+        )
+    );
+    let own = reading(&map, "fallbackModel", "user");
+    assert_eq!(
+        own.note.as_deref(),
+        Some("own merge rule; local file could not be read; project file could not be read")
+    );
+}
