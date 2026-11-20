@@ -99,26 +99,73 @@ fn a_failed_control_is_not_run_and_the_claim_is_never_called() {
     );
 }
 
-#[test]
-fn a_claim_that_cannot_be_measured_is_not_run() {
+/// Runs a probe whose claim returns `why`, under a fake harness that is found.
+fn run_unmeasured(why: Unmeasured) -> usher_probes::run::NotRun {
     let scratch = ScratchHome::new().expect("scratch home");
     let bin = fake_harness(&scratch, "fakeh", "fakeh 1.2.3");
-    let not_run = run(
+    run(
         &spec("fakeh", bin.as_os_str()),
         &scratch,
         today(),
         |_| Ok(()),
-        |_| {
-            Err(Unmeasured::Broken(
-                "the count could not be read".to_string(),
-            ))
-        },
+        |_| Err(why),
     )
-    .expect_err("an unmeasurable claim is not a result");
-    assert!(
-        not_run.reason().contains("the count could not be read"),
-        "{not_run}"
+    .expect_err("an unmeasurable claim is not a result")
+}
+
+/// The text a `run_or_panic` panic carries, for a claim that returns `why`.
+fn panic_text(why: Unmeasured) -> String {
+    let scratch = ScratchHome::new().expect("scratch home");
+    let bin = fake_harness(&scratch, "fakeh", "fakeh 1.2.3");
+    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        run_or_panic(
+            &spec("fakeh", bin.as_os_str()),
+            &scratch,
+            today(),
+            |_| Ok(()),
+            |_| Err(why),
+        )
+    }));
+    let payload = caught.expect_err("a probe that cannot run must panic");
+    payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| payload.downcast_ref::<&str>().map(|s| (*s).to_string()))
+        .expect("a text panic payload")
+}
+
+// Meaning change: this was `a_claim_that_cannot_be_measured_is_not_run`, which
+// took any closure error as the reason. A claim that needs credentials is now
+// a declared kind of not run, with an exact message and no fragment.
+#[test]
+fn a_claim_that_needs_credentials_is_not_run_with_that_reason() {
+    let not_run = run_unmeasured(Unmeasured::NeedsCredentials);
+    assert_eq!(*not_run.kind(), Unmeasured::NeedsCredentials);
+    assert_eq!(not_run.to_string(), "not run: needs credentials");
+    assert_eq!(
+        panic_text(Unmeasured::NeedsCredentials),
+        "not run: needs credentials"
     );
+}
+
+#[test]
+fn a_claim_that_needs_a_network_is_not_run_with_that_reason() {
+    let not_run = run_unmeasured(Unmeasured::NeedsNetwork);
+    assert_eq!(*not_run.kind(), Unmeasured::NeedsNetwork);
+    assert_eq!(not_run.to_string(), "not run: needs network");
+    assert_eq!(
+        panic_text(Unmeasured::NeedsNetwork),
+        "not run: needs network"
+    );
+}
+
+#[test]
+fn a_plain_error_is_not_run_with_its_own_text() {
+    let why = Unmeasured::Broken("the count could not be read".to_string());
+    let not_run = run_unmeasured(why.clone());
+    assert_eq!(*not_run.kind(), why);
+    assert_eq!(not_run.to_string(), "not run: the count could not be read");
+    assert_eq!(panic_text(why), "not run: the count could not be read");
 }
 
 #[test]
