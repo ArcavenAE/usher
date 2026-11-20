@@ -48,7 +48,7 @@ pub fn fetch_update<T: Transport, P: Policy>(
 
 #[cfg(test)]
 mod tests {
-    use usher_core::{Class, Method, PersonStartedOnly, Policy, Port, Response, UsherError};
+    use usher_core::{Method, PersonStartedOnly, Port, Response, UsherError};
     use usher_testkit::{RecordingTransport, Signer};
 
     use super::*;
@@ -289,20 +289,13 @@ mod tests {
         assert_eq!(sequence(&knowledge), before);
     }
 
-    struct Closed;
-    impl Policy for Closed {
-        fn allows(&self, _class: Class) -> bool {
-            false
-        }
-    }
-
     #[test]
     fn a_closed_policy_sends_nothing_and_leaves_the_knowledge() {
         assert_a_valid_fetch_is_taken();
         let signer = Signer::new();
         let file = file_at(sequence(&held()) + 1);
         let transport = answers(&file, &signer.sign(file.as_bytes(), "sequence"));
-        let closed = Port::new(transport.clone(), Closed);
+        let closed = Port::new(transport.clone(), usher_core::DenyAll);
         let mut knowledge = held();
         let before = sequence(&knowledge);
         let err = fetch_update(&closed, &mut knowledge, &trusting(&signer))
