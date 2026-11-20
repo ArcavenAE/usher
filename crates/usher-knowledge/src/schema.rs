@@ -71,6 +71,8 @@ pub enum Class {
     Disputed,
     /// The parts of the seat around a harness (slow).
     Seat,
+    /// The settings keys a harness reads, with how each merges across layers (fast).
+    SettingsKeys,
 }
 
 impl Class {
@@ -86,6 +88,7 @@ impl Class {
             "never-call" => Some(Class::NeverCall),
             "disputed" => Some(Class::Disputed),
             "seat" => Some(Class::Seat),
+            "settings-keys" => Some(Class::SettingsKeys),
             _ => None,
         }
     }
@@ -98,9 +101,12 @@ impl Class {
             | Class::Sources
             | Class::CredentialStores
             | Class::Seat => Layer::Slow,
-            Class::Keys | Class::Defaults | Class::Hazards | Class::NeverCall | Class::Disputed => {
-                Layer::Fast
-            }
+            Class::Keys
+            | Class::Defaults
+            | Class::Hazards
+            | Class::NeverCall
+            | Class::Disputed
+            | Class::SettingsKeys => Layer::Fast,
         }
     }
 }
@@ -412,6 +418,70 @@ impl SeatFact {
     }
 }
 
+/// How a settings key combines across layers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum MergeKind {
+    /// The highest-ranked layer that sets the key wins.
+    Scalar,
+    /// Every layer's entries are kept, each tied to its layer.
+    ListMerge,
+    /// Objects combine key by key.
+    ObjectMerge,
+    /// The harness gives the key its own rule; usher does not decide it.
+    OwnRule,
+}
+
+/// An environment variable that overrides a settings key when it is set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnvOverride {
+    variable: String,
+    key: String,
+}
+
+impl EnvOverride {
+    /// The variable whose presence overrides the key.
+    pub fn variable(&self) -> &str {
+        &self.variable
+    }
+
+    /// The settings key it overrides.
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+}
+
+/// What harness knowledge says about one settings key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsKeyFact {
+    key: String,
+    merge: MergeKind,
+    sensitive: bool,
+    overrides: Option<EnvOverride>,
+}
+
+impl SettingsKeyFact {
+    /// The key path; `*` stands for one whole level.
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    /// How the key combines across layers.
+    pub fn merge(&self) -> MergeKind {
+        self.merge
+    }
+
+    /// Whether the value is never read or stored, even though the key is listed.
+    pub fn sensitive(&self) -> bool {
+        self.sensitive
+    }
+
+    /// The environment variable that overrides the key, if knowledge names one.
+    pub fn overrides(&self) -> Option<&EnvOverride> {
+        self.overrides.as_ref()
+    }
+}
+
 /// One fact about a harness, with its source and the date it was last verified.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
@@ -428,6 +498,8 @@ pub struct Item {
     version_from: Option<VersionFrom>,
     variable: Option<LaunchVariable>,
     seat: Option<SeatFact>,
+    settings_key: Option<SettingsKeyFact>,
+    stack: Vec<String>,
 }
 
 /// How a harness version is read from disk without running the harness.
@@ -531,6 +603,16 @@ impl Item {
     /// The setting names a `keys` item lists, empty for every other class.
     pub fn keys(&self) -> &[String] {
         &self.keys
+    }
+
+    /// The settings-key fact, for an item of class `settings-keys`.
+    pub fn settings_key(&self) -> Option<&SettingsKeyFact> {
+        self.settings_key.as_ref()
+    }
+
+    /// The cross-layer order, highest first, for an item of class `layers`.
+    pub fn stack(&self) -> &[String] {
+        &self.stack
     }
 
     /// The seat fact, for an item of class `seat`.
@@ -1384,6 +1466,8 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
         version_from,
         variable,
         seat,
+        settings_key: None,
+        stack: Vec::new(),
     })
 }
 
