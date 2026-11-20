@@ -156,7 +156,7 @@ pub(crate) fn map_settings(
         );
     }
 
-    let broken: Vec<&Layer<'_>> = layers
+    let unplaced: Vec<&Layer<'_>> = layers
         .iter()
         .filter(|l| match l.role {
             Role::Decides => l.object.is_none(),
@@ -165,7 +165,7 @@ pub(crate) fn map_settings(
         })
         .collect();
     for (key, found) in listed.iter().zip(&occurrences) {
-        decide(key, found, &broken, context, &mut rows);
+        decide(key, found, &unplaced, context, &mut rows);
     }
 
     rows.sort_by(|a, b| {
@@ -357,6 +357,18 @@ fn leaf(value: &Value, path: &mut Vec<String>, layer: &Layer<'_>, rows: &mut Vec
     }
 }
 
+/// Whether an object holds the full key path, segment by segment.
+fn holds_path(object: &serde_json::Map<String, Value>, segments: &[&str]) -> bool {
+    let Some((first, rest)) = segments.split_first() else {
+        return false;
+    };
+    match (object.get(*first), rest.is_empty()) {
+        (Some(_), true) => true,
+        (Some(Value::Object(inner)), false) => holds_path(inner, rest),
+        _ => false,
+    }
+}
+
 fn in_scope(fact: &SettingsKeyFact, layer: &str) -> bool {
     match fact.scopes() {
         Scopes::Layers(allowed) => allowed.iter().any(|l| layer_name(*l) == layer),
@@ -368,7 +380,7 @@ fn in_scope(fact: &SettingsKeyFact, layer: &str) -> bool {
 fn decide(
     key: &Listed<'_>,
     found: &[Occurrence<'_>],
-    broken: &[&Layer<'_>],
+    unplaced: &[&Layer<'_>],
     context: &LaunchContext,
     rows: &mut Vec<Row>,
 ) {
@@ -439,10 +451,22 @@ fn decide(
         return;
     }
 
+    // A layer that cannot be read blocks every scalar below it. A layer the listing cannot
+    // place whose file was read blocks only the keys its file holds, since that file shows
+    // what it sets.
     if fact.merge() == MergeKind::Scalar
-        && let Some(blocker) = broken
-            .iter()
-            .find(|b| b.rank < best && in_scope(fact, b.name))
+        && let Some(note) = unplaced.iter().find_map(|layer| {
+            if layer.rank >= best || !in_scope(fact, layer.name) {
+                return None;
+            }
+            match (&layer.role, &layer.object) {
+                (_, None) => Some(format!("{} file could not be read", layer.name)),
+                (Role::Unknown(reason), Some(object)) if holds_path(object, &key.segments) => {
+                    Some(format!("{} not placed: {reason}", layer.name))
+                }
+                _ => None,
+            }
+        })
     {
         for occurrence in &deciding {
             rows.push(row(
@@ -451,7 +475,7 @@ fn decide(
                 ReadingStatus::NotDecided,
                 None,
                 shown(occurrence.value),
-                Some(format!("{} file could not be read", blocker.name)),
+                Some(note.clone()),
             ));
         }
         return;
