@@ -9,11 +9,15 @@ use std::{error::Error, fmt};
 
 mod environment;
 mod listing;
+mod map;
 
 pub use environment::{EnvironmentKey, environment_key, key_variables};
 pub use listing::{
     AbsentLayer, CheckedPath, KeyNames, LaunchContext, ListedSource, NotCheckedLayer, SeatLine,
     SourceLister, SourceListing, SourceStatus, SystemRoot,
+};
+pub use map::{
+    ReadingMethod, ReadingStatus, SettingReading, SettingsMap, SettingsMapper, SkippedLayer,
 };
 
 /// The one error type every usher surface reports through.
