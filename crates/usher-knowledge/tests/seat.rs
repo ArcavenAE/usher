@@ -4,7 +4,7 @@
 //! presence, one directory listing, key names at listed key paths, or the presence of
 //! named environment variables. Public API only.
 
-use usher_knowledge::{Class, KnowledgeFile, Layer, Platform, SeatPart, SeatRead};
+use usher_knowledge::{Class, KnowledgeFile, Layer, Platform, ReferenceKind, SeatPart, SeatRead};
 
 const FILE: &str = r#"
 schema_version = 4
@@ -148,17 +148,56 @@ fn a_schema_3_file_is_refused_naming_both_schemas() {
 }
 
 #[test]
-fn the_embedded_file_is_schema_4_and_carries_cited_seat_parts() {
+fn the_embedded_file_is_schema_4() {
     let file = KnowledgeFile::embedded().expect("the embedded file");
     assert_eq!(file.version().schema_version(), 4);
-    for part in [SeatPart::Mcp, SeatPart::AuthRoute, SeatPart::Toolchain] {
-        let item = file
-            .items()
-            .iter()
-            .find(|item| item.seat().is_some_and(|seat| seat.part() == part))
-            .unwrap_or_else(|| panic!("no seat item for {part:?}"));
-        assert!(!item.reference().locator().is_empty());
-    }
+}
+
+/// The project-scope MCP registrations: `.mcp.json` at the project root, with the
+/// server names and the key names of each server's `env` and `headers`, cited to the
+/// vendor's MCP page.
+#[test]
+fn the_embedded_file_pins_the_claude_code_project_mcp_item() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    let item = file
+        .items()
+        .iter()
+        .find(|item| item.id() == "claude-code.seat-mcp-project")
+        .expect("the project MCP seat item");
+    assert_eq!(item.harness(), "claude-code");
+    assert_eq!(item.class(), Class::Seat);
+    assert_eq!(item.layer(), Layer::Slow);
+    let seat = item.seat().expect("a seat fact");
+    assert_eq!(seat.part(), SeatPart::Mcp);
+    assert_eq!(seat.read(), SeatRead::Names);
+    assert_eq!(seat.path(), Some("${REPO}/.mcp.json"));
+    assert_eq!(
+        seat.key_paths(),
+        ["mcpServers.*", "mcpServers.*.env", "mcpServers.*.headers"]
+    );
+    assert!(seat.variables().is_empty());
+    assert_eq!(seat.platforms(), None);
+    assert_eq!(item.reference().kind(), ReferenceKind::VendorDocs);
+    assert_eq!(
+        item.reference().locator(),
+        "https://code.claude.com/docs/en/mcp"
+    );
+}
+
+/// Whichever auth-route item the seed carries, it cites something. Its exact form waits
+/// for the ruling on how the account-key signal is written.
+#[test]
+fn the_embedded_file_carries_an_auth_route_item_with_a_citation() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    let item = file
+        .items()
+        .iter()
+        .find(|item| {
+            item.seat()
+                .is_some_and(|seat| seat.part() == SeatPart::AuthRoute)
+        })
+        .expect("an auth-route seat item");
+    assert!(!item.reference().locator().is_empty());
 }
 
 #[test]
@@ -168,7 +207,10 @@ fn a_seat_item_of_the_fast_layer_is_refused() {
         "layer = \"fast\"\nclass = \"seat\"",
         1,
     );
-    rejects(&text, &["demo.seat-mcp", "class", "seat"]);
+    rejects(
+        &text,
+        &["demo.seat-mcp", "class `seat`", "other layer", "`fast`"],
+    );
 }
 
 #[test]
