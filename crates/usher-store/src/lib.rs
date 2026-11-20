@@ -15,7 +15,7 @@ use usher_core::UsherError;
 const DB_FILE: &str = "usher.db";
 
 /// The schema version this build writes and reads.
-const USER_VERSION: i64 = 2;
+const USER_VERSION: i64 = 3;
 
 /// How long a connection waits on a locked database.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -79,6 +79,59 @@ CREATE TRIGGER inventory_seat_no_delete BEFORE DELETE ON inventory_seat
 BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
 ";
 
+/// The statuses a reading may carry, as the check constraint lists them and as the API
+/// accepts them. One list, so the two cannot drift apart.
+const STATUSES: [&str; 8] = [
+    "in_effect",
+    "shadowed",
+    "unread",
+    "not_decided",
+    "overridden_by_environment",
+    "value_not_read",
+    "not_checked",
+    "unknown",
+];
+
+/// The methods a reading may name: a file rebuild or the harness's own report.
+const METHODS: [&str; 2] = ["rebuilt", "harness-reported"];
+
+/// Version 3: the verb that made each run, which existing rows read as `inventory`, and the
+/// setting readings of a map run, one insert-only row each. The verb column is added before
+/// the table and its triggers, so a failure in a later step is one only a transaction undoes.
+fn map_schema() -> String {
+    let list = |items: &[&str]| {
+        items
+            .iter()
+            .map(|item| format!("'{item}'"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let (statuses, methods) = (list(&STATUSES), list(&METHODS));
+    format!(
+        "
+ALTER TABLE inventory_run ADD COLUMN verb TEXT NOT NULL DEFAULT 'inventory' CHECK (verb IN ('inventory', 'map'));
+CREATE TABLE map_setting (
+    run_id INTEGER NOT NULL REFERENCES inventory_run(id),
+    harness TEXT NOT NULL,
+    launch_dir TEXT NOT NULL,
+    key TEXT NOT NULL CHECK (key <> ''),
+    layer TEXT NOT NULL CHECK (layer <> ''),
+    source_path TEXT NOT NULL,
+    method TEXT NOT NULL CHECK (method IN ({methods})),
+    status TEXT NOT NULL CHECK (status IN ({statuses})),
+    entry_index INTEGER CHECK (entry_index IS NULL OR entry_index >= 0),
+    value_text TEXT,
+    note TEXT,
+    CHECK (status <> 'value_not_read' OR value_text IS NULL)
+);
+CREATE TRIGGER map_setting_no_update BEFORE UPDATE ON map_setting
+BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
+CREATE TRIGGER map_setting_no_delete BEFORE DELETE ON map_setting
+BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
+"
+    )
+}
+
 /// The settings a connection to the store runs with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoreSettings {
@@ -127,6 +180,57 @@ pub struct SeatRow {
     /// present, absent ones included.
     pub members: Vec<(String, bool)>,
     /// Why the item could not be checked, as text that never holds a variable's value.
+    pub note: Option<String>,
+}
+
+/// One setting reading of a map run, as derived state: the key, the layer and file it came
+/// from, how it was read, and the value only where the knowledge marks the key readable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingRecord<'a> {
+    /// The harness id.
+    pub harness: &'a str,
+    /// The launch directory the map was made for.
+    pub launch_dir: &'a str,
+    /// The settings key path.
+    pub key: &'a str,
+    /// The layer the reading belongs to.
+    pub layer: &'a str,
+    /// The file the reading came from.
+    pub source_path: &'a str,
+    /// How the reading was made: `rebuilt` or `harness-reported`.
+    pub method: &'a str,
+    /// What the map says of this reading, such as `in effect` or `unread`.
+    pub status: &'a str,
+    /// The entry's position for a key that merges a list, one row per entry.
+    pub entry_index: Option<u32>,
+    /// The value, only for a key knowledge marks readable and not sensitive.
+    pub value_text: Option<&'a str>,
+    /// Why the reading is not decided, or any reason that never holds a value.
+    pub note: Option<&'a str>,
+}
+
+/// One setting reading as stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingRow {
+    /// The harness id.
+    pub harness: String,
+    /// The launch directory the map was made for.
+    pub launch_dir: String,
+    /// The settings key path.
+    pub key: String,
+    /// The layer the reading belongs to.
+    pub layer: String,
+    /// The file the reading came from.
+    pub source_path: String,
+    /// How the reading was made.
+    pub method: String,
+    /// What the map says of this reading.
+    pub status: String,
+    /// The entry's position for a list key.
+    pub entry_index: Option<u32>,
+    /// The value, where the knowledge allows it.
+    pub value_text: Option<String>,
+    /// A reason that never holds a value.
     pub note: Option<String>,
 }
 
@@ -183,6 +287,8 @@ pub struct RunRow {
     pub knowledge_sequence: u64,
     /// The environment key.
     pub environment_key: String,
+    /// The verb that made the run: `inventory` or `map`.
+    pub verb: String,
 }
 
 /// A stored source.
@@ -405,6 +511,50 @@ fn is_utc_second(text: &str) -> bool {
         })
 }
 
+/// Refuses a reading the table would refuse, with a message that names the field and the
+/// value, so the refusal does not depend on a constraint text.
+fn check_reading(reading: &SettingRecord<'_>) -> Result<(), UsherError> {
+    let refuse = |field: &str, why: String| {
+        fail(
+            format!("check {field}"),
+            why,
+            "pass a value from the documented set and run the command again",
+        )
+    };
+    if !STATUSES.contains(&reading.status) {
+        return Err(refuse(
+            "status",
+            format!(
+                "`status` is `{}`; it must be one of {}",
+                reading.status,
+                STATUSES.join(", ")
+            ),
+        ));
+    }
+    if !METHODS.contains(&reading.method) {
+        return Err(refuse(
+            "method",
+            format!(
+                "`method` is `{}`; it must be one of {}",
+                reading.method,
+                METHODS.join(", ")
+            ),
+        ));
+    }
+    for (field, value) in [("key", reading.key), ("layer", reading.layer)] {
+        if value.is_empty() {
+            return Err(refuse(field, format!("`{field}` is empty")));
+        }
+    }
+    if reading.status == "value_not_read" && reading.value_text.is_some() {
+        return Err(refuse(
+            "value_text",
+            "a `value_not_read` reading cannot hold a value".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn check_time(field: &str, text: &str) -> Result<(), UsherError> {
     if is_utc_second(text) {
         Ok(())
@@ -507,8 +657,9 @@ fn create_schema(conn: &Connection, db_path: &Path) -> Result<(), UsherError> {
         if rows > 0 {
             return Ok(false);
         }
+        let map = map_schema();
         conn.execute_batch(&format!(
-            "{SCHEMA}{SEAT_SCHEMA}PRAGMA user_version = {USER_VERSION};"
+            "{SCHEMA}{SEAT_SCHEMA}{map}PRAGMA user_version = {USER_VERSION};"
         ))?;
         Ok(true)
     })();
@@ -528,22 +679,26 @@ fn create_schema(conn: &Connection, db_path: &Path) -> Result<(), UsherError> {
     }
 }
 
-/// Moves a version 1 store to version 2 in one transaction under the write lock: the seat
-/// table and its triggers are created and the version is set, or nothing changes. The
+/// Moves a version 1 or 2 store to version 3 in one transaction under the write lock: every
+/// pending step runs, and the version is set once, to the final one, or nothing changes. The
 /// version is read again inside the lock, so two opens at once both succeed and the second
-/// finds version 2.
+/// finds version 3.
 fn migrate_to_current(conn: &Connection) -> Result<(), UsherError> {
-    let step = |err: &rusqlite::Error| db_error("move the inventory tables to version 2", err);
+    let step = |err: &rusqlite::Error| db_error("move the inventory tables to version 3", err);
     conn.execute_batch("BEGIN IMMEDIATE")
         .map_err(|err| step(&err))?;
     let result = (|| -> Result<(), rusqlite::Error> {
         let now: i64 = conn.query_row("SELECT user_version FROM pragma_user_version", [], |r| {
             r.get(0)
         })?;
+        let mut pending = String::new();
         if now == 1 {
-            conn.execute_batch(&format!(
-                "{SEAT_SCHEMA}PRAGMA user_version = {USER_VERSION};"
-            ))?;
+            pending.push_str(SEAT_SCHEMA);
+        }
+        if now == 1 || now == 2 {
+            pending.push_str(&map_schema());
+            pending.push_str(&format!("PRAGMA user_version = {USER_VERSION};"));
+            conn.execute_batch(&pending)?;
         }
         Ok(())
     })();
@@ -658,6 +813,49 @@ impl Store {
         self.insert_run(run, sources, seat)
     }
 
+    /// Inserts one map run, its sources, its seat lines and its setting readings in one
+    /// transaction; returns the run id. A reading with a bad field inserts nothing.
+    pub fn record_map(
+        &mut self,
+        run: &RunRecord<'_>,
+        sources: &[SourceRecord<'_>],
+        seat: &[SeatRecord<'_>],
+        settings: &[SettingRecord<'_>],
+    ) -> Result<i64, UsherError> {
+        for reading in settings {
+            check_reading(reading)?;
+        }
+        self.insert_run_as("map", run, sources, seat, settings)
+    }
+
+    /// The setting readings one run recorded, in the order they were recorded.
+    pub fn settings_of(&self, run_id: i64) -> Result<Vec<SettingRow>, UsherError> {
+        let fail = |err: &rusqlite::Error| db_error("read the setting readings", err);
+        let mut stmt = self
+            .conn
+            .prepare("SELECT harness, launch_dir, key, layer, source_path, method, status, entry_index, value_text, note FROM map_setting WHERE run_id = ?1 ORDER BY rowid")
+            .map_err(|err| fail(&err))?;
+        let rows = stmt
+            .query_map([run_id], |r| {
+                Ok(SettingRow {
+                    harness: r.get(0)?,
+                    launch_dir: r.get(1)?,
+                    key: r.get(2)?,
+                    layer: r.get(3)?,
+                    source_path: r.get(4)?,
+                    method: r.get(5)?,
+                    status: r.get(6)?,
+                    entry_index: r
+                        .get::<_, Option<i64>>(7)?
+                        .map(|n| u32::try_from(n).unwrap_or(u32::MAX)),
+                    value_text: r.get(8)?,
+                    note: r.get(9)?,
+                })
+            })
+            .map_err(|err| fail(&err))?;
+        rows.collect::<Result<_, _>>().map_err(|err| fail(&err))
+    }
+
     /// The seat lines one run recorded, in the order they were recorded.
     pub fn seat_of(&self, run_id: i64) -> Result<Vec<SeatRow>, UsherError> {
         let fail = |err: &rusqlite::Error| db_error("read the seat lines", err);
@@ -750,6 +948,17 @@ impl Store {
         sources: &[SourceRecord<'_>],
         seat: &[SeatRecord<'_>],
     ) -> Result<i64, UsherError> {
+        self.insert_run_as("inventory", run, sources, seat, &[])
+    }
+
+    fn insert_run_as(
+        &mut self,
+        verb: &str,
+        run: &RunRecord<'_>,
+        sources: &[SourceRecord<'_>],
+        seat: &[SeatRecord<'_>],
+        settings: &[SettingRecord<'_>],
+    ) -> Result<i64, UsherError> {
         check_time("recorded_at", run.recorded_at)?;
         for source in sources {
             if let Some(modified) = source.modified {
@@ -761,14 +970,15 @@ impl Store {
             .transaction()
             .map_err(|err| db_error("start the inventory insert", &err))?;
         tx.execute(
-            "INSERT INTO inventory_run (recorded_at, harness, harness_version, knowledge_schema, knowledge_sequence, environment_key) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO inventory_run (recorded_at, harness, harness_version, knowledge_schema, knowledge_sequence, environment_key, verb) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 run.recorded_at,
                 run.harness,
                 run.harness_version,
                 run.knowledge_schema,
                 i64::try_from(run.knowledge_sequence).unwrap_or(i64::MAX),
-                run.environment_key
+                run.environment_key,
+                verb
             ],
         )
         .map_err(|err| db_error("insert the inventory run", &err))?;
@@ -804,6 +1014,25 @@ impl Store {
             )
             .map_err(|err| db_error("insert a seat line", &err))?;
         }
+        for reading in settings {
+            tx.execute(
+                "INSERT INTO map_setting (run_id, harness, launch_dir, key, layer, source_path, method, status, entry_index, value_text, note) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    run_id,
+                    reading.harness,
+                    reading.launch_dir,
+                    reading.key,
+                    reading.layer,
+                    reading.source_path,
+                    reading.method,
+                    reading.status,
+                    reading.entry_index.map(i64::from),
+                    reading.value_text,
+                    reading.note
+                ],
+            )
+            .map_err(|err| db_error("insert a setting reading", &err))?;
+        }
         tx.commit()
             .map_err(|err| db_error("commit the inventory insert", &err))?;
         Ok(run_id)
@@ -813,7 +1042,7 @@ impl Store {
     pub fn runs(&self) -> Result<Vec<RunRow>, UsherError> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, recorded_at, harness, harness_version, knowledge_schema, knowledge_sequence, environment_key FROM inventory_run ORDER BY id")
+            .prepare("SELECT id, recorded_at, harness, harness_version, knowledge_schema, knowledge_sequence, environment_key, verb FROM inventory_run ORDER BY id")
             .map_err(|err| db_error("read the runs", &err))?;
         let rows = stmt
             .query_map([], |r| {
@@ -825,6 +1054,7 @@ impl Store {
                     knowledge_schema: r.get(4)?,
                     knowledge_sequence: u64::try_from(r.get::<_, i64>(5)?).unwrap_or(0),
                     environment_key: r.get(6)?,
+                    verb: r.get(7)?,
                 })
             })
             .map_err(|err| db_error("read the runs", &err))?;
