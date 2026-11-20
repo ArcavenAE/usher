@@ -634,3 +634,20 @@ fn a_percent_sign_or_dot_segment_in_a_path_value_is_refused_naming_the_field_and
         );
     }
 }
+
+#[test]
+fn a_control_character_that_is_not_whitespace_in_a_path_value_is_refused() {
+    assert_a_valid_call_goes_through();
+    for value in ["a\u{0}b", "a\u{7f}b"] {
+        let transport = RecordingTransport::new().answering_ok("body");
+        let err = port(&transport)
+            .call(Request::new(Egress::KnowledgeUpdate).with("file", value))
+            .expect_err("a control character must fail");
+        assert_four_fields(&err);
+        assert!(err.to_string().contains("file"), "{value:?}: {err}");
+        assert!(
+            transport.sent().is_empty(),
+            "value {value:?} reached the transport"
+        );
+    }
+}
