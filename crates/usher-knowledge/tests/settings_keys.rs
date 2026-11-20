@@ -8,7 +8,7 @@
 //! rule text; those two are provisional until the operator rules. The mechanism tested
 //! here does not depend on either.
 
-use usher_knowledge::{Class, KnowledgeFile, Layer, MergeKind};
+use usher_knowledge::{Class, KnowledgeFile, Layer, MergeKind, SourceLayer};
 
 const FILE: &str = r#"
 schema_version = 5
@@ -34,7 +34,7 @@ versions = ">=1.0.0, <2.0.0"
 summary = "The model; one layer wins."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/model" }
 last_verified = 2026-11-20
-settings_key = { key = "model", merge = "scalar", sensitive = false, overrides = { variable = "DEMO_MODEL", key = "model" } }
+settings_key = { key = "model", merge = "scalar", sensitive = false, overrides = { variable = "DEMO_MODEL" } }
 
 [[item]]
 id = "demo.key-allow"
@@ -75,14 +75,14 @@ harness = "demo"
 layer = "fast"
 class = "settings-keys"
 versions = ">=1.0.0, <2.0.0"
-summary = "Every key under autoMode."
+summary = "An autoMode array; only user and managed files set it."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/auto" }
 last_verified = 2026-11-20
-settings_key = { key = "autoMode.*", merge = "list-merge", sensitive = false }
+settings_key = { key = "autoMode.allow", merge = "list-merge", sensitive = false, scopes = ["user", "managed"] }
 "#;
 
 const STACK: &str = r#"stack = ["managed", "command-line", "local", "project", "user"]"#;
-const MODEL: &str = r#"settings_key = { key = "model", merge = "scalar", sensitive = false, overrides = { variable = "DEMO_MODEL", key = "model" } }"#;
+const MODEL: &str = r#"settings_key = { key = "model", merge = "scalar", sensitive = false, overrides = { variable = "DEMO_MODEL" } }"#;
 const ALLOW: &str =
     r#"settings_key = { key = "permissions.allow", merge = "list-merge", sensitive = false }"#;
 
@@ -121,7 +121,8 @@ fn a_schema_5_file_carries_settings_keys_with_merge_kind_sensitivity_and_overrid
     assert_eq!(fact.merge(), MergeKind::Scalar);
     assert!(!fact.sensitive());
     let over = fact.overrides().expect("an override");
-    assert_eq!((over.variable(), over.key()), ("DEMO_MODEL", "model"));
+    assert_eq!(over.variable(), "DEMO_MODEL");
+    assert_eq!(fact.scopes(), None);
     let allow = items[2].settings_key().expect("allow");
     assert_eq!(
         (allow.key(), allow.merge()),
@@ -134,7 +135,11 @@ fn a_schema_5_file_carries_settings_keys_with_merge_kind_sensitivity_and_overrid
     let picker = items[4].settings_key().expect("picker");
     assert_eq!(picker.merge(), MergeKind::OwnRule);
     let auto = items[5].settings_key().expect("auto");
-    assert_eq!(auto.key(), "autoMode.*");
+    assert_eq!(auto.key(), "autoMode.allow");
+    assert_eq!(
+        auto.scopes(),
+        Some(&[SourceLayer::User, SourceLayer::Managed][..])
+    );
     assert!(items[0].settings_key().is_none());
 }
 
@@ -276,43 +281,52 @@ fn no_settings_key_reaches_the_account_key() {
     ));
 }
 
+/// Red repair of the first version: an override names only its variable, because the item
+/// is already one key.
 #[test]
-fn an_override_names_an_upper_case_variable_and_the_items_own_key() {
+fn an_override_names_an_upper_case_variable_and_nothing_else() {
     for bad in ["demo_model", "DEMO-MODEL", "1DEMO", "", "DEMO=1", "_DEMO"] {
         let text = with(
             MODEL,
             &format!(
-                r#"settings_key = {{ key = "model", merge = "scalar", sensitive = false, overrides = {{ variable = "{bad}", key = "model" }} }}"#
+                r#"settings_key = {{ key = "model", merge = "scalar", sensitive = false, overrides = {{ variable = "{bad}" }} }}"#
             ),
         );
         rejects(&text, &["demo.key-mode", "overrides", "variable"]);
     }
-    let other_key = with(
-        MODEL,
-        r#"settings_key = { key = "model", merge = "scalar", sensitive = false, overrides = { variable = "DEMO_MODEL", key = "theme" } }"#,
-    );
-    rejects(
-        &other_key,
-        &["demo.key-mode", "overrides", "theme", "model"],
-    );
-    let missing_key = with(
-        MODEL,
-        r#"settings_key = { key = "model", merge = "scalar", sensitive = false, overrides = { variable = "DEMO_MODEL" } }"#,
-    );
-    rejects(&missing_key, &["demo.key-mode", "overrides", "key"]);
     let missing_variable = with(
         MODEL,
-        r#"settings_key = { key = "model", merge = "scalar", sensitive = false, overrides = { key = "model" } }"#,
+        r#"settings_key = { key = "model", merge = "scalar", sensitive = false, overrides = {} }"#,
     );
     rejects(
         &missing_variable,
         &["demo.key-mode", "overrides", "variable"],
     );
-    let extra = with(
+    let extra_key = with(
         MODEL,
-        r#"settings_key = { key = "model", merge = "scalar", sensitive = false, overrides = { variable = "DEMO_MODEL", key = "model", note = "x" } }"#,
+        r#"settings_key = { key = "model", merge = "scalar", sensitive = false, overrides = { variable = "DEMO_MODEL", key = "model" } }"#,
     );
-    rejects(&extra, &["demo.key-mode", "overrides", "note"]);
+    rejects(&extra_key, &["demo.key-mode", "overrides", "key"]);
+}
+
+#[test]
+fn scopes_name_known_layers_once_each_and_are_not_empty() {
+    let base = r#"settings_key = { key = "permissions.allow", merge = "list-merge", sensitive = false, scopes = SCOPES }"#;
+    let put = |scopes: &str| with(ALLOW, &base.replace("SCOPES", scopes));
+    accepts(&put(r#"["user", "managed"]"#));
+    accepts(&put(r#"["user", "project", "local", "managed"]"#));
+    for bad in [
+        r#"[]"#,
+        r#"["user", "user"]"#,
+        r#"["user", "plugin"]"#,
+        r#""user""#,
+    ] {
+        rejects(&put(bad), &["demo.key-allow", "scopes"]);
+    }
+    rejects(
+        &put(r#"["user", "plugin"]"#),
+        &["demo.key-allow", "scopes", "plugin"],
+    );
 }
 
 #[test]
@@ -405,7 +419,10 @@ fn the_seed_lists_the_default_readable_keys_with_their_merge_kinds() {
         ("permissions.deny", MergeKind::ListMerge),
         ("permissions.ask", MergeKind::ListMerge),
         ("permissions.defaultMode", MergeKind::Scalar),
-        ("autoMode.*", MergeKind::ListMerge),
+        ("autoMode.environment", MergeKind::ListMerge),
+        ("autoMode.allow", MergeKind::ListMerge),
+        ("autoMode.soft_deny", MergeKind::ListMerge),
+        ("autoMode.hard_deny", MergeKind::ListMerge),
         ("model", MergeKind::Scalar),
         ("policyHelper", MergeKind::Scalar),
         ("wslInheritsWindowsSettings", MergeKind::Scalar),
@@ -444,7 +461,7 @@ fn every_seeded_settings_key_is_cited_and_appears_once_per_version() {
         .iter()
         .filter(|item| item.class() == Class::SettingsKeys)
         .collect();
-    assert!(keyed.len() >= 14, "{} settings-key items", keyed.len());
+    assert!(keyed.len() >= 18, "{} settings-key items", keyed.len());
     for item in &keyed {
         assert!(!item.reference().locator().is_empty(), "{}", item.id());
         assert_eq!(item.layer(), Layer::Fast, "{}", item.id());
@@ -478,4 +495,69 @@ fn the_seed_names_no_credential_key() {
             );
         }
     }
+}
+
+#[test]
+fn the_seed_gives_each_auto_mode_array_the_user_and_managed_scopes() {
+    for key in [
+        "autoMode.environment",
+        "autoMode.allow",
+        "autoMode.soft_deny",
+        "autoMode.hard_deny",
+        "autoMode.classifyAllShell",
+    ] {
+        assert_eq!(
+            seeded(key).scopes(),
+            Some(&[SourceLayer::User, SourceLayer::Managed][..]),
+            "{key}"
+        );
+    }
+}
+
+/// A `true` in the user file or on the command line wins even over a managed `false`, so
+/// the boolean is not plain scalar precedence.
+#[test]
+fn the_seed_gives_classify_all_shell_its_own_rule() {
+    assert_eq!(
+        seeded("autoMode.classifyAllShell").merge(),
+        MergeKind::OwnRule
+    );
+}
+
+#[test]
+fn the_seed_has_no_whole_auto_mode_item() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    let wild = file
+        .items()
+        .iter()
+        .filter_map(|item| item.settings_key())
+        .any(|fact| fact.key() == "autoMode" || fact.key() == "autoMode.*");
+    assert!(!wild, "autoMode is five items, one per member");
+    assert_eq!(seeded("autoMode.allow").key(), "autoMode.allow");
+}
+
+#[test]
+fn the_seed_says_anthropic_model_overrides_model_in_any_file() {
+    let model = seeded("model");
+    assert_eq!(model.scopes(), None);
+    let over = model.overrides().expect("model is overridden");
+    assert_eq!(over.variable(), "ANTHROPIC_MODEL");
+}
+
+/// `ANTHROPIC_DEFAULT_MODEL` applies only when no file sets `model`, so it overrides
+/// nothing.
+#[test]
+fn the_seed_names_no_default_model_variable_as_an_override() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    for item in file.items() {
+        if let Some(over) = item.settings_key().and_then(|fact| fact.overrides()) {
+            assert_ne!(over.variable(), "ANTHROPIC_DEFAULT_MODEL", "{}", item.id());
+        }
+    }
+    let seen = file
+        .items()
+        .iter()
+        .filter_map(|item| item.settings_key())
+        .any(|fact| fact.overrides().is_some());
+    assert!(seen, "the seed names at least one override");
 }

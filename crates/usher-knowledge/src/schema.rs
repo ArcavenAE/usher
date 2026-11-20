@@ -436,18 +436,12 @@ pub enum MergeKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnvOverride {
     variable: String,
-    key: String,
 }
 
 impl EnvOverride {
     /// The variable whose presence overrides the key.
     pub fn variable(&self) -> &str {
         &self.variable
-    }
-
-    /// The settings key it overrides.
-    pub fn key(&self) -> &str {
-        &self.key
     }
 }
 
@@ -458,6 +452,7 @@ pub struct SettingsKeyFact {
     merge: MergeKind,
     sensitive: bool,
     overrides: Option<EnvOverride>,
+    scopes: Option<Vec<SourceLayer>>,
 }
 
 impl SettingsKeyFact {
@@ -474,6 +469,11 @@ impl SettingsKeyFact {
     /// Whether the value is never read or stored, even though the key is listed.
     pub fn sensitive(&self) -> bool {
         self.sensitive
+    }
+
+    /// The layers whose files may set the key; `None` means any file.
+    pub fn scopes(&self) -> Option<&[SourceLayer]> {
+        self.scopes.as_deref()
     }
 
     /// The environment variable that overrides the key, if knowledge names one.
