@@ -7,8 +7,8 @@
   summary: `--version` runs with no timeout, and `command()` inherits XDG_* and credential variables.
   evidence: `harness::probe` calls `.output()`; `ScratchHome::command` sets five variables only. Unverified severity: medium. Settled by the first adapter story that runs a real harness.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-2-scratch-homes-and-the-observation-invariant.md`
-  summary: the watched set may miss `~/.claude.json` and goose data and state directories, and there is no exclusion list for volatile paths.
-  evidence: unverified against the research map; matters when stories 1.5 and later guard live real homes.
+  summary: the watched set may miss goose data and state directories, and there is no exclusion list for volatile paths. `~/.claude.json` and the Claude Code managed settings directories are watched since Story 1.5 PR C.
+  evidence: unverified against the research map; matters when stories 1.6 and later guard live real homes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-signed-harness-knowledge-updates-without-a-client-release.md`
   summary: the highest accepted knowledge sequence is not persisted, so a restart resets rollback protection to the embedded sequence.
   evidence: `Knowledge::update` compares against the in-memory file; the store that can hold the floor arrives with Story 1.5.
@@ -22,8 +22,8 @@
   summary: a later prune of inventory rows needs a migration that relaxes the ABORT triggers on `inventory_run` and `inventory_source`.
   evidence: PR B makes both tables insert-only by trigger (architect ruling 01M7GFSGTF); no story prunes them yet, and the disk budget (AD-7) is the first reason one would.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5-claude-code-settings-inventory.md`
-  summary: the store does not check that the state directory's owner is the current uid; a red for it is due in PR C.
-  evidence: std has no safe getuid, and PR B adds one dependency crate, rusqlite, and no serde_json; the safe-API crate that PR C adds for the account-home resolver also gives the uid (architect answer 01M7GG12SP).
+  summary: closed in PR C. The store open refuses a state directory owned by another uid, and the state directory comes from the account database, not `$HOME`.
+  evidence: `nix` (feature `user`) in `usher-store` gives the uid and the account home; the resolver tests cover both.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5-claude-code-settings-inventory.md`
   summary: closed. The frozen Never line allows creating the missing standard parents of the state directory at 0700; the operator ruled it on 2026-11-15 (relayed by director 01M7GG8BXE) and PR B creates them.
   evidence: the Renegotiated note in the spec's frozen block; the store tests for missing and existing parents.
@@ -45,3 +45,21 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5-claude-code-settings-inventory.md`
   summary: the local settings file has exceptions that knowledge cannot state yet: outside git, a repository root that is the home directory, Windows, and a root the user does not own, where the file stays beside `.claude/settings.json`. In a worktree the file is at the main checkout's root, not at the repository root of the worktree. Both belong with the launch-directory work.
   evidence: the settings page says "If you start Claude Code in a subdirectory of a git repository, it reads and writes that file at the repository root", and that Claude Code "reads the shared `.claude/settings.json` from the session's primary working directory, so to use a file committed at the repository root, start Claude Code there."
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-scratch-homes-and-the-observation-invariant.md`
+  summary: knowledge does not refuse two managed sources of one harness with the same rank over overlapping versions and platforms; the adapter reads two present ones as unknown.
+  evidence: PR C reads a tie as "two managed sources share rank <n>" and never guesses; a structural check in `usher-knowledge` would catch it before a file is signed.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-5-claude-code-settings-inventory.md`
+  summary: the adapter names the item `claude-code.managed-control-keys` by id to find the keys that carry no policy; a knowledge field on the item would say so without the id.
+  evidence: schema 3 has class `keys` and nothing marks which list is the control list; the full Claude Code key list is a later knowledge change.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-5-claude-code-settings-inventory.md`
+  summary: key names are listed sorted by name, not in file order, and values are parsed in memory and dropped.
+  evidence: the workspace has no streaming JSON reader; reading file order or skipping a nested value without parsing it needs `serde` or the `raw_value` feature of serde_json.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-5-claude-code-settings-inventory.md`
+  summary: the host id is the output of `hostname`, run once per inventory.
+  evidence: std has no hostname call and the dependency list for PR C is `nix` for the account-home resolver only; a later change can read it from the account database tooling.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-5-claude-code-settings-inventory.md`
+  summary: knowledge accepts `${CONFIG_DIR}` in a `version_from` launcher or layout; the binder rule checks source paths only. A knowledge refusal at parse time is the next step.
+  evidence: nothing in the seeded knowledge does it. The version is read before it is known, so a `${CONFIG_DIR}` in a launcher resolves under the config directory as known before the version, which can give a guessed Known.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-5-claude-code-settings-inventory.md`
+  summary: with `CLAUDE_CONFIG_DIR` set, Claude Code keeps its global state file under that directory, not at `${HOME}/.claude.json`. The seed names `${HOME}/.claude.json`, so on such a host the inventory reads a file the harness does not use there, which may be stale or absent. Hosts that do not set the variable are unaffected. The window runs from this change's merge to the follow-up that moves the path; nothing is released in it.
+  evidence: the vendor's directory page says "If you set CLAUDE_CONFIG_DIR, every ~/.claude path on this page lives under that directory instead. The same applies to .claude.json, which otherwise sits at ~/.claude.json". The follow-up adds a global-state path token bound by `CLAUDE_CONFIG_DIR` with a default of `${HOME}`, and moves the global-state source to it.

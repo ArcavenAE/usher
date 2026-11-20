@@ -116,6 +116,16 @@ pub struct NamedHome {
     pub path: PathBuf,
 }
 
+/// System paths a harness reads whatever the user's home is, by report name. Watching
+/// them does not make a run observe a harness home.
+const SYSTEM_HOMES: [(&str, &str); 2] = [
+    (
+        "claude-code-managed-mac",
+        "/Library/Application Support/ClaudeCode",
+    ),
+    ("claude-code-managed", "/etc/claude-code"),
+];
+
 /// The real harness homes a test must leave untouched.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RealHomes {
@@ -134,7 +144,8 @@ impl RealHomes {
     /// Claude Code uses `CLAUDE_CONFIG_DIR` or `~/.claude`, codex uses
     /// `CODEX_HOME` or `~/.codex`, and goose uses `GOOSE_PATH_ROOT` (absolute
     /// values only) or `~/.config/goose`. A home that cannot be resolved
-    /// because `HOME` is unset is left out.
+    /// because `HOME` is unset is left out. The Claude Code managed settings
+    /// directories are always watched, and `~/.claude.json` where `HOME` is set.
     pub fn resolve(get: impl Fn(&str) -> Option<OsString>) -> Self {
         let home = get("HOME").map(PathBuf::from);
         let pick = |var: &str, default: &[&str], absolute_only: bool| -> Option<PathBuf> {
@@ -155,6 +166,21 @@ impl RealHomes {
             if let Some(path) = pick(var, default, absolute_only) {
                 homes.push(NamedHome { name, path });
             }
+        }
+        // Claude Code also reads managed settings from absolute system paths, which are
+        // watched whether or not a home resolved, and keeps its global state in
+        // `~/.claude.json`, which needs one.
+        if let Some(home) = &home {
+            homes.push(NamedHome {
+                name: "claude-code-global-state",
+                path: home.join(".claude.json"),
+            });
+        }
+        for (name, path) in SYSTEM_HOMES {
+            homes.push(NamedHome {
+                name,
+                path: PathBuf::from(path),
+            });
         }
         Self { homes }
     }
@@ -241,8 +267,11 @@ impl RealHomeGuard {
 /// home changed while it ran. Returns what `body` returns.
 pub fn observe<T>(homes: &RealHomes, body: impl FnOnce(&ScratchHome) -> T) -> T {
     assert!(
-        !homes.homes().is_empty(),
-        "observe was given no harness homes to watch, so it would pass without checking anything"
+        homes
+            .homes()
+            .iter()
+            .any(|home| !SYSTEM_HOMES.iter().any(|(name, _)| *name == home.name)),
+        "no harness home resolved to watch, so observe would pass without checking a home"
     );
     let scratch = ScratchHome::new().expect("a scratch home is made");
     let guard = RealHomeGuard::snapshot(homes).expect("the real homes can be read");
@@ -255,6 +284,45 @@ pub fn observe<T>(homes: &RealHomes, body: impl FnOnce(&ScratchHome) -> T) -> T 
 mod tests {
     use super::*;
     use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    /// Claude Code reads managed settings from absolute system paths, so the
+    /// observation invariant watches them on every host (Story 1.5).
+    #[test]
+    fn the_watched_set_includes_the_managed_settings_directories() {
+        let homes = RealHomes::resolve(|key| (key == "HOME").then(|| "/scratch-home".into()));
+        let paths: Vec<&Path> = homes.homes().iter().map(|h| h.path.as_path()).collect();
+        for managed in [
+            "/Library/Application Support/ClaudeCode",
+            "/etc/claude-code",
+            "/scratch-home/.claude.json",
+        ] {
+            assert!(
+                paths.contains(&Path::new(managed)),
+                "{managed} is not watched: {paths:?}"
+            );
+        }
+    }
+
+    /// The managed directories are system paths, so they are watched whether or not `HOME`
+    /// resolves; `~/.claude.json` needs a home.
+    #[test]
+    fn the_managed_directories_are_watched_when_home_is_unset_but_another_home_resolves() {
+        let homes = RealHomes::resolve(|key| (key == "CLAUDE_CONFIG_DIR").then(|| "/cfg".into()));
+        let paths: Vec<&Path> = homes.homes().iter().map(|h| h.path.as_path()).collect();
+        for managed in [
+            "/Library/Application Support/ClaudeCode",
+            "/etc/claude-code",
+        ] {
+            assert!(
+                paths.contains(&Path::new(managed)),
+                "{managed} is not watched: {paths:?}"
+            );
+        }
+        assert!(
+            paths.iter().all(|p| !p.ends_with(".claude.json")),
+            "{paths:?}"
+        );
+    }
 
     /// A fake "real" home inside its own scratch root, so no test reads the
     /// host's actual harness homes.
@@ -381,9 +449,15 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "no harness homes")]
+    #[should_panic(expected = "no harness home resolved")]
     fn observe_refuses_an_empty_home_list() {
         observe(&RealHomes::from_homes(vec![]), |_| ());
+    }
+
+    #[test]
+    #[should_panic(expected = "no harness home resolved")]
+    fn observe_refuses_a_list_of_only_system_paths() {
+        observe(&RealHomes::resolve(|_| None), |_| ());
     }
 
     #[test]
@@ -454,6 +528,12 @@ mod tests {
     #[test]
     fn homes_that_cannot_be_resolved_are_left_out() {
         let homes = RealHomes::resolve(|_| None);
-        assert!(homes.homes().is_empty());
+        let harness: Vec<&str> = homes
+            .homes()
+            .iter()
+            .map(|h| h.name)
+            .filter(|name| !name.starts_with("claude-code-managed"))
+            .collect();
+        assert!(harness.is_empty(), "{harness:?}");
     }
 }

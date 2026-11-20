@@ -377,6 +377,7 @@ no adapter depends on another adapter.
 | Rust (stable) | 1.99.1 |
 | tokio | 1.54.1 |
 | rusqlite (feature `bundled`) | 0.41.1 |
+| nix (feature `user`, default features off; the account-home resolver in `usher-store` only) | 0.31.3 |
 | toml_edit | 0.25.19 |
 | jsonc-parser (feature `cst`) | 0.34.0 |
 | yamlpatch | 1.32.0 |

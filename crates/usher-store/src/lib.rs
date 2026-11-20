@@ -4,7 +4,7 @@
 //! never changed.
 
 use std::fs::{self, DirBuilder, OpenOptions};
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -451,7 +451,23 @@ impl Store {
     /// other missing parent is refused. An existing directory with group or other bits, or a
     /// symlink, is refused and left alone.
     pub fn open(state_dir: &Path) -> Result<Self, UsherError> {
+        Self::open_with_owner(state_dir, nix::unistd::Uid::current().as_raw())
+    }
+
+    /// As [`Store::open`], with the uid the state directory must belong to named by the
+    /// caller, so a test can check the owner wiring without changing an owner.
+    pub fn open_with_owner(state_dir: &Path, expected_uid: u32) -> Result<Self, UsherError> {
         prepare_state_dir(state_dir)?;
+        let owner = fs::symlink_metadata(state_dir)
+            .map_err(|err| {
+                fail(
+                    "check the state directory",
+                    format!("cannot inspect `{}`: {err}", state_dir.display()),
+                    "fix the permissions on that path, then run the command again",
+                )
+            })?
+            .uid();
+        ensure_owned(state_dir, owner, expected_uid)?;
         let db_path = state_dir.join(DB_FILE);
         match OpenOptions::new()
             .write(true)
@@ -650,4 +666,88 @@ mod tests {
             assert!(!err.status().is_empty() && !err.next_action().is_empty());
         }
     }
+}
+
+/// The platform whose state directory the resolver names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Platform {
+    /// macOS: `<home>/Library/Application Support/usher`.
+    Macos,
+    /// Linux: `<home>/.local/state/usher`.
+    Linux,
+}
+
+/// The state directory for `platform` under an account home (AD-1): no `XDG_*` and no
+/// `HOME` override.
+pub fn state_dir_under(home: &Path, platform: Platform) -> PathBuf {
+    match platform {
+        Platform::Macos => home.join("Library/Application Support/usher"),
+        Platform::Linux => home.join(".local/state/usher"),
+    }
+}
+
+fn account_error(status: String) -> UsherError {
+    UsherError::new(
+        "resolve the account home",
+        "the account database names this user's home directory",
+        status,
+        "check that the user exists in the account database (`id`, `getent passwd`), then run the command again",
+    )
+}
+
+fn account_of(uid: u32) -> Result<nix::unistd::User, UsherError> {
+    match nix::unistd::User::from_uid(nix::unistd::Uid::from_raw(uid)) {
+        Ok(Some(user)) => Ok(user),
+        Ok(None) => Err(account_error(format!(
+            "no account has uid {uid} in the account database"
+        ))),
+        Err(err) => Err(account_error(format!(
+            "the account database could not be read for uid {uid}: {err}"
+        ))),
+    }
+}
+
+/// The account home of the user with this uid, from the account database and never from
+/// `$HOME`.
+pub fn account_home_of(uid: u32) -> Result<PathBuf, UsherError> {
+    require_absolute_home(uid, &account_of(uid)?.dir)
+}
+
+/// The account name of the current user, from the account database.
+pub fn account_name() -> Result<String, UsherError> {
+    Ok(account_of(nix::unistd::Uid::current().as_raw())?.name)
+}
+
+/// Refuses an account home that is not an absolute path, naming the uid and the path.
+pub fn require_absolute_home(uid: u32, home: &Path) -> Result<PathBuf, UsherError> {
+    if home.is_absolute() {
+        Ok(home.to_path_buf())
+    } else {
+        Err(account_error(format!(
+            "the account database gives `{}` for uid {uid}, which is not an absolute path",
+            home.display()
+        )))
+    }
+}
+
+/// The account home of the current user.
+pub fn account_home() -> Result<PathBuf, UsherError> {
+    account_home_of(nix::unistd::Uid::current().as_raw())
+}
+
+/// Refuses a state directory owned by anyone but the current user.
+pub fn ensure_owned(dir: &Path, dir_uid: u32, current_uid: u32) -> Result<(), UsherError> {
+    if dir_uid == current_uid {
+        return Ok(());
+    }
+    Err(UsherError::new(
+        "check the state directory",
+        "the state directory belongs to the user running usher",
+        format!(
+            "`{}` is owned by uid {dir_uid}, not by uid {current_uid} who is running usher",
+            dir.display()
+        ),
+        "use a state directory you own, or fix its owner yourself, then run the command again",
+    ))
 }

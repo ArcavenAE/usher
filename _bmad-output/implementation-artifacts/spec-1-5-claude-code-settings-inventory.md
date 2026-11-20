@@ -63,6 +63,15 @@ The frozen Boundaries above stand as written, except the Never line, which carri
 - `inventory_run` and `inventory_source` hold derived state only. Rows are inserted and never changed: the API has no update or delete, and triggers ABORT any UPDATE or DELETE on both tables.
 - `user_version` is 1; a newer version is refused, and so is a non-empty file at version 0. There is no migration framework.
 
+## Rulings applied (PR C)
+
+- **One new dependency.** The account-home resolver takes `nix` (`=0.31.3`, default features off, feature `user`), in `usher-store` only, for the account database lookup and the current uid. The operator's ruling, verbatim: "for usher, (1) allow nix". The frozen Never line names `rusqlite` and `serde_json` as the only crates PR B and C add; this ruling is the one exception, and the spine Stack table carries the row.
+- **Rank direction.** In a source's `rank`, 1 is highest and a smaller number wins. Ranks count vendor deliveries that knowledge does not list, so a gap is normal. First-wins compares only present sources on the host's platform. Two present deliverers with one rank read unknown; only a source that delivers a policy key can tie; an unreadable member counts as one that might deliver.
+- **Binder rule.** A source whose path uses `${CONFIG_DIR}` needs a `paths` item that binds the token over exactly the same versions, so a source range that knowledge splits needs a binder for each part.
+- **Version read from knowledge.** The launcher, the rule and the layout come from the knowledge in use, so a knowledge file with no launcher item reads every version as unknown.
+- **Launch variables.** A launch variable whose value is not valid UTF-8 is refused, naming the variable and never its value.
+- **Key names** are listed sorted by name; values are parsed in memory and dropped.
+
 ## One story, four chained PRs
 
 The parts share the workspace `Cargo.toml` and `sprint-status.yaml`, so they are one chain (rule d), each a draft, each red-first, each based on the previous head.
@@ -80,7 +89,8 @@ C waits on the two cards, since C is where statuses print. The story moves to do
 
 - PR A: `crates/usher-knowledge/` -- the `sources` class, `schema_version` 2, the check, the Claude Code seed entries with references and dates
 - PR B: `crates/usher-store/` -- new: opens the store at a state directory it is given (macOS `<account home>/Library/Application Support/usher`, Linux `<account home>/.local/state/usher`, file `usher.db`, no `XDG_*` or `HOME` override; the spine's AD-1 says so), creates `inventory_run` and `inventory_source`, inserts runs; no update or delete of inventory rows, enforced by the API and by ABORT triggers on both tables
-- PR C: `crates/usher-core/` -- the ports (source listing, store) and the environment key function (AD-17); `crates/usher-adapter-claude-code/` -- new: resolves paths from knowledge, reads known JSON for key names only; `crates/usher-cli/` -- new: the `inventory` verb; `crates/usher/src/main.rs` -- hands the command to `usher-cli`, no logic of its own
+- PR C0: `crates/usher-knowledge/` -- `schema_version` 3: the `keys` field on class `keys` items, `always_present` on sources, `version_from` on `paths` items, and the seed items that use them
+- PR C: `crates/usher-core/` -- the ports (source listing, store) and the environment key function (AD-17); `crates/usher-adapter-claude-code/` -- new: resolves paths from knowledge, reads known JSON for key names only, and reads the harness version from disk by the `version_from` rule in knowledge (read the launcher link once, match its target to the layout, and read the version as unknown, with the reason, when the launcher is not a link, the target does not match, or the first `claude` on PATH is not the knowledge launcher; the harness is never run); `crates/usher-cli/` -- new: the `inventory` verb; `crates/usher/src/main.rs` -- hands the command to `usher-cli`, no logic of its own
 - PR D: the seat inventory, in the adapter and the store
 - `crates/usher-testkit/` -- reuse `ScratchHome` and the invariant; add Claude Code fixtures under the scratch home as the PRs need them
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` -- 1-4 to `done` (merged as #26), 1-5 to `ready-for-dev`
@@ -103,6 +113,10 @@ C waits on the two cards, since C is where statuses print. The story moves to do
 ## Design Notes
 
 Proposed status rule (ruling 4): in effect, a present source of a layer the knowledge says the version reads; shadowed, a present source that an exclusive higher source hides (managed sources are first-wins); unread, a present source in a place the knowledge says the version does not read; unknown, any source whose version or format the knowledge cannot place. Absent sources are shown only for the layers knowledge says always exist on the platform, so the listing answers "what exists" without padding.
+
+One lookup feeds the environment key (AD-17). `environment_key` keeps exactly the variables its caller passes and filters none, so every caller takes the list from one `usher-knowledge` function, `KnowledgeFile::launch_variables(harness)`, read through `Knowledge::current()`. It returns the sorted, deduplicated `variable` names knowledge lists for the harness across every version range, so an environment's key does not move when the harness version is unknown or changes. The caller passes only the variables that are set and non-empty, so a knowledge update that names a new variable changes no key where that variable is unset. Which variable binds a path token, and its default, is a separate, version-scoped lookup, `KnowledgeFile::binding(harness, installed, token)`, and never feeds the key. No caller keeps its own list.
+
+The "Credential key" row of the matrix is closed in two parts. PR C carries the half that the key is never opened: an `oauthAccount` value, and any key name nested under it, appears in neither the output nor the store. The half that the auth route reads present belongs to PR D with the rest of the seat around the harness (acceptance criterion 3), so the row is not closed until D lands.
 
 The invariant test runs the command against a scratch home with the real harness homes guarded, as Story 1.2 built it. The `deferred-work.md` note that the watched set may miss `~/.claude.json` is settled here, because this is the first story that reads it.
 
