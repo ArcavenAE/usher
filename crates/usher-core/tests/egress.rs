@@ -1406,3 +1406,35 @@ fn no_public_function_on_any_type_returns_a_wire_request_whatever_its_qualifiers
     }
     assert!(found >= 10, "the scan saw only {found} public functions");
 }
+
+#[test]
+fn no_public_function_in_the_wire_request_impl_returns_self_whatever_its_qualifiers() {
+    let source = include_str!("../src/egress.rs");
+    let body = block(source, "impl WireRequest {");
+    let mut seen = 0;
+    let mut rest = body;
+    while let Some(at) = rest.find("pub ") {
+        let from = &rest[at..];
+        rest = &from[4..];
+        let head: String = from
+            .chars()
+            .take_while(|c| !matches!(c, '(' | '{' | '\n'))
+            .collect();
+        let words: Vec<&str> = head.split_whitespace().collect();
+        if !words.iter().any(|w| *w == "fn") {
+            continue;
+        }
+        let end = from
+            .find(['{', ';'])
+            .expect("a signature ends at a brace or a semicolon");
+        let signature = &from[..end];
+        seen += 1;
+        if let Some((_, returned)) = signature.split_once("->") {
+            assert!(
+                !returned.contains("Self") && !returned.contains("WireRequest"),
+                "a public function in the WireRequest impl returns Self or WireRequest: {signature}"
+            );
+        }
+    }
+    assert!(seen >= 6, "the scan saw only {seen} public functions");
+}
