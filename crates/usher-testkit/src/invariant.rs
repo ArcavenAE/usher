@@ -134,7 +134,8 @@ impl RealHomes {
     /// Claude Code uses `CLAUDE_CONFIG_DIR` or `~/.claude`, codex uses
     /// `CODEX_HOME` or `~/.codex`, and goose uses `GOOSE_PATH_ROOT` (absolute
     /// values only) or `~/.config/goose`. A home that cannot be resolved
-    /// because `HOME` is unset is left out.
+    /// because `HOME` is unset is left out. Where `HOME` is set, the Claude Code
+    /// managed settings directories and `~/.claude.json` are watched too.
     pub fn resolve(get: impl Fn(&str) -> Option<OsString>) -> Self {
         let home = get("HOME").map(PathBuf::from);
         let pick = |var: &str, default: &[&str], absolute_only: bool| -> Option<PathBuf> {
@@ -155,6 +156,24 @@ impl RealHomes {
             if let Some(path) = pick(var, default, absolute_only) {
                 homes.push(NamedHome { name, path });
             }
+        }
+        // Claude Code also reads managed settings from absolute system paths and keeps
+        // its global state in `~/.claude.json`, so the invariant watches them too. They
+        // are added only where a home resolved, so a host with no `HOME` still has an
+        // empty list, which `observe` refuses.
+        if let Some(home) = &home {
+            homes.push(NamedHome {
+                name: "claude-code-global-state",
+                path: home.join(".claude.json"),
+            });
+            homes.push(NamedHome {
+                name: "claude-code-managed-mac",
+                path: PathBuf::from("/Library/Application Support/ClaudeCode"),
+            });
+            homes.push(NamedHome {
+                name: "claude-code-managed",
+                path: PathBuf::from("/etc/claude-code"),
+            });
         }
         Self { homes }
     }
