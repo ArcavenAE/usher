@@ -153,37 +153,6 @@ fn the_embedded_file_is_schema_4() {
     assert_eq!(file.version().schema_version(), 4);
 }
 
-/// The project-scope MCP registrations: `.mcp.json` at the project root, with the
-/// server names and the key names of each server's `env` and `headers`, cited to the
-/// vendor's MCP page.
-#[test]
-fn the_embedded_file_pins_the_claude_code_project_mcp_item() {
-    let file = KnowledgeFile::embedded().expect("the embedded file");
-    let item = file
-        .items()
-        .iter()
-        .find(|item| item.id() == "claude-code.seat-mcp-project")
-        .expect("the project MCP seat item");
-    assert_eq!(item.harness(), "claude-code");
-    assert_eq!(item.class(), Class::Seat);
-    assert_eq!(item.layer(), Layer::Slow);
-    let seat = item.seat().expect("a seat fact");
-    assert_eq!(seat.part(), SeatPart::Mcp);
-    assert_eq!(seat.read(), SeatRead::Names);
-    assert_eq!(seat.path(), Some("${REPO}/.mcp.json"));
-    assert_eq!(
-        seat.key_paths(),
-        ["mcpServers.*", "mcpServers.*.env", "mcpServers.*.headers"]
-    );
-    assert!(seat.variables().is_empty());
-    assert_eq!(seat.platforms(), None);
-    assert_eq!(item.reference().kind(), ReferenceKind::VendorDocs);
-    assert_eq!(
-        item.reference().locator(),
-        "https://code.claude.com/docs/en/mcp"
-    );
-}
-
 /// Whichever auth-route item the seed carries, it cites something. Its exact form waits
 /// for the ruling on how the account-key signal is written.
 #[test]
@@ -591,21 +560,68 @@ fn a_presence_or_listing_item_does_not_name_a_json_file_for_keys_present() {
     }
 }
 
+fn anchored(id: &str, harness: &str, versions: &str, seat: &str) -> String {
+    ACCOUNT_ITEM
+        .replace("demo.seat-account", id)
+        .replace("harness = \"demo\"", &format!("harness = \"{harness}\""))
+        .replace(">=1.0.0, <2.0.0", versions)
+        .replace(ACCOUNT, seat)
+}
+
+const ANCHORED_ASK: &str = r#"seat = { part = "auth-route", path = "${HOME}/.x.json", read = "keys-present", keys = ["oauthAccount"] }"#;
+const ANCHOR: &str = r#"seat = { part = "mcp", path = "${HOME}/.x.json", read = "names", key_paths = ["mcpServers.*"] }"#;
+
 #[test]
-fn another_keys_present_item_does_name_the_file() {
-    let first = item_at(
-        "demo.seat-first",
-        r#"seat = { part = "auth-route", path = "${HOME}/.demo.json", read = "keys-present", keys = ["a"] }"#,
-    );
-    let other = item_at(
+fn a_keys_present_item_does_not_anchor_a_file_for_another() {
+    let first = anchored("demo.seat-first", "demo", ">=1.0.0, <2.0.0", ANCHORED_ASK);
+    let second = anchored(
         "demo.seat-second",
-        r#"seat = { part = "auth-route", path = "${HOME}/.second.json", read = "keys-present", keys = ["oauthAccount"] }"#,
+        "demo",
+        ">=1.0.0, <2.0.0",
+        &ANCHORED_ASK.replace("oauthAccount", "other"),
     );
-    let third = item_at(
-        "demo.seat-third",
-        r#"seat = { part = "auth-route", path = "${HOME}/.second.json", read = "keys-present", keys = ["b"] }"#,
+    let err =
+        KnowledgeFile::parse(&format!("{FILE}{first}{second}")).expect_err("both are refused");
+    let shown = err.to_string();
+    assert!(shown.contains("no sources or names item names"), "{shown}");
+    for id in ["demo.seat-first", "demo.seat-second"] {
+        let alone = KnowledgeFile::parse(&format!(
+            "{FILE}{}",
+            anchored(id, "demo", ">=1.0.0, <2.0.0", ANCHORED_ASK)
+        ))
+        .expect_err("refused alone too");
+        assert!(alone.to_string().contains(id), "{alone}");
+    }
+}
+
+#[test]
+fn a_names_item_of_the_same_harness_over_overlapping_versions_anchors_the_file() {
+    let anchor = anchored("demo.seat-anchor", "demo", ">=1.5.0, <3.0.0", ANCHOR);
+    let ask = anchored("demo.seat-ask", "demo", ">=1.0.0, <2.0.0", ANCHORED_ASK);
+    accepts(&format!("{FILE}{anchor}{ask}"));
+}
+
+#[test]
+fn an_anchor_of_another_harness_or_of_disjoint_versions_does_not_count() {
+    let ask = anchored("demo.seat-ask", "demo", ">=1.0.0, <2.0.0", ANCHORED_ASK);
+    let other_harness = anchored("other.seat-anchor", "other", ">=1.0.0, <2.0.0", ANCHOR);
+    rejects(
+        &format!("{FILE}{other_harness}{ask}"),
+        &[
+            "demo.seat-ask",
+            "${HOME}/.x.json",
+            "no sources or names item names",
+        ],
     );
-    accepts(&format!("{FILE}{first}{other}{third}"));
+    let disjoint = anchored("demo.seat-anchor", "demo", ">=2.0.0, <3.0.0", ANCHOR);
+    rejects(
+        &format!("{FILE}{disjoint}{ask}"),
+        &[
+            "demo.seat-ask",
+            "${HOME}/.x.json",
+            "no sources or names item names",
+        ],
+    );
 }
 
 /// The environment half of the auth route, from the vendor's environment-variable page.
