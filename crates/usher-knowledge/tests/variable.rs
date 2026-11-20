@@ -33,7 +33,7 @@ source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", 
 const VARIABLE: &str = r#"variable = { name = "DEMO_CONFIG_DIR", binds = "${CONFIG_DIR}", default = "${HOME}/.demo" }"#;
 
 fn file(items: &[&str]) -> String {
-    format!("schema_version = 4\nsequence = 9\n{}", items.concat())
+    format!("schema_version = 5\nsequence = 9\n{}", items.concat())
 }
 
 fn rejects(text: &str, needles: &[&str]) {

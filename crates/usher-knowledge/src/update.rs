@@ -133,7 +133,7 @@ mod tests {
     const SEED: &str = include_str!("../knowledge/harness-knowledge.toml");
 
     fn with_sequence(sequence: u64) -> String {
-        SEED.replace("\nsequence = 4\n", &format!("\nsequence = {sequence}\n"))
+        SEED.replace("\nsequence = 5\n", &format!("\nsequence = {sequence}\n"))
     }
 
     /// The held file for these tests: the embedded content at sequence 1, so
@@ -168,7 +168,7 @@ mod tests {
                 &trusting(&signer, None),
             )
             .expect("accepted");
-        assert_eq!(version.to_string(), "knowledge v2 (schema 4)");
+        assert_eq!(version.to_string(), "knowledge v2 (schema 5)");
         assert_eq!(sequence(&knowledge), 2);
     }
 

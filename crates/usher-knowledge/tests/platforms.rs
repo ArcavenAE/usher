@@ -8,7 +8,7 @@ const SOURCE: &str = r#"source = { path = "/etc/demo/managed.json", layer = "man
 fn file(source: &str) -> String {
     format!(
         r#"
-schema_version = 4
+schema_version = 5
 sequence = 9
 
 [[item]]

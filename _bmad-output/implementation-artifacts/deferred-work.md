@@ -69,3 +69,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5-claude-code-settings-inventory.md`
   summary: the child-process test removes `CLAUDE_CONFIG_DIR` from the child's environment by name. A later variable that binds a launch path would be inherited from the host and could change what the test reads.
   evidence: when a binder variable is added, the test removes every launch variable the knowledge names, read from the knowledge file and not listed by hand.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: `permissions.defaultMode` is seeded with its own merge rule, so the map shows every layer's value and says what applies is not decided. A narrower form would stay plain scalar unless a project or local layer sets `auto` or `bypassPermissions`, and only then read "not decided (<value> in <layer> does not take effect there; what applies instead is not stated)", which gives the common case its value back.
+  evidence: the settings reference says `auto` and `bypassPermissions` "don't take effect from project or local settings" and does not say what applies instead; the narrower form needs a ruling of its own, or a probe that states the fallback.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the settings reference says that for conversations the VS Code extension starts, Claude Code reads only user, managed and `--settings` values. That launch context is not mapped yet, so the map's layers for it are not stated.
+  evidence: the settings reference entry for `permissions.defaultMode`; story 1.9 maps the launch directories and is where the extension's launch context belongs.
