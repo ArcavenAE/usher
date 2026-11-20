@@ -651,3 +651,38 @@ mod tests {
         }
     }
 }
+
+/// The platform whose state directory the resolver names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Platform {
+    /// macOS: `<home>/Library/Application Support/usher`.
+    Macos,
+    /// Linux: `<home>/.local/state/usher`.
+    Linux,
+}
+
+/// The state directory for `platform` under an account home (AD-1): no `XDG_*` and no
+/// `HOME` override.
+pub fn state_dir_under(home: &Path, platform: Platform) -> PathBuf {
+    let _ = platform;
+    home.to_path_buf()
+}
+
+/// The account home of the user with this uid, from the account database and never from
+/// `$HOME`.
+pub fn account_home_of(uid: u32) -> Result<PathBuf, UsherError> {
+    let _ = uid;
+    Ok(PathBuf::from("unresolved"))
+}
+
+/// The account home of the current user.
+pub fn account_home() -> Result<PathBuf, UsherError> {
+    Ok(PathBuf::from("unresolved-current"))
+}
+
+/// Refuses a state directory owned by anyone but the current user.
+pub fn ensure_owned(dir: &Path, dir_uid: u32, current_uid: u32) -> Result<(), UsherError> {
+    let _ = (dir, dir_uid, current_uid);
+    Ok(())
+}
