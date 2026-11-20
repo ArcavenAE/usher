@@ -235,7 +235,12 @@ fn the_seat_table_joins_the_derived_state_allowlist_and_holds_names_only() {
         .expect("rows");
     assert_eq!(
         tables,
-        ["inventory_run", "inventory_seat", "inventory_source"]
+        [
+            "inventory_run",
+            "inventory_seat",
+            "inventory_source",
+            "map_setting"
+        ]
     );
     let columns: Vec<String> = conn
         .prepare("SELECT name FROM pragma_table_info('inventory_seat') ORDER BY cid")

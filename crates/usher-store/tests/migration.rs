@@ -88,7 +88,7 @@ fn names(dir: &Path, kind: &str) -> Vec<String> {
 }
 
 #[test]
-fn a_version_one_store_opens_as_version_two_with_its_rows_intact() {
+fn a_version_one_store_opens_as_version_three_with_its_rows_intact() {
     let scratch = ScratchHome::new().expect("scratch");
     let dir = version_one(&scratch, "");
     let store = Store::open(&dir).expect("a version 1 store is migrated, not refused");
@@ -100,7 +100,7 @@ fn a_version_one_store_opens_as_version_two_with_its_rows_intact() {
     assert_eq!(sources[0].item_id, "claude-code.source-user-settings");
     assert_eq!(sources[0].key_names, ["model", "theme"]);
     drop(store);
-    assert_eq!(user_version(&dir), 2);
+    assert_eq!(user_version(&dir), 3);
     assert!(names(&dir, "table").contains(&"inventory_seat".to_string()));
 }
 
@@ -170,11 +170,11 @@ fn a_migration_that_fails_midway_leaves_the_store_at_version_one_unchanged() {
 }
 
 #[test]
-fn a_fresh_store_is_made_at_version_two_with_the_seat_table() {
+fn a_fresh_store_is_made_at_version_three_with_the_seat_table() {
     let scratch = ScratchHome::new().expect("scratch");
     let dir = state_dir(&scratch);
     drop(Store::open(&dir).expect("a fresh store"));
-    assert_eq!(user_version(&dir), 2);
+    assert_eq!(user_version(&dir), 3);
     assert!(names(&dir, "table").contains(&"inventory_seat".to_string()));
     let triggers = names(&dir, "trigger");
     assert!(triggers.contains(&"inventory_seat_no_update".to_string()));
@@ -183,10 +183,10 @@ fn a_fresh_store_is_made_at_version_two_with_the_seat_table() {
 #[test]
 fn a_store_from_a_newer_usher_and_a_non_empty_unversioned_file_are_still_refused() {
     let scratch = ScratchHome::new().expect("scratch");
-    let dir = version_one(&scratch, "PRAGMA user_version = 3;");
-    let err = Store::open(&dir).expect_err("version 3 is newer than this usher reads");
+    let dir = version_one(&scratch, "PRAGMA user_version = 4;");
+    let err = Store::open(&dir).expect_err("version 4 is newer than this usher reads");
     assert!(err.to_string().contains("newer"), "{err}");
-    assert_eq!(user_version(&dir), 3);
+    assert_eq!(user_version(&dir), 4);
     let other = ScratchHome::new().expect("scratch");
     let dir = version_one(&other, "PRAGMA user_version = 0;");
     let err = Store::open(&dir).expect_err("a non-empty file at version 0");
