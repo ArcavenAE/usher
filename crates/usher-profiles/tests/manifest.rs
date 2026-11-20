@@ -298,3 +298,25 @@ fn a_note_needs_text() {
     let multi = format!("{VALID}\n[notes]\n\"claude-code:model\" = \"line one\\nline two\"\n");
     assert_eq!(must_parse(&multi).notes()[0].text(), "line one\nline two");
 }
+
+// Provisional: a profile must cover at least one harness. A tools-only profile
+// may be wanted later, which would remove this one check.
+#[test]
+fn a_profile_that_covers_no_harness_is_refused() {
+    let no_table = "name = \"team-setup\"\nversion = \"2026.11\"\n";
+    let empty_table = format!("{no_table}\n[harnesses]\n");
+    for text in [no_table.to_string(), empty_table] {
+        let err = refusal(&text);
+        assert!(
+            err.check().contains("profile.toml") && err.check().contains("harnesses"),
+            "check: {}",
+            err.check()
+        );
+        assert!(
+            err.status().contains("the profile covers no harness"),
+            "status: {}",
+            err.status()
+        );
+        assert!(err.step().contains(ORIGIN), "step: {}", err.step());
+    }
+}
