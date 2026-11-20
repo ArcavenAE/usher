@@ -344,11 +344,8 @@ fn every_run_is_recorded_as_a_new_row_with_derived_state_only() {
     assert_eq!(runs[0].knowledge_sequence, knowledge.version().sequence());
     assert_eq!(
         runs[0].environment_key,
-        format!(
-            "host-1/alex/claude-code/{}?CLAUDE_CONFIG_DIR",
-            rig.repo.display()
-        ),
-        "the launch directory, then the unset variable as its bare name"
+        format!("host-1/alex/claude-code/{}", rig.repo.display()),
+        "the launch directory, and no entry for a variable that is unset"
     );
     let sources = store.sources_of(runs[0].id).expect("sources");
     let row = sources
@@ -477,7 +474,7 @@ fn run_refuses_an_argument_to_inventory_and_an_unknown_command() {
 }
 
 #[test]
-fn a_set_claude_config_dir_keys_the_environment_with_its_value_and_an_empty_one_apart() {
+fn a_set_claude_config_dir_keys_the_environment_with_its_value_and_an_empty_one_is_dropped() {
     let rig = Rig::new();
     rig.install("2.1.317");
     let cfg = rig.scratch.root().join("cfg");
@@ -500,8 +497,8 @@ fn a_set_claude_config_dir_keys_the_environment_with_its_value_and_an_empty_one_
     );
     assert_eq!(
         runs[1].environment_key,
-        format!("host-1/alex/claude-code/{dir}?CLAUDE_CONFIG_DIR="),
-        "an empty variable is not an unset one"
+        format!("host-1/alex/claude-code/{dir}"),
+        "an empty variable is dropped like an unset one"
     );
     let default_user = rig.scratch.home().join(".claude/settings.json");
     let sources = store.sources_of(runs[1].id).expect("sources");
@@ -585,4 +582,77 @@ fn a_version_outside_every_range_stamps_unknown_and_every_status_reads_unknown()
         let row = line_with(&out, &path.display().to_string());
         assert!(row.contains("unknown ("), "{row}");
     }
+}
+
+/// AD-17: one environment is never keyed two ways, so the harness version, which can be
+/// unknown or can change, is not part of the key.
+#[test]
+fn a_known_and_an_unknown_version_run_in_one_environment_record_the_same_key() {
+    let rig = Rig::new();
+    let cfg = rig.scratch.root().join("cfg");
+    let mut env = rig.env();
+    env.claude_config_dir = Some(cfg.clone().into_os_string());
+    rig.install("2.1.317");
+    rig.run(&env);
+    fs::remove_file(rig.scratch.home().join(".local/bin/claude")).expect("remove the launcher");
+    rig.run(&env);
+    let store = Store::open(&env.state_dir).expect("the store opens");
+    let runs = store.runs().expect("runs");
+    assert_eq!(runs.len(), 2);
+    assert_eq!(runs[0].harness_version.as_deref(), Some("2.1.317"));
+    assert_eq!(runs[1].harness_version, None);
+    assert_eq!(runs[0].environment_key, runs[1].environment_key);
+    assert_eq!(
+        runs[1].environment_key,
+        format!(
+            "host-1/alex/claude-code/{}?CLAUDE_CONFIG_DIR={}",
+            rig.repo.display(),
+            cfg.display()
+        ),
+        "the set variable is in the key whether or not the version is known"
+    );
+}
+
+/// A signed knowledge update that names another variable changes no key where that
+/// variable is unset.
+#[test]
+fn a_knowledge_update_naming_an_unset_variable_changes_no_key() {
+    let rig = Rig::new();
+    rig.install("2.1.317");
+    let env = rig.env();
+    rig.run(&env);
+    let knowledge = signed(
+        r#"
+schema_version = 3
+sequence = 99
+
+[[item]]
+id = "claude-code.config-dir-variable"
+harness = "claude-code"
+layer = "slow"
+class = "paths"
+versions = ">=2.1.317, <3.0.0"
+summary = "CLAUDE_CONFIG_DIR relocates the user config home."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/env" }
+last_verified = 2026-11-20
+variable = { name = "CLAUDE_CONFIG_DIR", binds = "${CONFIG_DIR}", default = "${HOME}/.claude" }
+
+[[item]]
+id = "claude-code.other-variable"
+harness = "claude-code"
+layer = "slow"
+class = "paths"
+versions = ">=3.0.0, <4.0.0"
+summary = "A variable a later range reads."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/env" }
+last_verified = 2026-11-20
+variable = { name = "CLAUDE_OTHER_DIR" }
+"#,
+    );
+    inventory_with(&env, SystemRoot::at(rig.system.clone()), &knowledge).expect("an inventory");
+    let store = Store::open(&env.state_dir).expect("the store opens");
+    let runs = store.runs().expect("runs");
+    assert_eq!(runs.len(), 2);
+    assert_eq!(runs[0].environment_key, runs[1].environment_key);
+    assert_ne!(runs[0].knowledge_sequence, runs[1].knowledge_sequence);
 }
