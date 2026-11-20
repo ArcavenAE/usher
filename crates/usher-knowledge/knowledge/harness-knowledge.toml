@@ -6,7 +6,7 @@
 # usher's own statement: no adapter exists yet, so nothing is offered.
 
 schema_version = 4
-sequence = 3
+sequence = 4
 
 [[item]]
 id = "claude-code.config-dir-variable"
