@@ -22,7 +22,10 @@ pub enum ReadingMethod {
 impl ReadingMethod {
     /// The stored token.
     pub fn token(self) -> &'static str {
-        ""
+        match self {
+            ReadingMethod::Rebuilt => "rebuilt",
+            ReadingMethod::HarnessReported => "harness-reported",
+        }
     }
 }
 
@@ -51,12 +54,30 @@ pub enum ReadingStatus {
 impl ReadingStatus {
     /// The stored token.
     pub fn token(self) -> &'static str {
-        ""
+        match self {
+            ReadingStatus::InEffect => "in_effect",
+            ReadingStatus::Shadowed => "shadowed",
+            ReadingStatus::Unread => "unread",
+            ReadingStatus::NotDecided => "not_decided",
+            ReadingStatus::OverriddenByEnvironment => "overridden_by_environment",
+            ReadingStatus::ValueNotRead => "value_not_read",
+            ReadingStatus::NotChecked => "not_checked",
+            ReadingStatus::Unknown => "unknown",
+        }
     }
 
     /// The words the map prints for the status.
     pub fn display(self) -> &'static str {
-        ""
+        match self {
+            ReadingStatus::InEffect => "in effect",
+            ReadingStatus::Shadowed => "shadowed",
+            ReadingStatus::Unread => "unread",
+            ReadingStatus::NotDecided => "not decided",
+            ReadingStatus::OverriddenByEnvironment => "overridden by environment",
+            ReadingStatus::ValueNotRead => "value not read",
+            ReadingStatus::NotChecked => "not checked",
+            ReadingStatus::Unknown => "unknown",
+        }
     }
 }
 
