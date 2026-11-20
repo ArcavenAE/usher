@@ -325,3 +325,27 @@ reference = { kind = "vendor-docs", locator = "https://example.test/docs/files" 
 last_verified = 2026-11-20
 source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", rank = 1, always_present = true }
 "#;
+
+// Whether a variable is keyed follows its `binds` and nothing in its name.
+
+#[test]
+fn an_unbound_variable_with_a_directory_shaped_name_is_not_keyed() {
+    let unbound = PLAIN
+        .replace("demo.plain-variable", "demo.plain-dir")
+        .replace("DEMO_PLAIN", "DEMO_PLAIN_DIR");
+    let parsed = KnowledgeFile::parse(&file(&[CONFIG, STATE, &unbound])).expect("valid");
+    assert_eq!(parsed.launch_variables("demo"), ["DEMO_HOME"]);
+    let alone = KnowledgeFile::parse(&file(&[&unbound])).expect("valid");
+    assert!(alone.launch_variables("demo").is_empty());
+}
+
+#[test]
+fn a_bound_variable_with_a_plain_name_is_keyed() {
+    let flag = CONFIG
+        .replace("demo.config-dir", "demo.flag")
+        .replace("DEMO_HOME", "DEMO_FLAG");
+    let parsed = KnowledgeFile::parse(&file(&[&flag])).expect("valid");
+    assert_eq!(parsed.launch_variables("demo"), ["DEMO_FLAG"]);
+    let both = KnowledgeFile::parse(&file(&[&flag, STATE, PLAIN])).expect("valid");
+    assert_eq!(both.launch_variables("demo"), ["DEMO_FLAG", "DEMO_HOME"]);
+}
