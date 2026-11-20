@@ -409,6 +409,7 @@ const UA: Field = Field {
 };
 
 const REDIRECTING: Descriptor = Descriptor {
+    name: "test-redirecting",
     method: Method::Get,
     host: FILES_HOST,
     path: "/{file}",
@@ -426,6 +427,7 @@ const REDIRECTING: Descriptor = Descriptor {
 };
 
 const SHAPED: Descriptor = Descriptor {
+    name: "test-shaped",
     method: Method::Post,
     host: FILES_HOST,
     path: "/report",
@@ -458,6 +460,7 @@ const SHAPED: Descriptor = Descriptor {
 };
 
 const VERSION_CHECK: Descriptor = Descriptor {
+    name: "test-version-check",
     method: Method::Get,
     host: FILES_HOST,
     path: "/version",
@@ -696,6 +699,7 @@ fn a_redirect_with_no_location_on_a_descriptor_that_lists_a_host_is_refused_with
 }
 
 const POSTING: Descriptor = Descriptor {
+    name: "test-posting",
     method: Method::Post,
     host: FILES_HOST,
     path: "/report",
@@ -713,6 +717,7 @@ const POSTING: Descriptor = Descriptor {
 };
 
 const EXTRA_HEADER: Descriptor = Descriptor {
+    name: "test-extra-header",
     method: Method::Get,
     host: FILES_HOST,
     path: "/{file}",
@@ -819,6 +824,7 @@ fn the_test_seam_method_is_compiled_only_under_its_feature() {
 }
 
 const QUERYING: Descriptor = Descriptor {
+    name: "test-querying",
     method: Method::Get,
     host: FILES_HOST,
     path: "/{file}",
@@ -841,6 +847,7 @@ const QUERYING: Descriptor = Descriptor {
 };
 
 const BODIED_GET: Descriptor = Descriptor {
+    name: "test-bodied-get",
     method: Method::Get,
     host: FILES_HOST,
     path: "/{file}",

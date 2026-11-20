@@ -66,6 +66,8 @@ pub struct Field {
 /// Everything the profile says about one call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Descriptor {
+    /// The call's name in kebab case: the variant's name, and the row id in the profile.
+    pub name: &'static str,
     /// The HTTP method.
     pub method: Method,
     /// The https host. Never a scheme, never a port.
@@ -98,6 +100,7 @@ const USER_AGENT_FIELD: Field = Field {
 };
 
 const KNOWLEDGE_UPDATE: Descriptor = Descriptor {
+    name: "",
     method: Method::Get,
     host: "knowledge.usher.invalid",
     path: "/{file}",
