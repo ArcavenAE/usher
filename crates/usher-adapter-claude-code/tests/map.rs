@@ -124,6 +124,17 @@ last_verified = 2026-11-20
 settings_key = { key = "fx.secrets", merge = "list-merge", sensitive = true, scopes = ["user", "managed"] }
 
 [[item]]
+id = "claude-code.fx-scoped"
+harness = "claude-code"
+layer = "fast"
+class = "settings-keys"
+versions = ">=2.1.317, <3.0.0"
+summary = "A plain scalar that the user and local files may set."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/scoped" }
+last_verified = 2026-11-20
+settings_key = { key = "fx.scoped", merge = "scalar", sensitive = false, scopes = ["user", "local"] }
+
+[[item]]
 id = "claude-code.fx-secret"
 harness = "claude-code"
 layer = "fast"
@@ -765,7 +776,11 @@ fn a_row_of_an_unread_source_names_the_source_item() {
     let map = adapter.map_settings(&listing, &context).expect("a map");
     let row = reading(&map, "model", "project");
     assert_eq!(row.status, ReadingStatus::Unread);
-    assert!(note_has(row, &item), "{row:?}");
+    assert_eq!(
+        row.note.as_deref(),
+        Some(format!("not read from project; knowledge item {item}").as_str()),
+        "{row:?}"
+    );
     assert!(!note_has(row, "claude-code.key-model"), "{row:?}");
 }
 
@@ -867,6 +882,22 @@ fn an_unknown_version_gives_one_unknown_row_per_key_name_per_file() {
     );
     assert!(map.readings.iter().all(|r| r.value.is_none()));
     assert!(!format!("{map:?}").contains("canary"));
+    for reading in &map.readings {
+        let source = listing
+            .sources
+            .iter()
+            .find(|s| s.layer == reading.layer)
+            .expect("a source for the layer");
+        let SourceStatus::Unknown { reason } = &source.status else {
+            panic!("expected unknown: {source:?}");
+        };
+        assert_eq!(reading.note.as_ref(), Some(reason), "{reading:?}");
+    }
+    assert!(
+        map.skipped_layers.is_empty(),
+        "unknown sources are not skipped: {:?}",
+        map.skipped_layers
+    );
 }
 
 /// The server-managed cache and the global state file are not settings layers in the stack,
@@ -1437,4 +1468,65 @@ fn two_local_files_decide_a_scalar_by_the_root_and_keep_both_lists() {
     let allow = readings(&map, "permissions.allow");
     assert_eq!(allow.len(), 2, "{allow:?}");
     assert!(allow.iter().all(|r| r.status == ReadingStatus::InEffect));
+}
+
+// ---- scopes of a broken layer, and the texts the map pins ------------------------------
+
+/// A layer outside a key's scopes cannot feed the key, so it cannot outrank it: a broken
+/// project file leaves a user value in effect when the key is scoped to user and local.
+#[test]
+fn a_broken_layer_outside_the_key_scopes_does_not_block_it() {
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"fx": {"scoped": "user-value"}}"#);
+    rig.write(&rig.project_file(), "{ not json");
+    let map = rig.fixture_map();
+    let row = reading(&map, "fx.scoped", "user");
+    assert_eq!(row.status, ReadingStatus::InEffect, "{row:?}");
+    assert_eq!(row.value, text("user-value"));
+}
+
+/// A top-level credential key is listed by name with nothing under it, as at any depth.
+#[test]
+fn a_top_level_credential_key_is_listed_by_name_with_nothing_under_it() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.user_file(),
+        r#"{"oauthAccount": {"canary-k": "canary-v"}}"#,
+    );
+    let map = rig.seed_map(&[]);
+    let row = reading(&map, "oauthAccount", "user");
+    assert_eq!(row.status, ReadingStatus::ValueNotRead, "{row:?}");
+    assert_eq!(row.note.as_deref(), Some("credential key; not opened"));
+    assert_eq!(row.value, None);
+    assert_eq!(map.readings.len(), 1, "{:?}", map.readings);
+    assert!(!format!("{map:?}").contains("canary"));
+}
+
+/// A list key whose value is not an array reads not decided, with no value.
+#[test]
+fn a_list_key_that_is_not_an_array_is_not_decided_with_no_value() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.user_file(),
+        r#"{"permissions": {"allow": "canary-not-a-list"}}"#,
+    );
+    let map = rig.seed_map(&[]);
+    let row = reading(&map, "permissions.allow", "user");
+    assert_eq!(row.status, ReadingStatus::NotDecided, "{row:?}");
+    assert_eq!(row.note.as_deref(), Some("value is not an array"));
+    assert_eq!(row.value, None);
+    assert!(!format!("{map:?}").contains("canary"));
+}
+
+/// The child of a sensitive object reads value not read with its own note.
+#[test]
+fn a_sensitive_child_note_says_the_key_is_sensitive() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.user_file(),
+        r#"{"env": {"FLEET_TOKEN": "canary-token"}}"#,
+    );
+    let map = rig.seed_map(&[]);
+    let row = reading(&map, "env.FLEET_TOKEN", "user");
+    assert_eq!(row.note.as_deref(), Some("key is sensitive"), "{row:?}");
 }
