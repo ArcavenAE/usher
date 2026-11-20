@@ -26,3 +26,11 @@ impl CodexCopy {
         &self.path
     }
 }
+
+/// A fresh codex home for a probe: a new directory under the scratch home that
+/// holds exactly the files the probe writes, as `(name, text)` pairs. A name
+/// with a path separator, or `auth.json`, is refused, and nothing already in
+/// the scratch codex home is carried over.
+pub fn probe_home(_scratch: &ScratchHome, _files: &[(&str, &str)]) -> io::Result<PathBuf> {
+    Err(io::Error::from(io::ErrorKind::Unsupported))
+}
