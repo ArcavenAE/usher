@@ -467,7 +467,7 @@ fn the_seed_lists_the_default_readable_keys_with_their_merge_kinds() {
         ("permissions.allow", MergeKind::ListMerge),
         ("permissions.deny", MergeKind::ListMerge),
         ("permissions.ask", MergeKind::ListMerge),
-        ("permissions.defaultMode", MergeKind::Scalar),
+        ("permissions.defaultMode", MergeKind::OwnRule),
         ("autoMode.environment", MergeKind::ListMerge),
         ("autoMode.allow", MergeKind::ListMerge),
         ("autoMode.soft_deny", MergeKind::ListMerge),

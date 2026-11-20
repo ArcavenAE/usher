@@ -210,10 +210,10 @@ harness = "claude-code"
 layer = "fast"
 class = "settings-keys"
 versions = ">=2.1.317, <3.0.0"
-summary = "The default permission mode; one layer's value applies."
+summary = "The default permission mode. The reference says auto and bypassPermissions don't take effect from project or local settings, and does not say what applies instead, so the key has its own rule and usher does not decide it."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings-reference#permissions-defaultmode" }
 last_verified = 2026-11-20
-settings_key = { key = "permissions.defaultMode", merge = "scalar", sensitive = false, scopes = ["any"] }
+settings_key = { key = "permissions.defaultMode", merge = "own-rule", sensitive = false, scopes = ["any"] }
 
 [[item]]
 id = "claude-code.key-automode-environment"
