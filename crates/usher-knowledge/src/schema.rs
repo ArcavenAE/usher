@@ -291,6 +291,31 @@ pub enum VersionRule {
     SymlinkTargetLastComponent,
 }
 
+/// A launch variable a harness reads, and the path token it moves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchVariable {
+    name: String,
+    binds: Option<String>,
+    default: Option<String>,
+}
+
+impl LaunchVariable {
+    /// The variable's name, as the harness reads it from its environment.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The path token the variable moves, when it moves one.
+    pub fn binds(&self) -> Option<&str> {
+        self.binds.as_deref()
+    }
+
+    /// The path the token takes while the variable is unset or empty.
+    pub fn default(&self) -> Option<&str> {
+        self.default.as_deref()
+    }
+}
+
 impl VersionRule {
     fn parse(name: &str) -> Option<Self> {
         match name {
@@ -318,6 +343,11 @@ impl VersionFrom {
 }
 
 impl Item {
+    /// The launch variable a `paths` item names, when it names one.
+    pub fn variable(&self) -> Option<&LaunchVariable> {
+        None
+    }
+
     /// How to read the harness version from disk, for a `paths` item that says so.
     pub fn version_from(&self) -> Option<&VersionFrom> {
         self.version_from.as_ref()
@@ -912,6 +942,13 @@ impl KnowledgeFile {
     /// Every item, in file order.
     pub fn items(&self) -> &[Item] {
         &self.items
+    }
+
+    /// The launch variable names harness knowledge lists for `harness` at `installed`,
+    /// sorted. Every caller keys an environment from this one lookup (AD-17).
+    pub fn launch_variables(&self, harness: &str, installed: &Version) -> Vec<&str> {
+        let _ = (harness, installed);
+        Vec::new()
     }
 
     /// The items about `harness` that apply to `installed`.
