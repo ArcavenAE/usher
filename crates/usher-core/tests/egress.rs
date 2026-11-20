@@ -1362,3 +1362,47 @@ fn no_refusal_uses_the_generic_step_because_every_one_has_a_descriptor_in_scope(
         "a refusal of a described call must say `send <name>`, not the generic step"
     );
 }
+
+#[test]
+fn no_public_function_on_any_type_returns_a_wire_request_whatever_its_qualifiers() {
+    let source = include_str!("../src/egress.rs");
+    let mut found = 0;
+    let mut rest = source;
+    while let Some(at) = rest.find("pub ") {
+        let from = &rest[at..];
+        rest = &from[4..];
+        // `pub fn`, `pub const fn`, `pub async fn`, `pub unsafe fn`, `pub extern "C" fn`:
+        // a plain `pub` and then qualifiers up to `fn`, with no item keyword between.
+        let head: String = from
+            .chars()
+            .take_while(|c| !matches!(c, '(' | '{' | '\n'))
+            .collect();
+        let words: Vec<&str> = head.split_whitespace().collect();
+        let Some(fn_at) = words
+            .iter()
+            .position(|w| *w == "fn" || w.starts_with("fn("))
+        else {
+            continue;
+        };
+        if words[1..fn_at].iter().any(|w| {
+            matches!(
+                *w,
+                "struct" | "enum" | "trait" | "type" | "mod" | "use" | "static" | "let"
+            )
+        }) {
+            continue;
+        }
+        let end = from
+            .find(|c| c == '{' || c == ';')
+            .expect("a signature ends at a brace or a semicolon");
+        let signature = &from[..end];
+        found += 1;
+        if let Some((_, returned)) = signature.split_once("->") {
+            assert!(
+                !returned.contains("WireRequest"),
+                "a public function returns a WireRequest: {signature}"
+            );
+        }
+    }
+    assert!(found >= 10, "the scan saw only {found} public functions");
+}
