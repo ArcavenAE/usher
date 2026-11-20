@@ -414,7 +414,7 @@ fn decide_rank(
             for &member in &delivering {
                 statuses[member] = Some(SourceStatus::Unknown {
                     reason: format!(
-                        "rank {rank} is shared with {}, which could not be read",
+                        "first-wins not decided: {} could not be read",
                         path(*bad).display()
                     ),
                 });
