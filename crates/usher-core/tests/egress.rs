@@ -651,3 +651,37 @@ fn a_control_character_that_is_not_whitespace_in_a_path_value_is_refused() {
         );
     }
 }
+
+#[test]
+fn a_204_answer_is_a_success() {
+    let transport = RecordingTransport::new().answering(Ok(Response {
+        status: 204,
+        location: None,
+        body: Vec::new(),
+    }));
+    let response = port(&transport)
+        .call(knowledge_request())
+        .expect("a 204 is a success");
+    assert_eq!(response.status, 204);
+}
+
+#[test]
+fn a_303_and_a_308_to_a_listed_host_are_each_followed_once() {
+    for status in [303_u16, 308] {
+        let transport = RecordingTransport::new()
+            .answering(Ok(Response {
+                status,
+                location: Some(format!("https://{ASSETS_HOST}/moved")),
+                body: Vec::new(),
+            }))
+            .answering_ok("moved body");
+        let response = port(&transport)
+            .call_described(&REDIRECTING, described_request().with("file", "k.toml"))
+            .unwrap_or_else(|e| panic!("a {status} to a listed host is followed: {e}"));
+        assert_eq!(response.body, b"moved body", "{status}");
+        let sent = transport.sent();
+        assert_eq!(sent.len(), 2, "{status}: one call and one follow");
+        assert_eq!(sent[1].host, ASSETS_HOST, "{status}");
+        assert_eq!(sent[1].path, "/moved", "{status}");
+    }
+}
