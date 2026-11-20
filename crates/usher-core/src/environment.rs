@@ -129,8 +129,14 @@ pub fn key_variables(
     names: &[&str],
     lookup: impl Fn(&str) -> Option<String>,
 ) -> Vec<(String, String)> {
-    let _ = (names, lookup);
-    Vec::new()
+    names
+        .iter()
+        .filter_map(|name| {
+            lookup(name)
+                .filter(|value| !value.is_empty())
+                .map(|value| ((*name).to_string(), value))
+        })
+        .collect()
 }
 
 impl std::fmt::Display for EnvironmentKey {
