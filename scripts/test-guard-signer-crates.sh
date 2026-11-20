@@ -121,4 +121,4 @@ mkdir -p "$scratch/ws/optional/src"
 printf '[package]\nname = "optional"\nversion = "0.0.0"\nedition = "2024"\n[dependencies]\nseamed = { path = "../seamed" }\n[features]\nx = ["seamed/test-seam"]\n' > "$scratch/ws/optional/Cargo.toml"
 : > "$scratch/ws/optional/src/lib.rs"
 workspace usher-testkit clean seamed quiet optional
-expect fail "a member whose optional feature enables test-seam fails" "optional"
+expect fail "a member whose optional feature enables test-seam fails" "optional enables test-seam"
