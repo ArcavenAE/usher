@@ -255,6 +255,8 @@ pub struct WireRequest {
     headers: Vec<(String, String)>,
     /// The body fields, in descriptor order.
     body: Vec<(String, String)>,
+    /// The most bytes of answer body the descriptor allows; a transport reads one more.
+    max_response_bytes: u64,
 }
 
 impl WireRequest {
@@ -281,6 +283,11 @@ impl WireRequest {
     /// The headers, lowercase names, `user-agent` first.
     pub fn headers(&self) -> &[(String, String)] {
         &self.headers
+    }
+
+    /// The most bytes of answer body the descriptor allows.
+    pub fn max_response_bytes(&self) -> u64 {
+        self.max_response_bytes
     }
 
     /// The body fields, in descriptor order.
@@ -453,6 +460,7 @@ impl<T: Transport, P: Policy> Port<T, P> {
             query: Vec::new(),
             headers: vec![(USER_AGENT.to_string(), USER_AGENT_VALUE.to_string())],
             body: Vec::new(),
+            max_response_bytes: 0,
         };
         let second = self.transport.send(&follow)?;
         if is_redirect(second.status) {
@@ -669,6 +677,7 @@ fn build_wire(descriptor: &Descriptor, request: &Request) -> Result<WireRequest,
         query: pairs(Place::Query),
         headers,
         body: pairs(Place::Body),
+        max_response_bytes: 0,
     })
 }
 

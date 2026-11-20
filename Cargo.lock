@@ -540,6 +540,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "usher-egress"
+version = "0.0.0"
+dependencies = [
+ "usher-core",
+ "usher-testkit",
+]
+
+[[package]]
 name = "usher-knowledge"
 version = "0.0.0"
 dependencies = [

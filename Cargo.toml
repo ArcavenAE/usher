@@ -5,6 +5,7 @@ members = [
     "crates/usher-adapter-claude-code",
     "crates/usher-cli",
     "crates/usher-core",
+    "crates/usher-egress",
     "crates/usher-knowledge",
     "crates/usher-store",
     "crates/usher-testkit",
