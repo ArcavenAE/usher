@@ -172,6 +172,12 @@ fn an_unknown_token_in_the_layout_is_refused_naming_it() {
 }
 
 #[test]
+fn a_relative_layout_is_refused() {
+    let text = with_link(&LINK.replace("${HOME}/.local/share/demo/versions/", "demo/versions/"));
+    rejects(&text, &["demo.launcher", "layout", "absolute"]);
+}
+
+#[test]
 fn version_outside_the_layout_is_refused() {
     rejects(
         &with_link(&LINK.replace("${HOME}/.local/bin/demo", "${HOME}/${VERSION}/demo")),
