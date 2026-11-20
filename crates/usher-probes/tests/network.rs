@@ -48,17 +48,33 @@ mod macos {
     }
 
     #[test]
-    fn a_connect_to_a_non_local_address_is_refused_by_the_profile() {
+    fn a_connect_to_a_non_local_address_is_refused_by_the_profile_not_the_network() {
         let scratch = ScratchHome::new().expect("scratch home");
-        let output = run_denied(
-            &scratch,
-            "/usr/bin/nc",
-            &["-z", "-w", "2", "192.0.2.1", "80"],
-        )
-        .expect("the run starts under the profile");
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(!output.status.success());
-        assert!(stderr.contains("Operation not permitted"), "{stderr}");
+        let args = ["-z", "-w", "1", "-G", "1", "192.0.2.1", "80"];
+
+        // Outside half: the same command without the profile. TEST-NET-1 is
+        // unroutable, so it times out or is unreachable; it is never refused
+        // by a sandbox.
+        let outside = scratch
+            .command("/usr/bin/nc")
+            .args(args)
+            .output()
+            .expect("nc runs without the profile");
+        let outside_err = String::from_utf8_lossy(&outside.stderr);
+        assert!(
+            !outside_err.contains("Operation not permitted"),
+            "control: without the profile the connect is not refused by a sandbox: {outside_err}"
+        );
+
+        // Inside: the profile's own denial, EPERM, and not any failure.
+        let inside =
+            run_denied(&scratch, "/usr/bin/nc", &args).expect("the run starts under the profile");
+        let inside_err = String::from_utf8_lossy(&inside.stderr);
+        assert!(!inside.status.success());
+        assert!(
+            inside_err.contains("Operation not permitted"),
+            "{inside_err}"
+        );
     }
 
     #[test]
@@ -73,7 +89,7 @@ mod macos {
         let output = run_denied(
             &scratch,
             "/usr/bin/nc",
-            &["-z", "-w", "2", "127.0.0.1", &port],
+            &["-z", "-w", "1", "127.0.0.1", &port],
         )
         .expect("the run starts under the profile");
         assert!(
