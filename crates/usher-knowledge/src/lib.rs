@@ -8,6 +8,7 @@
 
 #![forbid(unsafe_code)]
 
+mod fetch;
 mod schema;
 mod support;
 mod trust;
@@ -18,6 +19,7 @@ mod version;
 #[path = "../build/keys.rs"]
 mod build_keys;
 
+pub use fetch::fetch_update;
 pub use schema::{
     Binding, Class, Date, EnvOverride, Item, KnowledgeFile, KnowledgeVersion, LaunchVariable,
     Layer, MergeKind, Platform, ReadRule, Reference, ReferenceKind, Scopes, SeatFact, SeatPart,

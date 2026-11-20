@@ -88,6 +88,8 @@ pub struct Descriptor {
     pub fields: &'static [Field],
     /// Hosts a redirect may name. Any other redirect is an error.
     pub redirect_hosts: &'static [&'static str],
+    /// The most bytes of answer body the port passes on. Required, and never zero.
+    pub max_body_bytes: u64,
 }
 
 /// Every call, for the profile. A test asserts it names every [`Egress`] variant.
@@ -121,6 +123,7 @@ const KNOWLEDGE_UPDATE: Descriptor = Descriptor {
         },
     ],
     redirect_hosts: &[],
+    max_body_bytes: 1_048_576,
 };
 
 /// The descriptor of one call.
@@ -483,6 +486,17 @@ fn is_redirect(status: u16) -> bool {
 }
 
 fn finish(descriptor: &Descriptor, response: Response) -> Result<Response, UsherError> {
+    if response.body.len() as u64 > descriptor.max_body_bytes {
+        return Err(refuse(
+            descriptor,
+            "the answer fits the descriptor's body limit",
+            format!(
+                "{} sent an answer larger than the limit of {} bytes",
+                descriptor.host, descriptor.max_body_bytes
+            ),
+            "ask the publisher for a smaller file",
+        ));
+    }
     if (200..300).contains(&response.status) {
         return Ok(response);
     }

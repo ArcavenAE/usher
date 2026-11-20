@@ -428,6 +428,7 @@ const REDIRECTING: Descriptor = Descriptor {
         },
     ],
     redirect_hosts: &[ASSETS_HOST],
+    max_body_bytes: 1024,
 };
 
 const SHAPED: Descriptor = Descriptor {
@@ -461,6 +462,7 @@ const SHAPED: Descriptor = Descriptor {
         },
     ],
     redirect_hosts: &[],
+    max_body_bytes: 1024,
 };
 
 const VERSION_CHECK: Descriptor = Descriptor {
@@ -472,6 +474,7 @@ const VERSION_CHECK: Descriptor = Descriptor {
     class: Class::VersionCheck,
     fields: &[UA],
     redirect_hosts: &[],
+    max_body_bytes: 1024,
 };
 
 const PERSON_STARTED: Descriptor = Descriptor {
@@ -719,6 +722,7 @@ const POSTING: Descriptor = Descriptor {
         },
     ],
     redirect_hosts: &[ASSETS_HOST],
+    max_body_bytes: 1024,
 };
 
 const EXTRA_HEADER: Descriptor = Descriptor {
@@ -742,6 +746,7 @@ const EXTRA_HEADER: Descriptor = Descriptor {
         },
     ],
     redirect_hosts: &[ASSETS_HOST],
+    max_body_bytes: 1024,
 };
 
 #[test]
@@ -849,6 +854,7 @@ const QUERYING: Descriptor = Descriptor {
         },
     ],
     redirect_hosts: &[ASSETS_HOST],
+    max_body_bytes: 1024,
 };
 
 const BODIED_GET: Descriptor = Descriptor {
@@ -872,6 +878,7 @@ const BODIED_GET: Descriptor = Descriptor {
         },
     ],
     redirect_hosts: &[ASSETS_HOST],
+    max_body_bytes: 1024,
 };
 
 #[test]
@@ -1437,4 +1444,75 @@ fn no_public_function_in_the_wire_request_impl_returns_self_whatever_its_qualifi
         }
     }
     assert!(seen >= 6, "the scan saw only {seen} public functions");
+}
+
+// ---- the body limit ----
+
+const SMALL: Descriptor = Descriptor {
+    max_body_bytes: 16,
+    ..REDIRECTING
+};
+
+#[test]
+fn every_descriptor_has_a_non_zero_body_limit() {
+    assert!(!ALL.is_empty(), "ALL names no call");
+    for egress in ALL {
+        assert!(
+            descriptor(*egress).max_body_bytes > 0,
+            "{}: max_body_bytes is zero",
+            every_variant_named(*egress)
+        );
+    }
+}
+
+#[test]
+fn the_knowledge_update_may_answer_with_one_mebibyte_and_no_more() {
+    assert_eq!(
+        descriptor(Egress::KnowledgeUpdate).max_body_bytes,
+        1_048_576
+    );
+}
+
+fn ok_with(len: usize) -> Result<Response, UsherError> {
+    Ok(Response {
+        status: 200,
+        location: None,
+        body: vec![b'x'; len],
+    })
+}
+
+#[test]
+fn an_answer_over_the_limit_is_refused_naming_the_host_and_the_limit_and_one_at_the_limit_passes() {
+    let at_limit = RecordingTransport::new().answering(ok_with(16));
+    let response = port(&at_limit)
+        .call_described(&SMALL, described_request().with("file", "k.toml"))
+        .expect("an answer of exactly the limit is passed on");
+    assert_eq!(response.body.len(), 16);
+
+    let over = RecordingTransport::new().answering(ok_with(17));
+    let err = port(&over)
+        .call_described(&SMALL, described_request().with("file", "k.toml"))
+        .expect_err("an answer over the limit must fail");
+    assert_four_fields(&err);
+    assert_eq!(err.step(), "send test-redirecting");
+    let text = err.to_string();
+    assert!(text.contains(FILES_HOST), "{text}");
+    assert!(text.contains("16"), "{text}");
+    assert!(text.contains("answer larger than the limit"), "{text}");
+}
+
+#[test]
+fn the_answer_to_a_followed_redirect_is_held_to_the_limit_too() {
+    let transport = RecordingTransport::new()
+        .answering_redirect(format!("https://{ASSETS_HOST}/moved"))
+        .answering(ok_with(17));
+    let err = port(&transport)
+        .call_described(&SMALL, described_request().with("file", "k.toml"))
+        .expect_err("a followed answer over the limit must fail");
+    assert_four_fields(&err);
+    assert!(
+        err.to_string().contains("answer larger than the limit"),
+        "{err}"
+    );
+    assert_eq!(transport.sent().len(), 2);
 }

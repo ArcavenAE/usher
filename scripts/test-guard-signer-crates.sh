@@ -42,7 +42,7 @@ expect() { # expect <pass|fail> <description> [text the output must contain]
     printf '%s\n' "$out" >&2
     exit 1
   fi
-  if [[ -n "$needle" ]] && ! printf '%s\n' "$out" | grep -q "$needle"; then
+  if [[ -n "$needle" ]] && ! printf '%s\n' "$out" | grep -qF -- "$needle"; then
     echo "FAIL: $what (output lacks: $needle)" >&2
     printf '%s\n' "$out" >&2
     exit 1
@@ -122,3 +122,48 @@ printf '[package]\nname = "optional"\nversion = "0.0.0"\nedition = "2024"\n[depe
 : > "$scratch/ws/optional/src/lib.rs"
 workspace usher-testkit clean seamed quiet optional
 expect fail "a member whose optional feature enables test-seam fails" "optional enables test-seam"
+
+# test-seam may be turned on only from [dev-dependencies]. A manifest scan, read
+# from `cargo metadata`, names any other place, so a declaration the tree check
+# cannot see (a build dependency, a feature of the member's own) is still refused.
+seam_member() { # seam_member <member> <table> <with|without>
+  mkdir -p "$scratch/ws/$1/src"
+  {
+    printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n[%s]\n' "$1" "$2"
+    if [[ "$3" == with ]]; then
+      printf 'seamed = { path = "../seamed", features = ["test-seam"] }\n'
+    else
+      printf 'seamed = { path = "../seamed" }\n'
+    fi
+  } > "$scratch/ws/$1/Cargo.toml"
+  : > "$scratch/ws/$1/src/lib.rs"
+}
+
+seam_member devonly dev-dependencies with
+workspace usher-testkit clean seamed devonly
+expect pass "a member that enables test-seam from [dev-dependencies] passes"
+
+seam_member normal dependencies with
+workspace usher-testkit clean seamed normal
+expect fail "test-seam from [dependencies] is named as outside [dev-dependencies]" "normal declares test-seam outside [dev-dependencies]"
+
+seam_member builder build-dependencies with
+workspace usher-testkit clean seamed builder
+expect fail "test-seam from [build-dependencies] is named as outside [dev-dependencies]" "builder declares test-seam outside [dev-dependencies]"
+
+mkdir -p "$scratch/ws/targeted/src"
+printf '[package]\nname = "targeted"\nversion = "0.0.0"\nedition = "2024"\n[target."cfg(any())".dependencies]\nseamed = { path = "../seamed", features = ["test-seam"] }\n' > "$scratch/ws/targeted/Cargo.toml"
+: > "$scratch/ws/targeted/src/lib.rs"
+workspace usher-testkit clean seamed targeted
+expect fail "test-seam from a target-specific dependency is named as outside [dev-dependencies]" "targeted declares test-seam outside [dev-dependencies]"
+
+# The signing-crate exemption of usher-testkit does not reach the test-seam
+# rule: the manifest scan reads every package, usher-testkit included.
+mkdir -p "$scratch/ws/usher-testkit/src"
+{
+  printf '[package]\nname = "usher-testkit"\nversion = "0.0.0"\nedition = "2024"\n'
+  printf '[dependencies]\nblake2 = { path = "../../vendor/blake2" }\n'
+  printf 'seamed = { path = "../seamed", features = ["test-seam"] }\n'
+} > "$scratch/ws/usher-testkit/Cargo.toml"
+workspace usher-testkit clean seamed
+expect fail "test-seam from usher-testkit's [dependencies] is named as outside [dev-dependencies]" "usher-testkit declares test-seam outside [dev-dependencies]"
