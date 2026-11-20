@@ -299,19 +299,41 @@ fn every_run_is_recorded_as_a_new_row_with_derived_state_only() {
     let user = rig.user(r#"{"model":"super-secret-model"}"#);
     let env = rig.env();
     rig.run(&env);
+    let first_run = Store::open(&env.state_dir)
+        .expect("the store opens")
+        .runs()
+        .expect("runs");
+    assert_eq!(first_run.len(), 1);
+    let first_sources = Store::open(&env.state_dir)
+        .expect("the store opens")
+        .sources_of(first_run[0].id)
+        .expect("sources");
     rig.run(&env);
     let store = Store::open(&env.state_dir).expect("the store opens");
     let runs = store.runs().expect("runs");
     assert_eq!(runs.len(), 2, "a second run inserts, never rewrites");
+    assert_eq!(runs[0], first_run[0], "the first run's row is unchanged");
+    assert_eq!(
+        store.sources_of(runs[0].id).expect("sources"),
+        first_sources,
+        "the first run's sources are unchanged"
+    );
     assert_eq!(runs[0].recorded_at, NOW);
     assert_eq!(runs[0].harness, "claude-code");
     assert_eq!(runs[0].harness_version.as_deref(), Some("2.1.317"));
-    assert!(
-        runs[0]
-            .environment_key
-            .starts_with("host-1/alex/claude-code/"),
-        "{}",
-        runs[0].environment_key
+    let knowledge = KnowledgeFile::embedded().expect("embedded");
+    assert_eq!(
+        runs[0].knowledge_schema,
+        knowledge.version().schema_version()
+    );
+    assert_eq!(runs[0].knowledge_sequence, knowledge.version().sequence());
+    assert_eq!(
+        runs[0].environment_key,
+        format!(
+            "host-1/alex/claude-code/{}?CLAUDE_CONFIG_DIR",
+            rig.repo.display()
+        ),
+        "the launch directory, then the unset variable as its bare name"
     );
     let sources = store.sources_of(runs[0].id).expect("sources");
     let row = sources
@@ -331,8 +353,9 @@ fn an_absent_layer_is_recorded_as_checked_and_absent() {
     let env = rig.env();
     rig.run(&env);
     let store = Store::open(&env.state_dir).expect("the store opens");
-    let run = &store.runs().expect("runs")[0];
-    let sources = store.sources_of(run.id).expect("sources");
+    let runs = store.runs().expect("runs");
+    assert_eq!(runs.len(), 1);
+    let sources = store.sources_of(runs[0].id).expect("sources");
     let user = sources
         .iter()
         .find(|s| s.layer == "user")
@@ -351,6 +374,10 @@ fn a_run_changes_no_harness_home_and_no_managed_directory() {
     rig.install("2.1.317");
     rig.user("{}");
     rig.write(
+        &rig.scratch.home().join(".claude.json"),
+        r#"{"projects":{}}"#,
+    );
+    rig.write(
         &rig.system.join("etc/claude-code/managed-settings.json"),
         r#"{"permissions":{}}"#,
     );
@@ -358,6 +385,10 @@ fn a_run_changes_no_harness_home_and_no_managed_directory() {
         NamedHome {
             name: "claude-code",
             path: rig.scratch.home().join(".claude"),
+        },
+        NamedHome {
+            name: "claude-code-global-state",
+            path: rig.scratch.home().join(".claude.json"),
         },
         NamedHome {
             name: "claude-code-managed",
@@ -383,7 +414,7 @@ fn the_verb_builds_its_adapter_with_the_host_root() {
 }
 
 #[test]
-fn run_hands_inventory_to_its_verb_and_refuses_any_other_command_or_argument() {
+fn run_refuses_an_argument_to_inventory_and_an_unknown_command() {
     let rig = Rig::new();
     let env = rig.env();
     let err = run(&["inventory".to_string(), "extra".to_string()], &env)
@@ -407,4 +438,111 @@ fn run_hands_inventory_to_its_verb_and_refuses_any_other_command_or_argument() {
         err.next_action(),
         "run `usher inventory` or `usher --version`"
     );
+}
+
+#[test]
+fn a_set_claude_config_dir_keys_the_environment_with_its_value_and_an_empty_one_apart() {
+    let rig = Rig::new();
+    rig.install("2.1.317");
+    let cfg = rig.scratch.root().join("cfg");
+    let mut env = rig.env();
+    env.claude_config_dir = Some(cfg.clone().into_os_string());
+    rig.run(&env);
+    let mut empty_env = rig.env();
+    empty_env.claude_config_dir = Some("".into());
+    rig.run(&empty_env);
+    let store = Store::open(&env.state_dir).expect("the store opens");
+    let runs = store.runs().expect("runs");
+    assert_eq!(runs.len(), 2);
+    let dir = rig.repo.display();
+    assert_eq!(
+        runs[0].environment_key,
+        format!(
+            "host-1/alex/claude-code/{dir}?CLAUDE_CONFIG_DIR={}",
+            cfg.display()
+        )
+    );
+    assert_eq!(
+        runs[1].environment_key,
+        format!("host-1/alex/claude-code/{dir}?CLAUDE_CONFIG_DIR="),
+        "an empty variable is not an unset one"
+    );
+    let default_user = rig.scratch.home().join(".claude/settings.json");
+    let sources = store.sources_of(runs[1].id).expect("sources");
+    assert!(
+        sources
+            .iter()
+            .any(|s| s.layer == "user" && s.path == default_user.display().to_string()),
+        "an empty variable still resolves the user layer to the default"
+    );
+}
+
+#[test]
+fn every_frozen_source_in_the_all_sources_row_is_listed_with_one_status() {
+    let rig = Rig::new();
+    rig.install("2.1.317");
+    let paths = [
+        rig.write(
+            &rig.system.join("etc/claude-code/managed-settings.json"),
+            r#"{"permissions":{}}"#,
+        ),
+        rig.user("{}"),
+        rig.write(&rig.repo.join(".claude/settings.json"), "{}"),
+        rig.write(&rig.repo.join(".claude/settings.local.json"), "{}"),
+        rig.write(
+            &rig.scratch.home().join(".claude.json"),
+            r#"{"projects":{}}"#,
+        ),
+        rig.write(
+            &rig.scratch.home().join(".claude/remote-settings.json"),
+            "{}",
+        ),
+    ];
+    let out = rig.run(&rig.env());
+    for path in &paths {
+        let row = line_with(&out, &path.display().to_string());
+        let statuses = ["in effect", "shadowed by", "unread (", "unknown ("];
+        assert_eq!(
+            statuses.iter().filter(|s| row.contains(*s)).count(),
+            1,
+            "one status in {row}"
+        );
+    }
+}
+
+#[test]
+fn the_oauth_account_key_in_the_global_state_file_is_never_opened() {
+    let rig = Rig::new();
+    rig.install("2.1.317");
+    let global = rig.write(
+        &rig.scratch.home().join(".claude.json"),
+        r#"{"oauthAccount":{"emailAddress":"alex@example.test"},"projects":{}}"#,
+    );
+    let out = rig.run(&rig.env());
+    assert!(out.contains(&global.display().to_string()), "{out}");
+    assert!(!out.contains("alex@example.test"), "{out}");
+    let store = Store::open(&rig.env().state_dir).expect("the store opens");
+    let runs = store.runs().expect("runs");
+    assert_eq!(runs.len(), 1);
+    let sources = store.sources_of(runs[0].id).expect("sources");
+    assert!(!format!("{sources:?}").contains("alex@example.test"));
+}
+
+#[test]
+fn a_version_outside_every_range_stamps_unknown_and_every_status_reads_unknown() {
+    let rig = Rig::new();
+    rig.install("3.0.0");
+    let managed = rig.write(
+        &rig.system.join("etc/claude-code/managed-settings.json"),
+        r#"{"permissions":{}}"#,
+    );
+    let user = rig.user("{}");
+    let project = rig.write(&rig.repo.join(".claude/settings.json"), "{}");
+    let out = rig.run(&rig.env());
+    let first = out.lines().next().expect("a first line");
+    assert!(first.contains("knowledge for it not known"), "{first}");
+    for path in [&managed, &user, &project] {
+        let row = line_with(&out, &path.display().to_string());
+        assert!(row.contains("unknown ("), "{row}");
+    }
 }
