@@ -190,6 +190,45 @@ impl Request {
 
 /// A request as it goes to a [`Transport`]: checked, with nothing left to add
 /// but protocol headers the client sets itself.
+///
+/// Nothing outside this crate can build one, so every request a transport sees
+/// came through the port:
+///
+/// ```compile_fail
+/// use usher_core::{Method, WireRequest};
+///
+/// let _ = WireRequest {
+///     method: Method::Get,
+///     host: String::new(),
+///     path: String::new(),
+///     query: Vec::new(),
+///     headers: Vec::new(),
+///     body: Vec::new(),
+/// };
+/// ```
+///
+/// A transport reads the request through its accessors:
+///
+/// ```
+/// use usher_core::{
+///     Egress, PersonStartedOnly, Port, Request, Response, Transport, UsherError, WireRequest,
+/// };
+///
+/// struct Reader;
+/// impl Transport for Reader {
+///     fn send(&self, request: &WireRequest) -> Result<Response, UsherError> {
+///         assert_eq!(request.host(), "knowledge.usher.invalid");
+///         assert_eq!(request.path(), "/f.toml");
+///         assert!(request.query().is_empty() && request.body().is_empty());
+///         assert_eq!(request.headers()[0].0, "user-agent");
+///         Ok(Response { status: 200, location: None, body: Vec::new() })
+///     }
+/// }
+///
+/// let port = Port::new(Reader, PersonStartedOnly);
+/// port.call(Request::new(Egress::KnowledgeUpdate).with("file", "f.toml"))
+///     .expect("the call goes through");
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WireRequest {
     /// The HTTP method.

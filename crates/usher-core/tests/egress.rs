@@ -918,3 +918,46 @@ fn a_redirect_on_a_post_with_no_body_field_is_refused_with_one_send() {
     assert!(err.to_string().contains("307"), "{err}");
     assert_eq!(transport.sent().len(), 1, "the port followed");
 }
+
+// ---- the request cannot be built outside the port ----
+
+fn block<'a>(source: &'a str, start: &str) -> &'a str {
+    let from = source
+        .find(start)
+        .unwrap_or_else(|| panic!("`{start}` is in egress.rs"));
+    let rest = &source[from..];
+    let to = rest.find("\n}\n").expect("the block ends");
+    &rest[..to]
+}
+
+#[test]
+fn wire_request_has_no_public_field() {
+    let source = include_str!("../src/egress.rs");
+    let body = block(source, "pub struct WireRequest {");
+    for line in body.lines().skip(1) {
+        let line = line.trim();
+        assert!(
+            line.starts_with("///") || !line.starts_with("pub "),
+            "a WireRequest field is public: {line}"
+        );
+    }
+}
+
+#[test]
+fn wire_request_has_no_public_function_that_returns_one() {
+    let source = include_str!("../src/egress.rs");
+    let body = block(source, "impl WireRequest {");
+    for line in body.lines() {
+        let line = line.trim();
+        if line.starts_with("pub fn") {
+            assert!(
+                !line.contains("-> Self") && !line.contains("-> WireRequest"),
+                "a public function returns a WireRequest: {line}"
+            );
+        }
+    }
+    assert!(
+        body.contains("pub fn host("),
+        "the accessors are in this block"
+    );
+}
