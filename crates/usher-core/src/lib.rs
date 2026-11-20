@@ -10,7 +10,7 @@ use std::{error::Error, fmt};
 mod environment;
 mod listing;
 
-pub use environment::{EnvironmentKey, environment_key};
+pub use environment::{EnvironmentKey, environment_key, key_variables};
 pub use listing::{
     AbsentLayer, KeyNames, LaunchContext, ListedSource, NotCheckedLayer, SourceLister,
     SourceListing, SourceStatus, SystemRoot,

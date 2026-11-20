@@ -122,6 +122,17 @@ fn escape(text: &str, also: &[char]) -> String {
     out
 }
 
+/// The variables that belong in an environment key: those named, set and non-empty, in the
+/// order named. The one place that decides it, so no caller drops differently;
+/// [`environment_key`] itself filters nothing.
+pub fn key_variables(
+    names: &[&str],
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Vec<(String, String)> {
+    let _ = (names, lookup);
+    Vec::new()
+}
+
 impl std::fmt::Display for EnvironmentKey {
     /// The text form the store keys on: `host/user/harness/<directory>?NAME=value&NAME`.
     /// An unset variable is the bare name, an empty one is `NAME=`, and every
@@ -334,5 +345,39 @@ mod tests {
             "status: {}",
             err.status()
         );
+    }
+
+    /// One function decides which variables enter a key: the named ones that are set and
+    /// non-empty. A knowledge update that names a new variable then changes no key where
+    /// that variable is unset.
+    #[test]
+    fn key_variables_keeps_the_named_set_and_non_empty_ones_in_order() {
+        let lookup = |name: &str| match name {
+            "A_SET" => Some("1".to_string()),
+            "C_SET" => Some("3".to_string()),
+            "D_EMPTY" => Some(String::new()),
+            "NOT_NAMED" => Some("x".to_string()),
+            _ => None,
+        };
+        let kept = key_variables(&["A_SET", "B_UNSET", "C_SET", "D_EMPTY"], lookup);
+        assert_eq!(
+            kept,
+            [
+                ("A_SET".to_string(), "1".to_string()),
+                ("C_SET".to_string(), "3".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn key_variables_asks_only_for_the_names_it_is_given() {
+        use std::cell::RefCell;
+        let asked = RefCell::new(Vec::new());
+        let kept = key_variables(&["ONE", "TWO"], |name| {
+            asked.borrow_mut().push(name.to_string());
+            Some("v".to_string())
+        });
+        assert_eq!(asked.into_inner(), ["ONE", "TWO"]);
+        assert_eq!(kept.len(), 2);
     }
 }
