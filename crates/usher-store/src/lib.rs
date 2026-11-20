@@ -88,6 +88,8 @@ pub struct SeatRecord<'a> {
     /// For an environment or keys-present read, each listed member and whether it is
     /// present, absent ones included.
     pub members: &'a [(String, bool)],
+    /// Why the item could not be checked, as text that never holds a variable's value.
+    pub note: Option<&'a str>,
 }
 
 /// One seat line as stored.
@@ -104,6 +106,8 @@ pub struct SeatRow {
     /// For an environment or keys-present read, each listed member and whether it is
     /// present, absent ones included.
     pub members: Vec<(String, bool)>,
+    /// Why the item could not be checked, as text that never holds a variable's value.
+    pub note: Option<String>,
 }
 
 /// One inventory run: when it ran and what it assumed.

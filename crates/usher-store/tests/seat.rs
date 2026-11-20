@@ -37,6 +37,7 @@ fn seat_lines_round_trip_with_each_name_kept_as_its_segments() {
             present: Some(true),
             names: &names,
             members: &[],
+            note: None,
         },
         SeatRecord {
             part: "packs",
@@ -44,6 +45,7 @@ fn seat_lines_round_trip_with_each_name_kept_as_its_segments() {
             present: Some(false),
             names: &[],
             members: &[],
+            note: None,
         },
         SeatRecord {
             part: "auth-route",
@@ -51,6 +53,7 @@ fn seat_lines_round_trip_with_each_name_kept_as_its_segments() {
             present: Some(true),
             names: &[],
             members: &keys,
+            note: None,
         },
     ];
     let id = store
@@ -66,6 +69,7 @@ fn seat_lines_round_trip_with_each_name_kept_as_its_segments() {
                 present: Some(true),
                 names: names.clone(),
                 members: Vec::new(),
+                note: None,
             },
             SeatRow {
                 part: "packs".to_string(),
@@ -73,6 +77,7 @@ fn seat_lines_round_trip_with_each_name_kept_as_its_segments() {
                 present: Some(false),
                 names: Vec::new(),
                 members: Vec::new(),
+                note: None,
             },
             SeatRow {
                 part: "auth-route".to_string(),
@@ -80,6 +85,7 @@ fn seat_lines_round_trip_with_each_name_kept_as_its_segments() {
                 present: Some(true),
                 names: Vec::new(),
                 members: keys,
+                note: None,
             },
         ]
     );
@@ -100,6 +106,7 @@ fn a_second_run_keeps_its_own_seat_lines() {
         present: Some(true),
         names: &[],
         members: &[],
+        note: None,
     }];
     let two = [SeatRecord {
         part: "mcp",
@@ -107,6 +114,7 @@ fn a_second_run_keeps_its_own_seat_lines() {
         present: Some(false),
         names: &[],
         members: &[],
+        note: None,
     }];
     let first = store
         .record_inventory_with_seat(&run(), &[], &one)
@@ -143,6 +151,7 @@ fn environment_and_key_members_round_trip_as_pairs_with_absent_ones_included() {
             present: None,
             names: &[],
             members: &vars,
+            note: None,
         },
         SeatRecord {
             part: "auth-route",
@@ -150,6 +159,7 @@ fn environment_and_key_members_round_trip_as_pairs_with_absent_ones_included() {
             present: Some(false),
             names: &[],
             members: &keys,
+            note: None,
         },
     ];
     let id = store
@@ -179,6 +189,7 @@ fn the_seat_table_joins_the_derived_state_allowlist_and_holds_names_only() {
             present: Some(true),
             names: &names,
             members: &[],
+            note: None,
         },
         SeatRecord {
             part: "auth-route",
@@ -186,6 +197,7 @@ fn the_seat_table_joins_the_derived_state_allowlist_and_holds_names_only() {
             present: None,
             names: &[],
             members: &members,
+            note: None,
         },
     ];
     store
