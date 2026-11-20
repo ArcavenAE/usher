@@ -50,7 +50,7 @@ mod macos {
     #[test]
     fn a_connect_to_a_non_local_address_is_refused_by_the_profile_not_the_network() {
         let scratch = ScratchHome::new().expect("scratch home");
-        let args = ["-z", "-w", "1", "-G", "1", "192.0.2.1", "80"];
+        let args = ["-v", "-z", "-w", "1", "-G", "1", "192.0.2.1", "80"];
 
         // Outside half: the same command without the profile. TEST-NET-1 is
         // unroutable, so it times out or is unreachable; it is never refused
@@ -61,6 +61,10 @@ mod macos {
             .output()
             .expect("nc runs without the profile");
         let outside_err = String::from_utf8_lossy(&outside.stderr);
+        assert!(
+            outside_err.contains("failed:"),
+            "control: nc reports its failure, so an absent denial is a real absence: {outside_err}"
+        );
         assert!(
             !outside_err.contains("Operation not permitted"),
             "control: without the profile the connect is not refused by a sandbox: {outside_err}"
