@@ -98,7 +98,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "A wildcard over a nested key."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/deep" }
 last_verified = 2026-11-20
-seat = { part = "toolchain", path = "${HOME}/.deep.json", read = "names", key_paths = ["servers.*.env"] }
+seat = { part = "toolchain", path = "${HOME}/.deep.json", read = "names", key_paths = ["servers.*.env", "servers.*.*.env"] }
 
 [[item]]
 id = "claude-code.fx-plain"
@@ -596,5 +596,39 @@ fn an_item_whose_path_cannot_be_placed_gets_its_own_line_with_its_reason_and_no_
     assert!(
         !format!("{listing:?}").contains("relative/dir"),
         "the value is held nowhere"
+    );
+}
+
+#[test]
+fn a_second_level_wildcard_over_a_credential_child_reads_nothing_under_it() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.home().join(".deep.json"),
+        r#"{"servers":{"grp":{"oauthAccount":{"env":{"SECRET_K":"sv"}},"ok":{"env":{"FINE_K":"fv"}}}}}"#,
+    );
+    let listing = rig.fixture(&rig.context(&rig.repo, &[]));
+    let l = line(&listing, "claude-code.fx-deep");
+    assert!(
+        l.names.contains(&seg(&["servers", "grp", "oauthAccount"])),
+        "{:?}",
+        l.names
+    );
+    assert!(
+        l.names
+            .contains(&seg(&["servers", "grp", "ok", "env", "FINE_K"])),
+        "{:?}",
+        l.names
+    );
+    assert!(
+        !l.names
+            .iter()
+            .any(|n| n.len() > 3 && n[..3] == ["servers", "grp", "oauthAccount"]),
+        "nothing under the credential child: {:?}",
+        l.names
+    );
+    let text = format!("{listing:?}");
+    assert!(
+        !text.contains("SECRET_K") && !text.contains("\"sv\""),
+        "{text}"
     );
 }

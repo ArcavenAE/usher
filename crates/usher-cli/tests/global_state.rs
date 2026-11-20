@@ -253,3 +253,19 @@ fn the_environment_key_still_holds_the_relocation_variable_and_its_value() {
     assert!(!runs[1].environment_key.contains("CLAUDE_CONFIG_DIR"));
     assert_ne!(runs[0].environment_key, runs[1].environment_key);
 }
+
+/// The placeable control for the unplaceable item: with the same relative variable, an
+/// item that needs no path still prints its ordinary line, so "not checked" is not the
+/// answer for every seat item.
+#[test]
+fn an_item_that_needs_no_path_still_prints_normally_when_the_variable_is_relative() {
+    let rig = Rig::new();
+    rig.global_in_home();
+    let out = rig.run(&rig.env(Some("relative/dir")));
+    let env_line = out
+        .lines()
+        .find(|l| l.ends_with("(knowledge item claude-code.seat-auth-env)"))
+        .unwrap_or_else(|| panic!("no auth env line in:\n{out}"));
+    assert!(env_line.starts_with("auth-route  env  "), "{env_line}");
+    assert!(!env_line.contains("not checked"), "{env_line}");
+}
