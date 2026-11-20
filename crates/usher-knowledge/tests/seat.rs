@@ -292,6 +292,7 @@ fn a_path_is_absent_for_env_and_present_for_every_other_read() {
 fn a_variable_name_is_upper_case_letters_digits_and_underscores() {
     for bad in [
         "demo_api_key",
+        "DEMO_key",
         "1DEMO",
         "DEMO-KEY",
         "DEMO KEY",
