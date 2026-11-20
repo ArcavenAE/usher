@@ -3,7 +3,7 @@
 use toml_edit::{DocumentMut, Item, Table, Value};
 use usher_core::{UsherError, VersionRange};
 
-use crate::display_name;
+use crate::display::{display_name, is_escaped};
 
 /// A parsed `profile.toml`.
 #[derive(Debug, Clone)]
@@ -78,10 +78,7 @@ impl Manifest {
         }
 
         let version = required_text(&refuse, root, "version")?;
-        if version.is_empty()
-            || version.chars().count() > 64
-            || version.chars().any(char::is_control)
-        {
+        if version.is_empty() || version.chars().count() > 64 || version.chars().any(is_escaped) {
             return Err(refuse.error(
                 "profile.toml: version is one line of 1 to 64 characters".to_string(),
                 format!("version `{}` does not fit", display_name(version)),
@@ -565,16 +562,16 @@ fn check_segment(segment: &str) -> Result<(), &'static str> {
         if decoded.is_empty() {
             return Err("is empty");
         }
-        if decoded.chars().any(char::is_control) {
-            return Err("holds a control character");
+        if decoded.chars().any(is_escaped) {
+            return Err("holds a control or direction character");
         }
         if !needs_quote(&decoded) {
             return Err("is quoted but holds no dot, whitespace or double quote");
         }
         return Ok(());
     }
-    if segment.chars().any(char::is_control) {
-        return Err("holds a control character");
+    if segment.chars().any(is_escaped) {
+        return Err("holds a control or direction character");
     }
     if needs_quote(segment) {
         return Err("holds a dot, whitespace or double quote and must be quoted");

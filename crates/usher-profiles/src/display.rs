@@ -6,7 +6,7 @@ use std::fmt::Write;
 /// (U+0000 to U+001F, U+007F and U+0080 to U+009F, exactly `char::is_control`)
 /// and the bidirectional format controls U+200E, U+200F, U+202A to U+202E and
 /// U+2066 to U+2069, which can make text read in an order it is not stored in.
-fn is_escaped(c: char) -> bool {
+pub(crate) fn is_escaped(c: char) -> bool {
     c.is_control()
         || matches!(
             u32::from(c),
