@@ -12,6 +12,15 @@ use usher_knowledge::Platform;
 use usher_store::Store;
 use usher_testkit::ScratchHome;
 
+const ACCOUNT: &str = r#"{"oauthAccount":{"emailAddress":"alex@example.test"}}"#;
+
+fn account_line(path: &Path) -> String {
+    format!(
+        "auth-route  {}  oauthAccount present (knowledge item claude-code.seat-auth-account)",
+        path.display()
+    )
+}
+
 struct Rig {
     scratch: ScratchHome,
     system: PathBuf,
@@ -68,7 +77,7 @@ impl Rig {
     }
 
     fn global_in_home(&self) -> PathBuf {
-        self.write(&self.scratch.home().join(".claude.json"), "{}")
+        self.write(&self.scratch.home().join(".claude.json"), ACCOUNT)
     }
 }
 
@@ -91,6 +100,7 @@ fn an_unset_variable_reads_the_global_state_file_in_the_home_directory() {
     let out = rig.run(&rig.env(None));
     assert!(out.contains(&global.display().to_string()), "{out}");
     assert!(stored_paths(&rig).contains(&global.display().to_string()));
+    assert!(out.lines().any(|l| l == account_line(&global)), "{out}");
 }
 
 #[test]
@@ -98,10 +108,11 @@ fn an_absolute_variable_moves_the_global_state_file_and_the_home_one_is_not_read
     let rig = Rig::new();
     let at_home = rig.global_in_home();
     let dir = rig.scratch.root().join("state");
-    let moved = rig.write(&dir.join(".claude.json"), "{}");
+    let moved = rig.write(&dir.join(".claude.json"), ACCOUNT);
     let out = rig.run(&rig.env(Some(&dir.display().to_string())));
     assert!(out.contains(&moved.display().to_string()), "{out}");
     assert!(!out.contains(&at_home.display().to_string()), "{out}");
+    assert!(out.lines().any(|l| l == account_line(&moved)), "{out}");
     let stored = stored_paths(&rig);
     assert!(stored.contains(&moved.display().to_string()), "{stored:?}");
     assert!(
@@ -116,6 +127,7 @@ fn an_empty_variable_reads_the_global_state_file_in_the_home_directory() {
     let global = rig.global_in_home();
     let out = rig.run(&rig.env(Some("")));
     assert!(out.contains(&global.display().to_string()), "{out}");
+    assert!(out.lines().any(|l| l == account_line(&global)), "{out}");
 }
 
 #[test]

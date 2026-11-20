@@ -29,7 +29,7 @@ fn seat_lines_round_trip_with_each_name_kept_as_its_segments() {
         seg(&["mcpServers", "a.b", "env", "K"]),
         seg(&["mcpServers", "z"]),
     ];
-    let keys = vec![seg(&["oauthAccount"])];
+    let keys = vec![("oauthAccount".to_string(), true)];
     let seat = [
         SeatRecord {
             part: "mcp",
@@ -49,8 +49,8 @@ fn seat_lines_round_trip_with_each_name_kept_as_its_segments() {
             part: "auth-route",
             item_id: "claude-code.seat-auth-account",
             present: Some(true),
-            names: &keys,
-            members: &[],
+            names: &[],
+            members: &keys,
         },
     ];
     let id = store
@@ -78,8 +78,8 @@ fn seat_lines_round_trip_with_each_name_kept_as_its_segments() {
                 part: "auth-route".to_string(),
                 item_id: "claude-code.seat-auth-account".to_string(),
                 present: Some(true),
-                names: keys,
-                members: Vec::new(),
+                names: Vec::new(),
+                members: keys,
             },
         ]
     );
@@ -160,4 +160,72 @@ fn environment_and_key_members_round_trip_as_pairs_with_absent_ones_included() {
     assert_eq!(rows[0].members, vars);
     assert_eq!(rows[1].present, Some(false));
     assert_eq!(rows[1].members, keys);
+}
+
+/// The derived-state allowlist grows by the seat table, with these columns, and no cell of
+/// it holds anything but the part, the item id, the flags, and the names the caller
+/// passed. The older test that pins two tables becomes a meaning change in the code step.
+#[test]
+fn the_seat_table_joins_the_derived_state_allowlist_and_holds_names_only() {
+    let scratch = ScratchHome::new().expect("scratch");
+    let dir = scratch.home().join(".local/state/usher");
+    let mut store = Store::open(&dir).expect("a store");
+    let names = vec![seg(&["mcpServers", "a.b"])];
+    let members = vec![("FLEET_TOKEN".to_string(), true)];
+    let seat = [
+        SeatRecord {
+            part: "mcp",
+            item_id: "claude-code.seat-mcp-launch-dir",
+            present: Some(true),
+            names: &names,
+            members: &[],
+        },
+        SeatRecord {
+            part: "auth-route",
+            item_id: "claude-code.seat-auth-env",
+            present: None,
+            names: &[],
+            members: &members,
+        },
+    ];
+    store
+        .record_inventory_with_seat(&run(), &[], &seat)
+        .expect("a run");
+    let conn = rusqlite::Connection::open(dir.join("usher.db")).expect("a second connection");
+    let tables: Vec<String> = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+        .expect("prepare")
+        .query_map([], |r| r.get(0))
+        .expect("query")
+        .collect::<Result<_, _>>()
+        .expect("rows");
+    assert_eq!(
+        tables,
+        ["inventory_run", "inventory_seat", "inventory_source"]
+    );
+    let columns: Vec<String> = conn
+        .prepare("SELECT name FROM pragma_table_info('inventory_seat') ORDER BY cid")
+        .expect("prepare")
+        .query_map([], |r| r.get(0))
+        .expect("query")
+        .collect::<Result<_, _>>()
+        .expect("rows");
+    assert_eq!(
+        columns,
+        ["run_id", "part", "item_id", "present", "names", "members"]
+    );
+    let cells: Vec<String> = conn
+        .prepare("SELECT part || '|' || item_id || '|' || ifnull(present, 'null') || '|' || names || '|' || members FROM inventory_seat ORDER BY rowid")
+        .expect("prepare")
+        .query_map([], |r| r.get(0))
+        .expect("query")
+        .collect::<Result<_, _>>()
+        .expect("rows");
+    assert_eq!(
+        cells,
+        [
+            r#"mcp|claude-code.seat-mcp-launch-dir|1|[["mcpServers","a.b"]]|[]"#,
+            r#"auth-route|claude-code.seat-auth-env|null|[]|[["FLEET_TOKEN",true]]"#,
+        ]
+    );
 }

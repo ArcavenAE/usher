@@ -117,7 +117,7 @@ fn the_migration_leaves_the_seat_table_insert_only() {
     conn.execute_batch("PRAGMA foreign_keys = ON;")
         .expect("pragma");
     conn.execute(
-        "INSERT INTO inventory_seat (run_id, part, item_id, present, names) VALUES (1, 'mcp', 'x', 1, '[]')",
+        "INSERT INTO inventory_seat (run_id, part, item_id, present, names, members) VALUES (1, 'mcp', 'x', 1, '[]', '[]')",
         [],
     )
     .expect("an insert is allowed");
@@ -139,19 +139,28 @@ fn the_migration_leaves_the_seat_table_insert_only() {
 }
 
 #[test]
-fn a_migration_that_fails_leaves_the_store_at_version_one_unchanged() {
+fn a_migration_that_fails_midway_leaves_the_store_at_version_one_unchanged() {
     let scratch = ScratchHome::new().expect("scratch");
-    // A table of the seat table's name already exists, so creating it fails midway.
-    let dir = version_one(&scratch, "CREATE TABLE inventory_seat (note TEXT);");
+    // A trigger of the seat trigger's name already exists on another table, so creating
+    // the seat table succeeds and a later step fails. Only a transaction undoes the table.
+    let planted = "inventory_seat_no_delete";
+    let dir = version_one(
+        &scratch,
+        "CREATE TRIGGER inventory_seat_no_delete BEFORE DELETE ON inventory_run BEGIN SELECT 1; END;",
+    );
     let err = Store::open(&dir).expect_err("the migration cannot complete");
     assert!(!err.step().is_empty() && !err.check().is_empty());
     assert!(!err.status().is_empty() && !err.next_action().is_empty());
     assert_eq!(user_version(&dir), 1, "the version did not move");
+    assert!(
+        !names(&dir, "table").contains(&"inventory_seat".to_string()),
+        "the seat table created before the failing step was rolled back"
+    );
     let triggers = names(&dir, "trigger");
     assert!(
         !triggers
             .iter()
-            .any(|name| name.starts_with("inventory_seat")),
+            .any(|name| name.starts_with("inventory_seat") && name != planted),
         "no seat trigger was left behind: {triggers:?}"
     );
     let rows: i64 = raw(&dir)
