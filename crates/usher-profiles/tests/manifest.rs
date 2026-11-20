@@ -348,15 +348,18 @@ fn a_tool_name_is_one_to_one_hundred_twenty_eight_printable_characters_without_s
         let text = format!("{VALID}\n[tools]\n\"{good}\" = \">=1.0.0\"\n");
         assert_eq!(must_parse(&text).tools()[0].name(), good);
     }
-    for bad in [
-        "node js",
-        "o'brien",
-        "a\\\"b",
-        "a\\u0001b",
-        "",
-        long_bad.as_str(),
-    ] {
-        let text = format!("{VALID}\n[tools]\n\"{bad}\" = \">=1.0.0\"\n");
+    // (the name as a TOML key, the name the error must hold). A control
+    // character is not printed back, so only the table is required for it.
+    let bad = [
+        ("node js", Some("node js")),
+        ("o'brien", Some("o'brien")),
+        ("a\\\"b", Some("a\"b")),
+        ("a\\u0001b", None),
+        ("", Some("")),
+        (long_bad.as_str(), Some(long_bad.as_str())),
+    ];
+    for (key, shown) in bad {
+        let text = format!("{VALID}\n[tools]\n\"{key}\" = \">=1.0.0\"\n");
         let err = refusal(&text);
         assert!(
             err.check().contains("tools"),
@@ -364,6 +367,14 @@ fn a_tool_name_is_one_to_one_hundred_twenty_eight_printable_characters_without_s
             err.check(),
             err.status()
         );
+        if let Some(name) = shown {
+            assert!(
+                err.check().contains(name) || err.status().contains(name),
+                "the error does not hold the tool name `{name}`: {} / {}",
+                err.check(),
+                err.status()
+            );
+        }
     }
 }
 
