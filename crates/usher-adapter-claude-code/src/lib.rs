@@ -305,70 +305,35 @@ impl ClaudeCodeAdapter {
             };
         }
 
-        // `present` is sorted by layer then rank, so `first_wins` is in rank order.
-        let mut winner: Option<PathBuf> = None;
-        let mut undecided_by: Option<PathBuf> = None;
+        // `present` is sorted by layer then rank, so `first_wins` is in rank order. The
+        // decision is made rank by rank and never guessed past a point it cannot be made.
+        let mut decision = Decision::Pending;
         let mut index = 0;
         while index < first_wins.len() {
-            let current = first_wins[index];
-            let (candidate, _) = &present[current];
-            let rank = candidate.fact.rank();
-            let tied: Vec<usize> = first_wins[index..]
+            let rank = present[first_wins[index]].0.fact.rank();
+            let group: Vec<usize> = first_wins[index..]
                 .iter()
                 .copied()
                 .take_while(|other| present[*other].0.fact.rank() == rank)
                 .collect();
-            if tied.len() > 1 && winner.is_none() && undecided_by.is_none() {
-                let reason = format!("two managed sources share rank {rank}");
-                for other in &tied {
-                    statuses[*other] = Some(SourceStatus::Unknown {
-                        reason: reason.clone(),
-                    });
+            index += group.len();
+            match &decision {
+                Decision::Winner(by) => {
+                    for other in group {
+                        statuses[other] = Some(SourceStatus::Shadowed { by: by.clone() });
+                    }
                 }
-                undecided_by = Some(present[current].0.path.clone());
-                index += tied.len();
-                continue;
-            }
-            for other in tied {
-                let path = &present[other].0.path;
-                statuses[other] = Some(if let Some(by) = &winner {
-                    SourceStatus::Shadowed { by: by.clone() }
-                } else if let Some(bad) = &undecided_by {
-                    SourceStatus::Unknown {
-                        reason: format!(
-                            "first-wins not decided: {} could not be read",
-                            bad.display()
-                        ),
+                Decision::Undecided(cause) => {
+                    for other in group {
+                        statuses[other] = Some(SourceStatus::Unknown {
+                            reason: format!("first-wins not decided: {cause}"),
+                        });
                     }
-                } else {
-                    match &parsed[other] {
-                        Some(Parsed::Failed(reason)) => {
-                            undecided_by = Some(path.clone());
-                            SourceStatus::Unknown {
-                                reason: reason.clone(),
-                            }
-                        }
-                        Some(Parsed::Names(names)) => {
-                            if names.is_empty() {
-                                SourceStatus::Unread {
-                                    reason: "delivers no policy key: empty".to_string(),
-                                }
-                            } else if names.iter().all(|name| control.contains(name)) {
-                                SourceStatus::Unread {
-                                    reason: "delivers no policy key: only control keys".to_string(),
-                                }
-                            } else {
-                                winner = Some(path.clone());
-                                SourceStatus::InEffect
-                            }
-                        }
-                        None => SourceStatus::Unknown {
-                            reason: "the file was not read".to_string(),
-                        },
-                    }
-                });
+                }
+                Decision::Pending => {
+                    decision = decide_rank(rank, &group, present, parsed, control, &mut statuses);
+                }
             }
-            index += 1;
         }
         statuses
             .into_iter()
@@ -378,6 +343,89 @@ impl ClaudeCodeAdapter {
                 })
             })
             .collect()
+    }
+}
+
+/// Where the first-wins decision stands as the ranks are walked from the top.
+enum Decision {
+    /// No source ranked so far delivers a policy key.
+    Pending,
+    /// A source delivers, and everything below it is shadowed by it.
+    Winner(PathBuf),
+    /// The decision cannot be made, and why; everything below reads that.
+    Undecided(String),
+}
+
+/// Decides one rank of first-wins sources while nothing above it has decided. Only a
+/// source that delivers can win or tie; one that cannot be read counts as one that might.
+fn decide_rank(
+    rank: u32,
+    group: &[usize],
+    present: &[(&Candidate, fs::Metadata)],
+    parsed: &[Option<Parsed>],
+    control: &HashSet<String>,
+    statuses: &mut [Option<SourceStatus>],
+) -> Decision {
+    let mut delivering: Vec<usize> = Vec::new();
+    let mut unreadable: Vec<usize> = Vec::new();
+    for &member in group {
+        match &parsed[member] {
+            Some(Parsed::Names(names)) if names.is_empty() => {
+                statuses[member] = Some(SourceStatus::Unread {
+                    reason: "delivers no policy key: empty".to_string(),
+                });
+            }
+            Some(Parsed::Names(names)) if names.iter().all(|name| control.contains(name)) => {
+                statuses[member] = Some(SourceStatus::Unread {
+                    reason: "delivers no policy key: only control keys".to_string(),
+                });
+            }
+            Some(Parsed::Names(_)) => delivering.push(member),
+            Some(Parsed::Failed(_)) => unreadable.push(member),
+            None => {
+                statuses[member] = Some(SourceStatus::Unknown {
+                    reason: "the file was not read".to_string(),
+                });
+            }
+        }
+    }
+    let path = |member: usize| present[member].0.path.clone();
+    for &member in &unreadable {
+        if let Some(Parsed::Failed(note)) = &parsed[member] {
+            statuses[member] = Some(SourceStatus::Unknown {
+                reason: note.clone(),
+            });
+        }
+    }
+    match (delivering.as_slice(), unreadable.as_slice()) {
+        ([], []) => Decision::Pending,
+        ([only], []) => {
+            statuses[*only] = Some(SourceStatus::InEffect);
+            Decision::Winner(path(*only))
+        }
+        ([], [bad, ..]) => {
+            Decision::Undecided(format!("{} could not be read", path(*bad).display()))
+        }
+        (_, [bad, ..]) => {
+            for &member in &delivering {
+                statuses[member] = Some(SourceStatus::Unknown {
+                    reason: format!(
+                        "rank {rank} is shared with {}, which could not be read",
+                        path(*bad).display()
+                    ),
+                });
+            }
+            Decision::Undecided(format!("{} could not be read", path(*bad).display()))
+        }
+        (_, []) => {
+            let reason = format!("two managed sources share rank {rank}");
+            for &member in &delivering {
+                statuses[member] = Some(SourceStatus::Unknown {
+                    reason: reason.clone(),
+                });
+            }
+            Decision::Undecided(reason)
+        }
     }
 }
 
