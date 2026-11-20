@@ -265,3 +265,63 @@ fn defaults_that_use_home_and_user_parse_and_so_do_the_seeds() {
         );
     }
 }
+
+// A launch variable that moves no path token is not part of the environment key, so a
+// variable without `binds` is never keyed; one with `binds` is.
+
+const PLAIN: &str = r#"
+[[item]]
+id = "demo.plain-variable"
+harness = "demo"
+layer = "slow"
+class = "paths"
+versions = ">=1.0.0, <2.0.0"
+summary = "DEMO_PLAIN changes behavior but moves no path."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/env" }
+last_verified = 2026-11-20
+variable = { name = "DEMO_PLAIN" }
+"#;
+
+#[test]
+fn a_variable_without_binds_parses_and_is_never_keyed() {
+    let parsed = KnowledgeFile::parse(&file(&[CONFIG, STATE, SOURCE, PLAIN])).expect("valid");
+    let plain = parsed
+        .items()
+        .iter()
+        .find(|item| item.id() == "demo.plain-variable")
+        .and_then(|item| item.variable())
+        .expect("the plain variable");
+    assert_eq!(plain.name(), "DEMO_PLAIN");
+    assert_eq!(plain.binds(), None);
+    assert_eq!(parsed.launch_variables("demo"), ["DEMO_HOME"]);
+}
+
+#[test]
+fn a_variable_with_binds_is_keyed() {
+    let parsed =
+        KnowledgeFile::parse(&file(&[CONFIG, SOURCE_FOR_CONFIG, STATE, PLAIN])).expect("valid");
+    assert!(parsed.launch_variables("demo").contains(&"DEMO_HOME"));
+    assert!(!parsed.launch_variables("demo").contains(&"DEMO_PLAIN"));
+    let only_plain = KnowledgeFile::parse(&file(&[PLAIN])).expect("valid");
+    assert!(only_plain.launch_variables("demo").is_empty());
+}
+
+#[test]
+fn the_embedded_key_names_the_config_variable_once() {
+    let seed = KnowledgeFile::embedded().expect("the embedded file");
+    assert_eq!(seed.version().schema_version(), 4);
+    assert_eq!(seed.launch_variables("claude-code"), ["CLAUDE_CONFIG_DIR"]);
+}
+
+const SOURCE_FOR_CONFIG: &str = r#"
+[[item]]
+id = "demo.user-settings"
+harness = "demo"
+layer = "slow"
+class = "sources"
+versions = ">=1.0.0, <2.0.0"
+summary = "The user settings file."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/files" }
+last_verified = 2026-11-20
+source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", rank = 1, always_present = true }
+"#;
