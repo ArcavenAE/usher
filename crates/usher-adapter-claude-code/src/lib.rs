@@ -192,11 +192,7 @@ impl SourceLister for ClaudeCodeAdapter {
                         }
                         not_checked.push(NotCheckedLayer {
                             layer: layer_name(candidate.fact.layer()).to_string(),
-                            reason: format!(
-                                "{} could not be checked: {}",
-                                candidate.path.display(),
-                                error.kind()
-                            ),
+                            reason: format!("{}: {}", candidate.path.display(), error.kind()),
                         });
                     }
                 }
