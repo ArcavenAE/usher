@@ -206,3 +206,62 @@ seat = { part = "mcp", path = "${GLOBAL_STATE_DIR}/.demo.json", read = "names", 
 "#;
     KnowledgeFile::parse(&file(&[CONFIG, STATE, SOURCE, seat])).expect("a seat path may use it");
 }
+
+// A binder's default may use only `${HOME}` and `${USER}`: every other token either
+// depends on the launch environment the default is meant to stand in for, or can loop.
+
+#[test]
+fn a_default_naming_the_other_bindable_token_is_refused() {
+    let config = CONFIG.replace(
+        r#"default = "${HOME}/.demo""#,
+        r#"default = "${GLOBAL_STATE_DIR}/.demo""#,
+    );
+    rejects(
+        &file(&[&config, STATE, SOURCE]),
+        &["demo.config-dir", "default", "${GLOBAL_STATE_DIR}"],
+    );
+    let state = STATE.replace(r#"default = "${HOME}""#, r#"default = "${CONFIG_DIR}/..""#);
+    rejects(
+        &file(&[CONFIG, &state, SOURCE]),
+        &["demo.global-state-dir", "default", "${CONFIG_DIR}"],
+    );
+}
+
+#[test]
+fn a_default_naming_a_token_other_than_home_and_user_is_refused() {
+    for token in ["${REPO}", "${LAUNCH_DIR}", "${NOPE}"] {
+        let state = STATE.replace(
+            r#"default = "${HOME}""#,
+            &format!(r#"default = "{token}/state""#),
+        );
+        rejects(
+            &file(&[CONFIG, &state, SOURCE]),
+            &["demo.global-state-dir", "default", token],
+        );
+    }
+}
+
+#[test]
+fn defaults_that_use_home_and_user_parse_and_so_do_the_seeds() {
+    let config = CONFIG.replace(
+        r#"default = "${HOME}/.demo""#,
+        r#"default = "${HOME}/.demo-${USER}""#,
+    );
+    KnowledgeFile::parse(&file(&[&config, STATE, SOURCE])).expect("HOME and USER are allowed");
+    let seed = KnowledgeFile::embedded().expect("the embedded file");
+    assert_eq!(seed.version().schema_version(), 4);
+    for item in seed.items() {
+        let Some(variable) = item.variable() else {
+            continue;
+        };
+        let Some(default) = variable.default() else {
+            continue;
+        };
+        let rest = default.replace("${HOME}", "").replace("${USER}", "");
+        assert!(
+            !rest.contains("${"),
+            "{}: default `{default}` uses a token other than HOME and USER",
+            item.id()
+        );
+    }
+}
