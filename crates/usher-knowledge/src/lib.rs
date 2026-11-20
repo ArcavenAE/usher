@@ -12,9 +12,6 @@ mod schema;
 mod support;
 mod trust;
 mod update;
-mod version {
-    pub use usher_core::{Version, VersionRange};
-}
 
 #[cfg(test)]
 #[path = "../build/keys.rs"]
@@ -28,4 +25,4 @@ pub use schema::{
 pub use support::{Capability, SupportReport};
 pub use trust::TrustedKeys;
 pub use update::Knowledge;
-pub use version::{Version, VersionRange};
+pub use usher_core::{Version, VersionRange};

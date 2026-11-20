@@ -2,8 +2,8 @@
 
 use std::fmt;
 
+use crate::Version;
 use crate::schema::KnowledgeVersion;
-use crate::version::Version;
 
 /// One thing usher can do for a harness.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

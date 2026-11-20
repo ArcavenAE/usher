@@ -13,7 +13,7 @@ use toml_edit::{DocumentMut, Item as TomlItem, TableLike};
 use usher_core::UsherError;
 
 use crate::support::{Capability, SupportReport};
-use crate::version::{Version, VersionRange};
+use crate::{Version, VersionRange};
 
 /// The knowledge file built into this release.
 const EMBEDDED: &str = include_str!("../knowledge/harness-knowledge.toml");
