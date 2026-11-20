@@ -114,7 +114,7 @@ const KNOWLEDGE_UPDATE: Descriptor = Descriptor {
         },
     ],
     redirect_hosts: &[],
-    max_body_bytes: 0,
+    max_body_bytes: 1_048_576,
 };
 
 /// The descriptor of one call.
@@ -338,6 +338,16 @@ fn is_redirect(status: u16) -> bool {
 }
 
 fn finish(descriptor: &Descriptor, response: Response) -> Result<Response, UsherError> {
+    if response.body.len() as u64 > descriptor.max_body_bytes {
+        return Err(refuse(
+            "the answer fits the descriptor's body limit",
+            format!(
+                "{} sent an answer larger than the limit of {} bytes",
+                descriptor.host, descriptor.max_body_bytes
+            ),
+            "ask the publisher for a smaller file",
+        ));
+    }
     if (200..300).contains(&response.status) {
         return Ok(response);
     }
