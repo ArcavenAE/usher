@@ -1472,13 +1472,17 @@ fn two_local_files_decide_a_scalar_by_the_root_and_keep_both_lists() {
 
 // ---- scopes of a broken layer, and the texts the map pins ------------------------------
 
-/// A layer outside a key's scopes cannot feed the key, so it cannot outrank it: a broken
-/// project file leaves a user value in effect when the key is scoped to user and local.
+/// A layer outside a key's scopes cannot feed the key, so it cannot outrank it: a managed
+/// file that does not parse leaves a user value in effect when the key is scoped to user
+/// and local.
 #[test]
 fn a_broken_layer_outside_the_key_scopes_does_not_block_it() {
     let rig = Rig::new();
     rig.write(&rig.user_file(), r#"{"fx": {"scoped": "user-value"}}"#);
-    rig.write(&rig.project_file(), "{ not json");
+    rig.write(
+        &rig.system.join("etc/claude-code/managed-settings.json"),
+        "{ not json",
+    );
     let map = rig.fixture_map();
     let row = reading(&map, "fx.scoped", "user");
     assert_eq!(row.status, ReadingStatus::InEffect, "{row:?}");
