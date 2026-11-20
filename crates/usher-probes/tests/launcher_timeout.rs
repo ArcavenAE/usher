@@ -35,8 +35,13 @@ fn a_start_that_outlives_the_timeout_is_killed_and_the_probe_is_not_run() {
     let spec = Spec::new("demo-probe", "fakeh")
         .search_path(bin.as_os_str())
         .timeout(Duration::from_secs(1));
+    // The controls run with a generous timeout, so a loaded machine cannot turn
+    // one into a timeout; only the start that must time out has 1 s.
+    let fast = Spec::new("demo-probe", "fakeh")
+        .search_path(bin.as_os_str())
+        .timeout(Duration::from_secs(30));
     // Control: a start that returns at once is a result.
-    assert!(run(&spec, &scratch, today(), |_, _| Ok(()), hold).is_ok());
+    assert!(run(&fast, &scratch, today(), |_, _| Ok(()), hold).is_ok());
 
     let started = Instant::now();
     let not_run = run(
@@ -68,11 +73,16 @@ fn the_timeout_wins_whatever_the_claim_returns_after_a_start_timed_out() {
     let spec = Spec::new("demo-probe", "fakeh")
         .search_path(bin.as_os_str())
         .timeout(Duration::from_secs(1));
+    // The controls run with a generous timeout, so a loaded machine cannot turn
+    // one into a timeout; only the start that must time out has 1 s.
+    let fast = Spec::new("demo-probe", "fakeh")
+        .search_path(bin.as_os_str())
+        .timeout(Duration::from_secs(30));
     // Control: the same claim shapes on a start that returns at once are results.
     for held in [true, false] {
         assert!(
             run(
-                &spec,
+                &fast,
                 &scratch,
                 today(),
                 |_, _| Ok(()),
@@ -161,8 +171,11 @@ fn a_control_that_outlives_the_timeout_ends_timed_out_and_the_claim_is_never_cal
     );
 
     // Control: a control that answers wrongly, fast, keeps its own words.
+    let fast = Spec::new("demo-probe", "fakeh")
+        .search_path(bin.as_os_str())
+        .timeout(Duration::from_secs(30));
     let wrong = run(
-        &spec,
+        &fast,
         &scratch,
         today(),
         |_, _| Err("it said no".to_string()),
