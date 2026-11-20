@@ -76,7 +76,7 @@ fn a_declared_port_is_allowed_on_localhost_and_nothing_else_is() {
 mod macos {
     use std::net::TcpListener;
 
-    use usher_probes::network::run_denied;
+    use usher_probes::network::{run_denied, run_denied_with_ports};
     use usher_testkit::ScratchHome;
 
     use super::*;
@@ -120,8 +120,11 @@ mod macos {
         );
     }
 
+    // Meaning change: this was a_connect_to_a_local_listener_still_works_under_the_profile.
+    // Localhost is no longer allowed as a whole; a port the probe did not
+    // declare is refused by the profile itself.
     #[test]
-    fn a_connect_to_a_local_listener_still_works_under_the_profile() {
+    fn a_connect_to_an_undeclared_local_port_is_refused_with_eperm() {
         let scratch = ScratchHome::new().expect("scratch home");
         let listener = TcpListener::bind("127.0.0.1:0").expect("a local listener");
         let port = listener
@@ -129,16 +132,66 @@ mod macos {
             .expect("its address")
             .port()
             .to_string();
-        let output = run_denied(
+        let args = ["-v", "-z", "-w", "1", "127.0.0.1", port.as_str()];
+
+        // Outside the profile the listener accepts, so a refusal inside is the profile's.
+        let outside = scratch
+            .command("/usr/bin/nc")
+            .args(args)
+            .output()
+            .expect("nc runs without the profile");
+        assert!(
+            outside.status.success(),
+            "control: the listener must accept outside the profile: {}",
+            String::from_utf8_lossy(&outside.stderr)
+        );
+
+        let inside =
+            run_denied(&scratch, "/usr/bin/nc", &args).expect("the run starts under the profile");
+        let stderr = String::from_utf8_lossy(&inside.stderr);
+        assert!(!inside.status.success(), "an undeclared port was reachable");
+        assert!(stderr.contains("Operation not permitted"), "{stderr}");
+    }
+
+    #[test]
+    fn a_declared_local_port_is_reachable_and_another_is_not() {
+        let scratch = ScratchHome::new().expect("scratch home");
+        let declared = TcpListener::bind("127.0.0.1:0").expect("a local listener");
+        let other = TcpListener::bind("127.0.0.1:0").expect("a second listener");
+        let declared_port = declared.local_addr().expect("address").port();
+        let other_port = other.local_addr().expect("address").port().to_string();
+
+        let allowed = run_denied_with_ports(
             &scratch,
+            &[declared_port],
             "/usr/bin/nc",
-            &["-z", "-w", "1", "127.0.0.1", &port],
+            &[
+                "-v",
+                "-z",
+                "-w",
+                "1",
+                "127.0.0.1",
+                &declared_port.to_string(),
+            ],
         )
         .expect("the run starts under the profile");
         assert!(
-            output.status.success(),
+            allowed.status.success(),
+            "the declared port was refused: {}",
+            String::from_utf8_lossy(&allowed.stderr)
+        );
+
+        let refused = run_denied_with_ports(
+            &scratch,
+            &[declared_port],
+            "/usr/bin/nc",
+            &["-v", "-z", "-w", "1", "127.0.0.1", other_port.as_str()],
+        )
+        .expect("the run starts under the profile");
+        assert!(
+            String::from_utf8_lossy(&refused.stderr).contains("Operation not permitted"),
             "{}",
-            String::from_utf8_lossy(&output.stderr)
+            String::from_utf8_lossy(&refused.stderr)
         );
     }
 
