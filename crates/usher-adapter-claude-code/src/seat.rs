@@ -128,8 +128,8 @@ fn read_path(item: &Item, fact: &SeatFact, path: PathBuf) -> SeatLine {
     };
     line.present = Some(true);
     match fact.read() {
-        SeatRead::Listing => {
-            if let Ok(entries) = fs::read_dir(&path) {
+        SeatRead::Listing => match fs::read_dir(&path) {
+            Ok(entries) => {
                 let mut names: Vec<String> = entries
                     .filter_map(Result::ok)
                     .map(|entry| entry.file_name().to_string_lossy().into_owned())
@@ -137,9 +137,10 @@ fn read_path(item: &Item, fact: &SeatFact, path: PathBuf) -> SeatLine {
                 names.sort();
                 line.entries = names;
             }
-        }
-        SeatRead::Names => {
-            if let Some(Value::Object(root)) = parse(&path, &meta) {
+            Err(error) => not_checked(&mut line, error.kind().to_string()),
+        },
+        SeatRead::Names => match parse(&path, &meta) {
+            Ok(root) => {
                 let root = Value::Object(root);
                 let mut found: BTreeSet<Vec<String>> = BTreeSet::new();
                 for key_path in fact.key_paths() {
@@ -148,33 +149,38 @@ fn read_path(item: &Item, fact: &SeatFact, path: PathBuf) -> SeatLine {
                 }
                 line.names = found.into_iter().collect();
             }
-        }
-        SeatRead::KeysPresent => {
-            let top = match parse(&path, &meta) {
-                Some(Value::Object(top)) => Some(top),
-                _ => None,
-            };
-            line.members = fact
-                .keys()
-                .iter()
-                .map(|key| {
-                    let has = top.as_ref().is_some_and(|object| object.contains_key(key));
-                    (key.clone(), has)
-                })
-                .collect();
-        }
+            Err(why) => not_checked(&mut line, why),
+        },
+        SeatRead::KeysPresent => match parse(&path, &meta) {
+            Ok(top) => {
+                line.members = fact
+                    .keys()
+                    .iter()
+                    .map(|key| (key.clone(), top.contains_key(key)))
+                    .collect();
+            }
+            Err(why) => not_checked(&mut line, why),
+        },
         _ => {}
     }
     line
 }
 
-/// Parses a regular file as JSON in memory. Nothing of its content leaves the caller.
-fn parse(path: &PathBuf, meta: &fs::Metadata) -> Option<Value> {
+/// A file or directory that exists and could not be read: not a definite answer, so the
+/// line says why, without any content, and holds no name, entry or member.
+fn not_checked(line: &mut SeatLine, why: String) {
+    line.present = None;
+    line.note = Some(why);
+}
+
+/// Parses a regular file as a JSON object in memory. Nothing of its content leaves the
+/// caller: a failure is the error kind, or a position and category.
+fn parse(path: &PathBuf, meta: &fs::Metadata) -> Result<serde_json::Map<String, Value>, String> {
     if !meta.is_file() {
-        return None;
+        return Err("not a regular file".to_string());
     }
-    let file = fs::File::open(path).ok()?;
-    serde_json::from_reader(io::BufReader::new(file)).ok()
+    let file = fs::File::open(path).map_err(|error| error.kind().to_string())?;
+    serde_json::from_reader(io::BufReader::new(file)).map_err(|why| crate::json_note(&why))
 }
 
 /// Collects the key names a key path reaches. A wildcard stands for one whole level: each

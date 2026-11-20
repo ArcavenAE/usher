@@ -543,7 +543,7 @@ fn parse_keys(path: &Path, meta: &fs::Metadata) -> Parsed {
 }
 
 /// The parse failure as position and category, never any file content.
-fn json_note(why: &serde_json::Error) -> String {
+pub(crate) fn json_note(why: &serde_json::Error) -> String {
     let category = match why.classify() {
         serde_json::error::Category::Io => "read error",
         serde_json::error::Category::Syntax => "syntax",
