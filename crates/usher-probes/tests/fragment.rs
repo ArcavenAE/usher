@@ -107,3 +107,24 @@ fn the_bare_version_is_taken_from_what_each_harness_prints() {
     assert_eq!(bare_version("no version in this line"), None);
     assert_eq!(bare_version(""), None);
 }
+
+#[test]
+fn the_date_is_the_utc_calendar_date_at_the_edges_of_midnight() {
+    // 2026-11-20 00:00:00 UTC is 1_795_132_800.
+    assert_eq!(
+        Date::from_unix_secs(1_795_132_799).to_string(),
+        "2026-11-19"
+    );
+    assert_eq!(
+        Date::from_unix_secs(1_795_132_800).to_string(),
+        "2026-11-20"
+    );
+    assert_eq!(
+        Date::from_unix_secs(1_795_219_199).to_string(),
+        "2026-11-20"
+    );
+    assert_eq!(
+        Date::from_unix_secs(1_795_219_200).to_string(),
+        "2026-11-21"
+    );
+}
