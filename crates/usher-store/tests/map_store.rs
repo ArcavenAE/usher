@@ -214,7 +214,7 @@ fn the_map_table_is_insert_only_and_a_run_row_still_is() {
     conn.execute_batch("PRAGMA foreign_keys = ON;")
         .expect("pragma");
     conn.execute(
-        "INSERT INTO map_setting (run_id, harness, launch_dir, key, layer, source_path, method, status) VALUES (1, 'claude-code', '/d', 'model', 'user', '/p', 'rebuilt', 'in effect')",
+        "INSERT INTO map_setting (run_id, harness, launch_dir, key, layer, source_path, method, status) VALUES (1, 'claude-code', '/d', 'model', 'user', '/p', 'rebuilt', 'in_effect')",
         [],
     )
     .expect("an insert is allowed");
@@ -311,21 +311,21 @@ fn a_map_run_stores_its_readings_in_order_with_every_field() {
     let allow_user = SettingRecord {
         entry_index: Some(0),
         value_text: Some("Bash(npm test)"),
-        status: "in effect",
+        status: "in_effect",
         layer: "user",
         source_path: "/home/a/.claude/settings.json",
-        ..setting("permissions.allow", "user", "in effect")
+        ..setting("permissions.allow", "user", "in_effect")
     };
     let allow_project = SettingRecord {
         entry_index: Some(1),
         value_text: Some("Bash(npm test)"),
         note: Some("also set in user"),
         layer: "project",
-        ..setting("permissions.allow", "project", "in effect")
+        ..setting("permissions.allow", "project", "in_effect")
     };
     let mode = SettingRecord {
-        note: Some("not decided (own merge rule)"),
-        ..setting("permissions.defaultMode", "user", "not decided")
+        note: Some("own merge rule"),
+        ..setting("permissions.defaultMode", "user", "not_decided")
     };
     let id = store
         .record_map(&run(), &[], &[], &[allow_user, allow_project, mode])
@@ -341,7 +341,7 @@ fn a_map_run_stores_its_readings_in_order_with_every_field() {
                 layer: "user".to_string(),
                 source_path: "/home/a/.claude/settings.json".to_string(),
                 method: "rebuilt".to_string(),
-                status: "in effect".to_string(),
+                status: "in_effect".to_string(),
                 entry_index: Some(0),
                 value_text: Some("Bash(npm test)".to_string()),
                 note: None,
@@ -353,7 +353,7 @@ fn a_map_run_stores_its_readings_in_order_with_every_field() {
                 layer: "project".to_string(),
                 source_path: "/work/repo/.claude/settings.json".to_string(),
                 method: "rebuilt".to_string(),
-                status: "in effect".to_string(),
+                status: "in_effect".to_string(),
                 entry_index: Some(1),
                 value_text: Some("Bash(npm test)".to_string()),
                 note: Some("also set in user".to_string()),
@@ -365,10 +365,10 @@ fn a_map_run_stores_its_readings_in_order_with_every_field() {
                 layer: "user".to_string(),
                 source_path: "/work/repo/.claude/settings.json".to_string(),
                 method: "rebuilt".to_string(),
-                status: "not decided".to_string(),
+                status: "not_decided".to_string(),
                 entry_index: None,
                 value_text: None,
-                note: Some("not decided (own merge rule)".to_string()),
+                note: Some("own merge rule".to_string()),
             },
         ]
     );
@@ -383,7 +383,7 @@ fn a_map_run_reads_as_map_and_an_inventory_run_as_inventory() {
         .record_inventory_with_seat(&run(), &[], &seat)
         .expect("an inventory with a seat");
     let map = store
-        .record_map(&run(), &[], &[], &[setting("model", "user", "in effect")])
+        .record_map(&run(), &[], &[], &[setting("model", "user", "in_effect")])
         .expect("a map");
     let verbs: Vec<(i64, String)> = store
         .runs()
@@ -426,7 +426,7 @@ fn a_map_run_keeps_its_sources_and_seat_lines_beside_its_readings() {
             &run(),
             &sources,
             &seat,
-            &[setting("model", "user", "in effect")],
+            &[setting("model", "user", "in_effect")],
         )
         .expect("a map run");
     assert_eq!(store.sources_of(id).expect("sources").len(), 1);
@@ -438,7 +438,7 @@ fn a_map_run_keeps_its_sources_and_seat_lines_beside_its_readings() {
 fn readings_are_kept_per_run_and_an_inventory_run_has_none() {
     let (_scratch, mut store) = open_fresh();
     let first = store
-        .record_map(&run(), &[], &[], &[setting("model", "user", "in effect")])
+        .record_map(&run(), &[], &[], &[setting("model", "user", "in_effect")])
         .expect("first map");
     let second = store
         .record_map(
@@ -447,7 +447,7 @@ fn readings_are_kept_per_run_and_an_inventory_run_has_none() {
             &[],
             &[
                 setting("model", "project", "shadowed"),
-                setting("env", "user", "in effect"),
+                setting("env", "user", "in_effect"),
             ],
         )
         .expect("second map");
@@ -462,14 +462,14 @@ fn a_method_other_than_rebuilt_or_harness_reported_is_refused_and_nothing_is_sto
     let (_scratch, mut store) = open_fresh();
     let bad = SettingRecord {
         method: "guessed",
-        ..setting("model", "user", "in effect")
+        ..setting("model", "user", "in_effect")
     };
     let err = store
         .record_map(
             &run(),
             &[],
             &[],
-            &[setting("env", "user", "in effect"), bad],
+            &[setting("env", "user", "in_effect"), bad],
         )
         .expect_err("an unknown method is refused");
     assert!(
@@ -488,14 +488,14 @@ fn both_methods_the_map_names_are_accepted() {
     let (_scratch, mut store) = open_fresh();
     let reported = SettingRecord {
         method: "harness-reported",
-        ..setting("model", "user", "in effect")
+        ..setting("model", "user", "in_effect")
     };
     let id = store
         .record_map(
             &run(),
             &[],
             &[],
-            &[reported, setting("env", "user", "in effect")],
+            &[reported, setting("env", "user", "in_effect")],
         )
         .expect("both methods");
     let methods: Vec<String> = store
@@ -512,15 +512,15 @@ fn an_empty_status_or_key_is_refused_and_nothing_is_stored() {
     for bad in [
         SettingRecord {
             status: "",
-            ..setting("model", "user", "x")
+            ..setting("model", "user", "in_effect")
         },
         SettingRecord {
             key: "",
-            ..setting("model", "user", "in effect")
+            ..setting("model", "user", "in_effect")
         },
         SettingRecord {
             layer: "",
-            ..setting("model", "user", "in effect")
+            ..setting("model", "user", "in_effect")
         },
     ] {
         let (_scratch, mut store) = open_fresh();
@@ -542,7 +542,7 @@ fn a_bad_run_time_inserts_no_readings_control() {
         ..run()
     };
     store
-        .record_map(&bad_run, &[], &[], &[setting("model", "user", "in effect")])
+        .record_map(&bad_run, &[], &[], &[setting("model", "user", "in_effect")])
         .expect_err("a bad time is refused");
     assert!(store.runs().expect("runs").is_empty());
 }
@@ -554,7 +554,7 @@ fn a_value_and_a_note_round_trip_exactly_including_quotes_and_unicode() {
     let r = SettingRecord {
         value_text: Some(text),
         note: Some(text),
-        ..setting("permissions.allow", "user", "in effect")
+        ..setting("permissions.allow", "user", "in_effect")
     };
     let id = store.record_map(&run(), &[], &[], &[r]).expect("a map run");
     let rows = store.settings_of(id).expect("readings");
@@ -566,7 +566,7 @@ fn a_value_and_a_note_round_trip_exactly_including_quotes_and_unicode() {
 fn a_null_value_stays_null_and_is_never_an_empty_string() {
     let (_scratch, mut store) = open_fresh();
     let id = store
-        .record_map(&run(), &[], &[], &[setting("env", "user", "in effect")])
+        .record_map(&run(), &[], &[], &[setting("env", "user", "in_effect")])
         .expect("a map run");
     let rows = store.settings_of(id).expect("readings");
     assert_eq!(rows[0].value_text, None);
