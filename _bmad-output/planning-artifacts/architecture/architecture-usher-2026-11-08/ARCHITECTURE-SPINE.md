@@ -170,7 +170,10 @@ no adapter depends on another adapter.
   `codex update`, purge, install, respawn, plugin update). A read that writes harness state, such
   as codex app-server, runs only against a scratch copy of the harness home that holds the
   config files and no credential file, deleted afterwards (operator ruling, 2026-11-08). Before the person confirms directories, only
-  harness-knowledge locations are watched.
+  harness-knowledge locations are watched. A read-only verb's invariant test watches the real installer state on every host and watches
+  harness homes in scratch copies. A harness home is watched in its real location only by the
+  first change whose verb reads that home, and that test must say how it tells usher's writes
+  apart from those of a harness session running on the same host.
 
 ### AD-10: Discovery proposes; nothing is mapped until confirmed
 
