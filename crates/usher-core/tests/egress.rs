@@ -385,3 +385,19 @@ fn every_delegated_installer_carries_the_fixed_note() {
         assert_eq!(installer.note, DELEGATED_NOTE, "{}", installer.name);
     }
 }
+
+#[test]
+fn a_path_value_of_two_dots_alone_is_refused() {
+    assert_a_valid_call_goes_through();
+    for value in ["..", "."] {
+        let transport = RecordingTransport::new().answering_ok("body");
+        let err = port(&transport)
+            .call(Request::new(Egress::KnowledgeUpdate).with("file", value))
+            .expect_err("a dot segment must fail");
+        assert_four_fields(&err);
+        assert!(
+            transport.sent().is_empty(),
+            "value {value:?} reached the transport"
+        );
+    }
+}
