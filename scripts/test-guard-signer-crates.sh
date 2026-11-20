@@ -84,3 +84,41 @@ WRAPPER
 chmod +x "$scratch/blind-cargo"
 workspace usher-testkit clean
 GUARD_CARGO="$scratch/blind-cargo" expect fail "a tree that does not list the member fails" "did not list clean"
+
+# The test-seam feature must not be enabled by any shipping member's normal
+# dependency tree. `seamed` declares the feature; `leaky` enables it as a normal
+# dependency; `quiet` depends on it without the feature.
+seamed() {
+  mkdir -p "$scratch/ws/seamed/src"
+  printf '[package]\nname = "seamed"\nversion = "0.0.0"\nedition = "2024"\n[features]\ntest-seam = []\n' > "$scratch/ws/seamed/Cargo.toml"
+  : > "$scratch/ws/seamed/src/lib.rs"
+}
+depends_on_seamed() { # depends_on_seamed <member> <with|without>
+  mkdir -p "$scratch/ws/$1/src"
+  {
+    printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n[dependencies]\n' "$1"
+    if [[ "$2" == with ]]; then
+      printf 'seamed = { path = "../seamed", features = ["test-seam"] }\n'
+    else
+      printf 'seamed = { path = "../seamed" }\n'
+    fi
+  } > "$scratch/ws/$1/Cargo.toml"
+  : > "$scratch/ws/$1/src/lib.rs"
+}
+
+seamed
+depends_on_seamed quiet without
+workspace usher-testkit clean seamed quiet
+expect pass "a member that depends on a crate with a test-seam feature, without enabling it, passes"
+
+depends_on_seamed leaky with
+workspace usher-testkit clean seamed quiet leaky
+expect fail "a member whose normal dependency enables test-seam fails" "leaky enables test-seam"
+
+# An optional feature of a member can enable test-seam too: it shows only when
+# the guard asks for all features.
+mkdir -p "$scratch/ws/optional/src"
+printf '[package]\nname = "optional"\nversion = "0.0.0"\nedition = "2024"\n[dependencies]\nseamed = { path = "../seamed" }\n[features]\nx = ["seamed/test-seam"]\n' > "$scratch/ws/optional/Cargo.toml"
+: > "$scratch/ws/optional/src/lib.rs"
+workspace usher-testkit clean seamed quiet optional
+expect fail "a member whose optional feature enables test-seam fails" "optional enables test-seam"
