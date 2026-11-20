@@ -1284,3 +1284,41 @@ fn an_undecided_managed_source_above_a_user_value_leaves_the_user_value_not_deci
         map.readings
     );
 }
+
+// ---- the classifier item ---------------------------------------------------------------
+
+/// The built-in classifier item applies only when an auto mode list key has an entry in
+/// effect: not for the boolean own-rule key, and not for an array found where it is not read.
+#[test]
+fn the_classifier_item_needs_an_auto_mode_list_entry_in_effect() {
+    let classifier = |files: &[(&str, &str)]| {
+        let rig = Rig::new();
+        for (layer, text) in files {
+            let path = match *layer {
+                "user" => rig.user_file(),
+                _ => rig.project_file(),
+            };
+            rig.write(&path, text);
+        }
+        let map = rig.seed_map(&[]);
+        assert!(
+            map.not_observed.contains(&NotObserved::CommandLine),
+            "the map names its blind spots: {:?}",
+            map.not_observed
+        );
+        map.not_observed
+            .contains(&NotObserved::BuiltInClassifierRules)
+    };
+    assert!(
+        !classifier(&[("user", r#"{"autoMode": {"classifyAllShell": true}}"#)]),
+        "the boolean own-rule key is not an array"
+    );
+    assert!(
+        !classifier(&[("project", r#"{"autoMode": {"allow": ["rule"]}}"#)]),
+        "an array found where it is not read is not in effect"
+    );
+    assert!(
+        classifier(&[("user", r#"{"autoMode": {"allow": ["rule"]}}"#)]),
+        "an array in effect names the item"
+    );
+}
