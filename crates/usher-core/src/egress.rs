@@ -80,6 +80,8 @@ pub struct Descriptor {
     pub fields: &'static [Field],
     /// Hosts a redirect may name. Any other redirect is an error.
     pub redirect_hosts: &'static [&'static str],
+    /// The most bytes of answer body the port passes on. Required, and never zero.
+    pub max_body_bytes: u64,
 }
 
 /// Every call, for the profile. A test asserts it names every [`Egress`] variant.
@@ -112,6 +114,7 @@ const KNOWLEDGE_UPDATE: Descriptor = Descriptor {
         },
     ],
     redirect_hosts: &[],
+    max_body_bytes: 0,
 };
 
 /// The descriptor of one call.

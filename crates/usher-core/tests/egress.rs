@@ -430,6 +430,7 @@ const REDIRECTING: Descriptor = Descriptor {
         },
     ],
     redirect_hosts: &[ASSETS_HOST],
+    max_body_bytes: 1024,
 };
 
 const SHAPED: Descriptor = Descriptor {
@@ -462,6 +463,7 @@ const SHAPED: Descriptor = Descriptor {
         },
     ],
     redirect_hosts: &[],
+    max_body_bytes: 1024,
 };
 
 const VERSION_CHECK: Descriptor = Descriptor {
@@ -472,6 +474,7 @@ const VERSION_CHECK: Descriptor = Descriptor {
     class: Class::VersionCheck,
     fields: &[UA],
     redirect_hosts: &[],
+    max_body_bytes: 1024,
 };
 
 const PERSON_STARTED: Descriptor = Descriptor {
@@ -717,6 +720,7 @@ const POSTING: Descriptor = Descriptor {
         },
     ],
     redirect_hosts: &[ASSETS_HOST],
+    max_body_bytes: 1024,
 };
 
 const EXTRA_HEADER: Descriptor = Descriptor {
@@ -739,6 +743,7 @@ const EXTRA_HEADER: Descriptor = Descriptor {
         },
     ],
     redirect_hosts: &[ASSETS_HOST],
+    max_body_bytes: 1024,
 };
 
 #[test]
@@ -845,6 +850,7 @@ const QUERYING: Descriptor = Descriptor {
         },
     ],
     redirect_hosts: &[ASSETS_HOST],
+    max_body_bytes: 1024,
 };
 
 const BODIED_GET: Descriptor = Descriptor {
@@ -867,6 +873,7 @@ const BODIED_GET: Descriptor = Descriptor {
         },
     ],
     redirect_hosts: &[ASSETS_HOST],
+    max_body_bytes: 1024,
 };
 
 #[test]
