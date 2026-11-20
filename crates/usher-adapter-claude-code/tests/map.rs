@@ -715,3 +715,140 @@ fn a_row_of_an_unread_source_names_the_source_item() {
     assert!(note_has(row, &item), "{row:?}");
     assert!(!note_has(row, "claude-code.key-model"), "{row:?}");
 }
+
+// ---- a layer that cannot be read -------------------------------------------------------
+
+/// A file that does not parse yields no key rows of its own. Every key whose value that
+/// layer could outrank reads not decided, with the layer named; nothing guesses past it.
+#[test]
+fn a_project_file_that_does_not_parse_leaves_the_user_keys_not_decided() {
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"model": "user-model"}"#);
+    rig.write(&rig.project_file(), "{ not json");
+    let map = rig.seed_map(&[]);
+    let user = reading(&map, "model", "user");
+    assert_eq!(user.status, ReadingStatus::NotDecided, "{user:?}");
+    assert_eq!(user.note.as_deref(), Some("project file could not be read"));
+    assert!(
+        map.readings.iter().all(|r| r.layer != "project"),
+        "the broken file has no rows of its own: {:?}",
+        map.readings
+    );
+}
+
+/// A file that cannot be opened is the same case as one that does not parse.
+#[test]
+fn a_project_file_that_cannot_be_opened_leaves_the_user_keys_not_decided() {
+    use std::os::unix::fs::PermissionsExt;
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"model": "user-model"}"#);
+    let file = rig.write(&rig.project_file(), r#"{"model": "project-model"}"#);
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).expect("mode");
+    // Probe the effect, not the uid: root and ACLs can read a mode 000 file.
+    if fs::File::open(&file).is_ok() {
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).expect("mode");
+        usher_testkit::skip(
+            "a_project_file_that_cannot_be_opened_leaves_the_user_keys_not_decided",
+            "this process can read a mode 000 file, so there is nothing to test",
+        );
+        return;
+    }
+    let map = rig.seed_map(&[]);
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).expect("mode");
+    let user = reading(&map, "model", "user");
+    assert_eq!(user.status, ReadingStatus::NotDecided, "{user:?}");
+    assert_eq!(user.note.as_deref(), Some("project file could not be read"));
+    assert!(!format!("{map:?}").contains("project-model"));
+}
+
+/// A broken layer below the layer that wins changes nothing.
+#[test]
+fn a_broken_file_below_a_winning_layer_leaves_the_winner_in_effect() {
+    let rig = Rig::new();
+    rig.write(&rig.local_file(), r#"{"model": "local-model"}"#);
+    rig.write(&rig.project_file(), "{ not json");
+    let map = rig.seed_map(&[]);
+    let local = reading(&map, "model", "local");
+    assert_eq!(local.status, ReadingStatus::InEffect, "{local:?}");
+    assert_eq!(local.value, text("local-model"));
+}
+
+/// With the version unknown there is one row per key name per present file, each unknown
+/// and holding no value.
+#[test]
+fn an_unknown_version_gives_one_unknown_row_per_key_name_per_file() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.user_file(),
+        r#"{"model": "canary-user-model", "theme": "canary-theme"}"#,
+    );
+    rig.write(&rig.project_file(), r#"{"model": "canary-project-model"}"#);
+    let adapter = rig.adapter(KnowledgeFile::embedded().expect("embedded"));
+    let context = rig.context_at(None, &[]);
+    let listing = rig.listing(&adapter, &context);
+    let map = adapter.map_settings(&listing, &context).expect("a map");
+    let shape: Vec<(String, String, ReadingStatus)> = map
+        .readings
+        .iter()
+        .map(|r| (r.key.clone(), r.layer.clone(), r.status))
+        .collect();
+    assert_eq!(
+        shape,
+        [
+            (
+                "model".to_string(),
+                "project".to_string(),
+                ReadingStatus::Unknown
+            ),
+            (
+                "model".to_string(),
+                "user".to_string(),
+                ReadingStatus::Unknown
+            ),
+            (
+                "theme".to_string(),
+                "user".to_string(),
+                ReadingStatus::Unknown
+            ),
+        ]
+    );
+    assert!(map.readings.iter().all(|r| r.value.is_none()));
+    assert!(!format!("{map:?}").contains("canary"));
+}
+
+/// The server-managed cache and the global state file are not settings layers in the stack,
+/// so they yield no rows.
+#[test]
+fn the_server_managed_cache_and_the_global_state_file_yield_no_rows() {
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"theme": "dark"}"#);
+    rig.write(
+        &rig.home().join(".claude/remote-settings.json"),
+        r#"{"model": "canary-cache"}"#,
+    );
+    rig.write(
+        &rig.home().join(".claude.json"),
+        r#"{"model": "canary-state"}"#,
+    );
+    let adapter = rig.adapter(KnowledgeFile::embedded().expect("embedded"));
+    let context = rig.context(&[]);
+    let listing = rig.listing(&adapter, &context);
+    let layers: Vec<&str> = listing.sources.iter().map(|s| s.layer.as_str()).collect();
+    assert!(
+        layers.contains(&"server-managed-cache") && layers.contains(&"global-state"),
+        "the listing found both files: {layers:?}"
+    );
+    let map = adapter.map_settings(&listing, &context).expect("a map");
+    assert_eq!(
+        reading(&map, "theme", "user").status,
+        ReadingStatus::ValueNotRead
+    );
+    assert!(
+        map.readings
+            .iter()
+            .all(|r| r.layer != "server-managed-cache" && r.layer != "global-state"),
+        "{:?}",
+        map.readings
+    );
+    assert!(!format!("{map:?}").contains("canary"));
+}
