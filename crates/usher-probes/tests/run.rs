@@ -5,7 +5,7 @@ mod common;
 
 use std::cell::RefCell;
 
-use common::fake_harness;
+use common::{fake_harness, hold, refute};
 use usher_probes::{
     codex_home::probe_home,
     fragment::Date,
@@ -34,9 +34,9 @@ fn the_control_runs_before_the_claim_and_a_pass_is_reported() {
             order.borrow_mut().push("control");
             Ok(())
         },
-        |_, _| {
+        |harness, launcher| {
             order.borrow_mut().push("claim");
-            Ok(true)
+            hold(harness, launcher)
         },
     )
     .expect("a held control and claim is a pass");
@@ -56,7 +56,7 @@ fn a_claim_that_does_not_hold_is_a_failed_result() {
         &scratch,
         today(),
         |_, _| Ok(()),
-        |_, _| Ok(false),
+        refute,
     )
     .expect("a refuted claim with a held control still produces a result");
     assert!(
@@ -199,7 +199,7 @@ fn a_version_line_with_no_version_in_it_is_not_run() {
         &scratch,
         today(),
         |_, _| Ok(()),
-        |_, _| Ok(true),
+        hold,
     )
     .expect_err("a version that cannot be read is not a result");
     assert!(not_run.reason().contains("version"), "{not_run}");
@@ -222,7 +222,7 @@ fn the_closures_get_the_bare_version_the_path_and_the_scratch_home() {
             ));
             Ok(())
         },
-        |_, _| Ok(true),
+        hold,
     )
     .expect("a pass");
     let (version, path, root) = seen.borrow().clone().expect("the control saw the harness");
@@ -242,7 +242,7 @@ fn run_or_panic_panics_with_the_not_run_reason() {
         &scratch,
         today(),
         |_, _| Ok(()),
-        |_, _| Ok(true),
+        hold,
     );
 }
 
@@ -255,7 +255,7 @@ fn run_or_panic_returns_the_fragment_when_the_probe_ran() {
         &scratch,
         today(),
         |_, _| Ok(()),
-        |_, _| Ok(true),
+        hold,
     );
     assert!(fragment.render().contains(r#"version = "1.2.3""#));
 }

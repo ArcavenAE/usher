@@ -6,7 +6,7 @@ mod common;
 
 use std::process::{Command, Output};
 
-use common::fake_harness;
+use common::{fake_harness, hold};
 use usher_probes::{
     fragment::Date,
     run::{Spec, Unmeasured, run_or_panic},
@@ -38,10 +38,10 @@ fn child_runs_one_probe() {
         &scratch,
         Date::new(2026, 11, 20).expect("a real date"),
         |_, _| Ok(()),
-        |_, _| match mode.to_str() {
+        |harness, launcher| match mode.to_str() {
             Some("needs-credentials") => Err(Unmeasured::NeedsCredentials),
             Some("needs-network") => Err(Unmeasured::NeedsNetwork),
-            _ => Ok(true),
+            _ => hold(harness, launcher),
         },
     );
 }
