@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 
 use usher_adapter_claude_code::ClaudeCodeAdapter;
 use usher_core::{
-    LaunchContext, ReadingMethod, ReadingStatus, SettingReading, SettingsMap, SettingsMapper,
-    SourceLister, SourceListing, SourceStatus, SystemRoot, environment_key,
+    LaunchContext, NotObserved, ReadingMethod, ReadingStatus, SettingReading, SettingsMap,
+    SettingsMapper, SourceLister, SourceListing, SourceStatus, SystemRoot, environment_key,
 };
 use usher_knowledge::{KnowledgeFile, Platform};
 use usher_testkit::ScratchHome;
@@ -851,4 +851,121 @@ fn the_server_managed_cache_and_the_global_state_file_yield_no_rows() {
         map.readings
     );
     assert!(!format!("{map:?}").contains("canary"));
+}
+
+// ---- what the map does not observe -----------------------------------------------------
+
+fn not_observed(map: &SettingsMap) -> Vec<NotObserved> {
+    map.not_observed.clone()
+}
+
+/// The static items, the organization default model because `model` is listed, the
+/// built-in classifier rules because an auto mode array is set, and the layers knowledge
+/// reads that are not in the stack.
+#[test]
+fn the_not_observed_set_names_what_applies_to_this_environment() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.user_file(),
+        r#"{"model": "m", "autoMode": {"allow": ["rule"]}}"#,
+    );
+    rig.write(&rig.home().join(".claude/remote-settings.json"), "{}");
+    rig.write(&rig.home().join(".claude.json"), "{}");
+    let map = rig.seed_map(&[]);
+    let seen = not_observed(&map);
+    for item in [
+        NotObserved::CommandLine,
+        NotObserved::EnvValues,
+        NotObserved::ServerManagedValues,
+        NotObserved::OrganizationDefaultModel,
+        NotObserved::BuiltInClassifierRules,
+        NotObserved::LayerMissingFromStack("server-managed-cache".to_string()),
+        NotObserved::LayerMissingFromStack("global-state".to_string()),
+    ] {
+        assert!(seen.contains(&item), "{item:?} is missing from {seen:?}");
+    }
+}
+
+/// With no auto mode array set in any file, the built-in classifier item is absent.
+#[test]
+fn no_classifier_item_is_named_when_no_auto_mode_array_is_set() {
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"model": "m"}"#);
+    let map = rig.seed_map(&[]);
+    let seen = not_observed(&map);
+    assert!(
+        seen.contains(&NotObserved::CommandLine),
+        "the map names its blind spots: {seen:?}"
+    );
+    assert!(
+        !seen.contains(&NotObserved::BuiltInClassifierRules),
+        "{seen:?}"
+    );
+}
+
+/// The organization default model is named only where `model` is a listed key.
+#[test]
+fn the_organization_default_model_item_follows_the_model_key_in_knowledge() {
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"fx": {"plain": "v"}}"#);
+    let map = rig.fixture_map();
+    let seen = not_observed(&map);
+    assert!(seen.contains(&NotObserved::CommandLine), "{seen:?}");
+    assert!(
+        !seen.contains(&NotObserved::OrganizationDefaultModel),
+        "the fixture lists no model key: {seen:?}"
+    );
+}
+
+/// A managed first-wins source that a higher-ranked managed source hides is skipped, with
+/// the knowledge reason and the harness's own reason named as not given.
+#[test]
+fn a_managed_source_shadowed_by_rank_is_a_skipped_layer() {
+    let rig = Rig::new();
+    let managed = rig.write(
+        &rig.system.join("etc/claude-code/managed-settings.json"),
+        r#"{"permissions": {"allow": ["Bash(managed)"]}}"#,
+    );
+    rig.write(&rig.user_file(), r#"{"model": "user-model"}"#);
+    let adapter = rig.adapter(KnowledgeFile::embedded().expect("embedded"));
+    let context = rig.context(&[]);
+    let mut listing = rig.listing(&adapter, &context);
+    let source = listing
+        .sources
+        .iter_mut()
+        .find(|s| s.layer == "managed")
+        .expect("a managed source");
+    source.status = SourceStatus::Shadowed {
+        by: PathBuf::from("/higher/ranked/managed-settings.json"),
+    };
+    let map = adapter.map_settings(&listing, &context).expect("a map");
+    let skipped = map
+        .skipped_layers
+        .iter()
+        .find(|s| s.layer == "managed")
+        .unwrap_or_else(|| panic!("no skipped managed layer in {:?}", map.skipped_layers));
+    assert!(
+        skipped
+            .reason
+            .contains("/higher/ranked/managed-settings.json"),
+        "{skipped:?}"
+    );
+    assert!(
+        skipped
+            .reason
+            .contains("reason: not given (usher does not call /status)"),
+        "{skipped:?}"
+    );
+    assert!(
+        map.readings
+            .iter()
+            .filter(|r| r.source_path == managed)
+            .all(|r| r.status != ReadingStatus::InEffect),
+        "{:?}",
+        map.readings
+    );
+    assert_eq!(
+        reading(&map, "model", "user").status,
+        ReadingStatus::InEffect
+    );
 }
