@@ -367,7 +367,7 @@ fn the_delegated_installers_are_the_set_the_runner_port_will_use() {
             "mise",
             "uv",
             "npm",
-            "git",
+            "git clone",
             "sideshow",
             "vendor installers",
             "usher update"
