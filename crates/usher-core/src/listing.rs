@@ -96,6 +96,39 @@ pub struct AbsentLayer {
     pub paths: Vec<PathBuf>,
 }
 
+/// A layer knowledge says always exists whose path could not be resolved, so it was
+/// not looked for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NotCheckedLayer {
+    /// The layer, as knowledge names it.
+    pub layer: String,
+    /// Why the layer was not checked.
+    pub reason: String,
+}
+
+/// The root that a knowledge path written as absolute (a leading `/` before any token)
+/// is read under: `/` on a host. Only the test kit builds another root; no flag,
+/// variable or file reaches it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SystemRoot(PathBuf);
+
+impl SystemRoot {
+    /// The host's own root.
+    pub fn host() -> Self {
+        SystemRoot(PathBuf::from("/"))
+    }
+
+    /// A scratch root, for tests that must not read the host's system paths.
+    pub fn at(root: PathBuf) -> Self {
+        SystemRoot(root)
+    }
+
+    /// The directory absolute knowledge paths are placed under.
+    pub fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
 /// Everything one adapter found for one environment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceListing {
@@ -109,6 +142,8 @@ pub struct SourceListing {
     pub sources: Vec<ListedSource>,
     /// Layers checked with no file present.
     pub absent_layers: Vec<AbsentLayer>,
+    /// Always-present layers whose path could not be resolved.
+    pub not_checked: Vec<NotCheckedLayer>,
 }
 
 /// The port an adapter implements to list its settings sources.

@@ -9,3 +9,38 @@
 pub mod version;
 
 pub use version::{VersionReading, read_version};
+
+use usher_core::{LaunchContext, SourceLister, SourceListing, SystemRoot, UsherError};
+use usher_knowledge::KnowledgeFile;
+
+/// The Claude Code adapter: lists the settings sources knowledge names for the
+/// harness, under the host's system root.
+#[derive(Debug, Clone)]
+pub struct ClaudeCodeAdapter {
+    knowledge: KnowledgeFile,
+    system_root: SystemRoot,
+}
+
+impl ClaudeCodeAdapter {
+    /// An adapter over `knowledge`. Production passes [`SystemRoot::host`].
+    pub fn new(knowledge: KnowledgeFile, system_root: SystemRoot) -> Self {
+        ClaudeCodeAdapter {
+            knowledge,
+            system_root,
+        }
+    }
+}
+
+impl SourceLister for ClaudeCodeAdapter {
+    fn list_sources(&self, context: &LaunchContext) -> Result<SourceListing, UsherError> {
+        let _ = (&self.knowledge, &self.system_root, context);
+        Ok(SourceListing {
+            harness: String::new(),
+            harness_version: None,
+            knowledge_version: String::new(),
+            sources: Vec::new(),
+            absent_layers: Vec::new(),
+            not_checked: Vec::new(),
+        })
+    }
+}
