@@ -1,0 +1,20 @@
+[package]
+name = "usher-cli"
+description = "The usher command line: the `inventory` verb, a driving adapter over the ports."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+usher-core.workspace = true
+usher-knowledge.workspace = true
+usher-adapter-claude-code.workspace = true
+usher-store.workspace = true
+
+[dev-dependencies]
+usher-testkit.workspace = true
+usher-knowledge = { workspace = true, features = ["test-keys"] }
+
+[lints]
+workspace = true

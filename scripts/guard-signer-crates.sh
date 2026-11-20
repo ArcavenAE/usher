@@ -8,11 +8,15 @@
 # must not pass.
 #
 # usage: scripts/guard-signer-crates.sh [workspace-dir]
+# GUARD_CARGO names the cargo to run (default: cargo); the fixture test uses it
+# to feed the guard a tree that does not name its member.
 set -euo pipefail
+
+cargo_bin="${GUARD_CARGO:-cargo}"
 
 cd "${1:-.}"
 
-names="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[].name')"
+names="$("$cargo_bin" metadata --no-deps --format-version 1 | jq -r '.packages[].name')"
 members="$(printf '%s\n' "$names" | grep -vx 'usher-testkit' || true)"
 if [[ -z "$members" ]]; then
   echo "guard: no workspace member other than usher-testkit was found" >&2
@@ -21,7 +25,7 @@ fi
 
 status=0
 while IFS= read -r member; do
-  tree="$(cargo tree --locked -e normal,build --target all --all-features -p "$member" --prefix none)"
+  tree="$("$cargo_bin" tree --locked -e normal,build --target all --all-features -p "$member" --prefix none)"
   if ! printf '%s\n' "$tree" | grep -q "^${member} "; then
     echo "guard: cargo tree did not list ${member}" >&2
     status=1

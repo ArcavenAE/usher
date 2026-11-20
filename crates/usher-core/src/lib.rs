@@ -7,6 +7,15 @@
 
 use std::{error::Error, fmt};
 
+mod environment;
+mod listing;
+
+pub use environment::{EnvironmentKey, environment_key, key_variables};
+pub use listing::{
+    AbsentLayer, CheckedPath, KeyNames, LaunchContext, ListedSource, NotCheckedLayer, SourceLister,
+    SourceListing, SourceStatus, SystemRoot,
+};
+
 /// The one error type every usher surface reports through.
 ///
 /// A person who hits a failure learns four things: the step that was running,
