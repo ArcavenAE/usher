@@ -59,7 +59,7 @@ pub enum KeyNames {
     /// The top-level key names, with the stamp that says how far knowledge
     /// could classify them.
     Names {
-        /// The names found, in file order.
+        /// The names found, sorted by name.
         names: Vec<String>,
         /// Why the names carry no recognized or unrecognized label.
         classification: String,
