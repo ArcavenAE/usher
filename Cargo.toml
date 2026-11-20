@@ -6,6 +6,7 @@ members = [
     "crates/usher-cli",
     "crates/usher-core",
     "crates/usher-knowledge",
+    "crates/usher-probes",
     "crates/usher-store",
     "crates/usher-testkit",
 ]
