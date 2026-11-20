@@ -83,27 +83,46 @@ pub struct Descriptor {
 }
 
 /// Every call, for the profile. A test asserts it names every [`Egress`] variant.
-pub const ALL: &[Egress] = &[];
+pub const ALL: &[Egress] = &[Egress::KnowledgeUpdate];
+
+/// The name of the header every call carries, set by the port and never by a caller.
+const USER_AGENT: &str = "user-agent";
+
+/// The program name the port sends as `user-agent`: no version, no host detail.
+const USER_AGENT_VALUE: &str = "usher";
+
+const USER_AGENT_FIELD: Field = Field {
+    name: USER_AGENT,
+    place: Place::Header,
+    meaning: "the program name, fixed; no version and nothing about the person or host",
+};
+
+const KNOWLEDGE_UPDATE: Descriptor = Descriptor {
+    method: Method::Get,
+    host: "knowledge.usher.invalid",
+    path: "/{file}",
+    purpose: "fetch the signed harness-knowledge file or its signature, when the person asks for an update",
+    class: Class::PersonStarted,
+    fields: &[
+        USER_AGENT_FIELD,
+        Field {
+            name: "file",
+            place: Place::Path,
+            meaning: "which published file: the knowledge file or its signature",
+        },
+    ],
+    redirect_hosts: &[],
+};
 
 /// The descriptor of one call.
 pub fn descriptor(egress: Egress) -> &'static Descriptor {
     match egress {
-        Egress::KnowledgeUpdate => &PLACEHOLDER,
+        Egress::KnowledgeUpdate => &KNOWLEDGE_UPDATE,
     }
 }
 
-const PLACEHOLDER: Descriptor = Descriptor {
-    method: Method::Get,
-    host: "",
-    path: "",
-    purpose: "",
-    class: Class::PersonStarted,
-    fields: &[],
-    redirect_hosts: &[],
-};
-
 /// The text every delegated installer carries in the profile.
-pub const DELEGATED_NOTE: &str = "";
+pub const DELEGATED_NOTE: &str = "network access is the installer's, under its own settings";
 
 /// An installer usher delegates to; its network use is its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,8 +133,26 @@ pub struct DelegatedInstaller {
     pub note: &'static str,
 }
 
+impl DelegatedInstaller {
+    const fn named(name: &'static str) -> Self {
+        Self {
+            name,
+            note: DELEGATED_NOTE,
+        }
+    }
+}
+
 /// The installers usher delegates to.
-pub const DELEGATED_INSTALLERS: &[DelegatedInstaller] = &[];
+pub const DELEGATED_INSTALLERS: &[DelegatedInstaller] = &[
+    DelegatedInstaller::named("brew"),
+    DelegatedInstaller::named("mise"),
+    DelegatedInstaller::named("uv"),
+    DelegatedInstaller::named("npm"),
+    DelegatedInstaller::named("git clone"),
+    DelegatedInstaller::named("sideshow"),
+    DelegatedInstaller::named("vendor installers"),
+    DelegatedInstaller::named("usher update"),
+];
 
 /// A call as the caller builds it: a call kind and values for its fields.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -198,8 +235,8 @@ pub trait Policy {
 pub struct PersonStartedOnly;
 
 impl Policy for PersonStartedOnly {
-    fn allows(&self, _class: Class) -> bool {
-        false
+    fn allows(&self, class: Class) -> bool {
+        class == Class::PersonStarted
     }
 }
 
@@ -235,15 +272,197 @@ impl<T: Transport, P: Policy> Port<T, P> {
 
     fn send_described(
         &self,
-        _descriptor: &Descriptor,
+        descriptor: &Descriptor,
         request: Request,
     ) -> Result<Response, UsherError> {
-        let _ = (&self.transport, &self.policy, request);
-        Err(UsherError::new(
-            "egress",
-            "the port is built",
-            "not built",
-            "build the egress port",
-        ))
+        if !self.policy.allows(descriptor.class) {
+            return Err(refuse(
+                "the call's class may go out now",
+                format!(
+                    "{:?} calls are switched off, so nothing was sent to {}",
+                    descriptor.class, descriptor.host
+                ),
+                "leave it off, or turn on the feature that owns this class",
+            ));
+        }
+        let wire = build_wire(descriptor, &request)?;
+        let first = self.transport.send(&wire)?;
+        if !is_redirect(first.status) {
+            return finish(descriptor, first);
+        }
+        let target = redirect_target(descriptor, &first)?;
+        let follow = WireRequest {
+            method: Method::Get,
+            host: target.0,
+            path: target.1,
+            query: Vec::new(),
+            headers: vec![(USER_AGENT.to_string(), USER_AGENT_VALUE.to_string())],
+            body: Vec::new(),
+        };
+        let second = self.transport.send(&follow)?;
+        if is_redirect(second.status) {
+            return Err(refuse(
+                "an answer from a redirect host is a final answer",
+                format!(
+                    "{} answered {} with another redirect; the port follows one",
+                    follow.host, second.status
+                ),
+                "ask the publisher for a direct address",
+            ));
+        }
+        finish(descriptor, second)
     }
+}
+
+const STEP: &str = "send an outbound call";
+
+fn refuse(check: impl Into<String>, status: impl Into<String>, next: &str) -> UsherError {
+    UsherError::new(STEP, check, status, next)
+}
+
+fn is_redirect(status: u16) -> bool {
+    matches!(status, 301 | 302 | 303 | 307 | 308)
+}
+
+fn finish(descriptor: &Descriptor, response: Response) -> Result<Response, UsherError> {
+    if (200..300).contains(&response.status) {
+        return Ok(response);
+    }
+    Err(refuse(
+        "the host answers with a success status",
+        format!("{} answered status {}", descriptor.host, response.status),
+        "try again later, or check the address with the publisher",
+    ))
+}
+
+const PATH_VALUE_CHECK: &str = "a path value holds no `/`, `?`, `#`, `%`, whitespace or control character, and is not `.`, `..` or empty";
+
+fn path_value_ok(value: &str) -> bool {
+    !value.is_empty()
+        && value != "."
+        && value != ".."
+        && !value
+            .chars()
+            .any(|c| matches!(c, '/' | '?' | '#' | '%') || c.is_whitespace() || c.is_control())
+}
+
+/// Checks every value against the descriptor and builds the request that goes out.
+fn build_wire(descriptor: &Descriptor, request: &Request) -> Result<WireRequest, UsherError> {
+    let mut seen: Vec<&str> = Vec::new();
+    for (name, _) in request.values() {
+        if name.eq_ignore_ascii_case(USER_AGENT) {
+            return Err(refuse(
+                "the caller leaves the user-agent to the port",
+                format!("field `{name}` is set by the port and cannot be given"),
+                "remove the field from the request",
+            ));
+        }
+        if !descriptor.fields.iter().any(|f| f.name == name) {
+            return Err(refuse(
+                "every field sent is listed in the call's descriptor",
+                format!("field `{name}` is not listed for {}", descriptor.host),
+                "send only listed fields, or list the field in the registry and the profile",
+            ));
+        }
+        if seen.contains(&name.as_str()) {
+            return Err(refuse(
+                "each field is given once",
+                format!("field `{name}` was given twice"),
+                "give each field one value",
+            ));
+        }
+        seen.push(name);
+    }
+    let value_of = |name: &str| {
+        request
+            .values()
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.as_str())
+    };
+
+    let mut path = descriptor.path.to_string();
+    for field in descriptor.fields.iter().filter(|f| f.place == Place::Path) {
+        let Some(value) = value_of(field.name) else {
+            return Err(refuse(
+                "every path placeholder has a value",
+                format!("field `{}` has no value", field.name),
+                "give the field a value",
+            ));
+        };
+        if !path_value_ok(value) {
+            return Err(refuse(
+                PATH_VALUE_CHECK,
+                format!("field `{}` holds a value the port refuses", field.name),
+                "give the field a plain name with none of those characters",
+            ));
+        }
+        path = path.replace(&format!("{{{}}}", field.name), value);
+    }
+
+    let pairs = |place: Place| -> Vec<(String, String)> {
+        descriptor
+            .fields
+            .iter()
+            .filter(|f| f.place == place && f.name != USER_AGENT)
+            .filter_map(|f| value_of(f.name).map(|v| (f.name.to_string(), v.to_string())))
+            .collect()
+    };
+    let mut headers = vec![(USER_AGENT.to_string(), USER_AGENT_VALUE.to_string())];
+    headers.extend(pairs(Place::Header));
+    Ok(WireRequest {
+        method: descriptor.method,
+        host: descriptor.host.to_string(),
+        path,
+        query: pairs(Place::Query),
+        headers,
+        body: pairs(Place::Body),
+    })
+}
+
+/// The host and path a redirect names, once the descriptor lists the host.
+fn redirect_target(
+    descriptor: &Descriptor,
+    response: &Response,
+) -> Result<(String, String), UsherError> {
+    let Some(location) = response.location.as_deref() else {
+        return Err(refuse(
+            "a redirect names where it goes",
+            format!(
+                "{} answered {} with no location",
+                descriptor.host, response.status
+            ),
+            "ask the publisher for a direct address",
+        ));
+    };
+    let Some(rest) = location.strip_prefix("https://") else {
+        return Err(refuse(
+            "a redirect stays on https",
+            format!("{} redirected to a non-https address", descriptor.host),
+            "ask the publisher for an https address",
+        ));
+    };
+    let (host, path) = rest.find('/').map_or((rest, "/"), |i| rest.split_at(i));
+    let bare = !host.is_empty() && !host.contains(['@', ':', '?', '#']);
+    if !bare || !descriptor.redirect_hosts.contains(&host) {
+        return Err(refuse(
+            "a redirect goes only to a host the descriptor lists",
+            format!(
+                "{} redirected to host `{host}`, which is not listed",
+                descriptor.host
+            ),
+            "ask the publisher for a direct address, or list the host in the registry and the profile",
+        ));
+    }
+    if path
+        .chars()
+        .any(|c| c.is_whitespace() || c.is_control() || c == '#')
+    {
+        return Err(refuse(
+            "a redirect path holds no whitespace, control character or fragment",
+            format!("{host} gave a redirect path the port refuses"),
+            "ask the publisher for a plain address",
+        ));
+    }
+    Ok((host.to_string(), path.to_string()))
 }
