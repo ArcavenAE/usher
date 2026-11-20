@@ -18,7 +18,7 @@ fn main() -> ExitCode {
         .skip(1)
         .map(|a| a.to_string_lossy().into_owned())
         .collect();
-    let result = if args.first().map(String::as_str) == Some("inventory") {
+    let result = if hands_to_cli(args.first().map(String::as_str)) {
         usher_cli::run_process(&args)
     } else {
         run(args.into_iter())
@@ -33,6 +33,11 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Whether the first argument names a verb the `usher-cli` crate holds.
+fn hands_to_cli(first: Option<&str>) -> bool {
+    first == Some("inventory")
 }
 
 /// Picks a mode from the arguments and returns the text to print.
@@ -78,6 +83,22 @@ mod tests {
         assert!(err.check().contains("frobnicate"));
         assert_eq!(err.status(), "unknown mode");
         assert!(err.next_action().contains("usher --version"));
+    }
+
+    #[test]
+    fn the_tools_verb_is_handed_to_the_cli_crate_beside_inventory() {
+        assert!(hands_to_cli(Some("inventory")));
+        assert!(hands_to_cli(Some("tools")));
+        assert!(!hands_to_cli(Some("--version")));
+        assert!(!hands_to_cli(None));
+    }
+
+    #[test]
+    fn the_unknown_and_missing_mode_next_actions_name_the_tools_verb() {
+        let unknown = run(args(&["frobnicate"])).expect_err("not a mode");
+        assert!(unknown.next_action().contains("usher tools"), "{unknown}");
+        let missing = run(args(&[])).expect_err("a mode is required");
+        assert!(missing.next_action().contains("usher tools"), "{missing}");
     }
 
     #[test]

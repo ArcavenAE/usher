@@ -12,7 +12,7 @@ use usher_cli::{
 };
 use usher_core::{
     BrewPaths, Hint, HintKind, InstallState, Installer, InstallerPaths, Reading, Recorded, ToolRow,
-    ToolSpec, Verdict, render_rows,
+    ToolSpec, Verdict, render_rows, tool_specs,
 };
 use usher_knowledge::Platform;
 use usher_testkit::{InstallerGuard, NamedHome, RealHomes, ScratchHome, observe};
@@ -799,10 +799,8 @@ fn the_verb_takes_no_arguments_and_says_so_with_the_four_fields() {
     assert_eq!(err.next_action(), "run `usher tools`");
 }
 
-#[test]
-fn an_unknown_command_names_the_tools_verb_in_its_next_action() {
-    let scratch = ScratchHome::new().expect("scratch");
-    let env = InventoryEnv {
+fn env_in(scratch: &ScratchHome) -> InventoryEnv {
+    InventoryEnv {
         host: "host-1".to_string(),
         user: "alex".to_string(),
         home: scratch.home().to_path_buf(),
@@ -812,27 +810,70 @@ fn an_unknown_command_names_the_tools_verb_in_its_next_action() {
         state_dir: scratch.home().join("state"),
         now: "2026-11-20T12:00:00Z".to_string(),
         platform: Platform::Linux,
-    };
-    let err = run(&args(&["whatever"]), &env).expect_err("not a command");
+    }
+}
+
+#[test]
+fn an_unknown_command_names_the_tools_verb_in_its_next_action() {
+    let scratch = ScratchHome::new().expect("scratch");
+    let err = run(&args(&["whatever"]), &env_in(&scratch)).expect_err("not a command");
     assert!(err.next_action().contains("usher tools"), "{err}");
+}
+
+#[test]
+fn no_command_names_the_tools_verb_in_its_next_action() {
+    let scratch = ScratchHome::new().expect("scratch");
+    let err = run(&args(&[]), &env_in(&scratch)).expect_err("a command is required");
+    assert!(err.next_action().contains("usher tools"), "{err}");
+}
+
+#[test]
+fn run_hands_the_tools_command_to_the_tools_verb_and_not_to_inventory() {
+    let scratch = ScratchHome::new().expect("scratch");
+    let result = run(&args(&["tools"]), &env_in(&scratch));
+    assert!(result.is_ok(), "`usher tools` is a command: {result:?}");
+    let out = result.unwrap_or_default();
+    assert!(
+        out.contains("director  unknown (no installer recorded)  unknown source"),
+        "the tools rows were expected, and the director row needs no host state: {out}"
+    );
+}
+
+#[test]
+fn run_refuses_an_argument_to_tools_with_the_four_fields_before_reading_anything() {
+    let scratch = ScratchHome::new().expect("scratch");
+    let env = env_in(&scratch);
+    let err = run(&args(&["tools", "extra"]), &env).expect_err("an argument must be refused");
+    assert_eq!(err.step(), "run tools");
+    assert_eq!(err.check(), "the verb takes no arguments");
+    assert_eq!(err.status(), "usher tools takes no arguments; got `extra`");
+    assert_eq!(err.next_action(), "run `usher tools`");
+    assert!(!env.state_dir.exists(), "nothing was read or created");
 }
 
 // ---- nothing runs an installer ----
 
-const FORBIDDEN: [&str; 6] = [
+const FORBIDDEN: [&str; 9] = [
     "Command::new",
     "std::process",
     "process::Command",
     ".spawn(",
     ".output(",
     ".status(",
+    "process::{",
+    ".exec(",
+    "CommandExt",
 ];
 
+/// The process-call forms in `text`. `.status(` also names `UsherError::status()`, which
+/// the test modules of both crates call, so it counts only in a file that names
+/// `Command`; a file cannot spawn a process without naming it, and the other forms
+/// already refuse the imports that would let it.
 fn forbidden_forms(text: &str) -> Vec<&'static str> {
     FORBIDDEN
         .iter()
         .copied()
-        .filter(|form| text.contains(form))
+        .filter(|form| text.contains(form) && (*form != ".status(" || text.contains("Command")))
         .collect()
 }
 
@@ -849,40 +890,62 @@ fn rust_files(path: &Path, out: &mut Vec<PathBuf>) {
 #[test]
 fn the_scan_finds_each_process_call_form_in_text_that_has_it() {
     for form in FORBIDDEN {
-        let text = format!("fn f() {{ let _ = x{form}y; }}");
+        let text = format!("fn f() {{ let _ = x{form}y; }}\n// Command");
         assert_eq!(forbidden_forms(&text), [form], "{form}");
     }
     assert!(forbidden_forms("fn f() {}").is_empty());
 }
 
 #[test]
-fn the_new_code_holds_no_process_call_form() {
+fn the_scan_finds_a_spawn_through_an_import_alias_and_an_exec() {
+    let text = "use std::os::unix::process::{CommandExt as _};\nuse std::{process::{Command as K}};\nfn f() { K::new(\"brew\").arg(\"update\").exec(); }";
+    assert!(!forbidden_forms(text).is_empty(), "{text}");
+}
+
+#[test]
+fn the_scan_lets_an_error_status_call_through_in_a_file_that_runs_no_command() {
+    assert!(forbidden_forms("assert_eq!(err.status(), \"x\");").is_empty());
+}
+
+#[test]
+fn no_file_in_the_cli_or_core_source_runs_a_process_except_the_hostname_lookup() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut files = Vec::new();
-    for relative in [
-        "src/tools.rs",
-        "src/tools",
-        "../usher-core/src/tools.rs",
-        "../usher-core/src/tools",
-    ] {
-        let path = manifest.join(relative);
-        if path.exists() {
-            rust_files(&path, &mut files);
-        }
+    for relative in ["src", "../usher-core/src"] {
+        rust_files(&manifest.join(relative), &mut files);
     }
-    assert!(
-        files.len() >= 2,
-        "the scan saw {} files; the model and the verb are both new code",
-        files.len()
-    );
+    let names: Vec<String> = files
+        .iter()
+        .filter_map(|f| f.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .collect();
+    for expected in ["lib.rs", "inventory.rs", "tools.rs", "egress.rs"] {
+        assert!(
+            names.iter().any(|n| n == expected),
+            "the scan must reach every file, and missed {expected}: {names:?}"
+        );
+    }
     for file in &files {
         let text = fs::read_to_string(file).expect("a readable file");
+        if file.ends_with("usher-cli/src/inventory.rs") || file.ends_with("src/inventory.rs") {
+            continue;
+        }
         assert!(
             forbidden_forms(&text).is_empty(),
             "{} runs a process: {:?}",
             file.display(),
             forbidden_forms(&text)
         );
+    }
+}
+
+#[test]
+fn the_one_exempt_file_still_holds_exactly_its_hostname_spawn() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let text = fs::read_to_string(manifest.join("src/inventory.rs")).expect("inventory.rs");
+    assert_eq!(text.matches("Command::new").count(), 1);
+    assert_eq!(text.matches(".output(").count(), 1);
+    for form in [".spawn(", ".exec(", "CommandExt", "process::{"] {
+        assert!(!text.contains(form), "the exemption does not cover {form}");
     }
 }
 
@@ -905,6 +968,29 @@ fn running_the_verb_leaves_installer_state_and_a_watched_harness_home_unchanged(
         run_tools(&args(&["tools"]), &context(&rig)).expect("rows");
     });
     guard.verify().expect("the verb changed no installer state");
+}
+
+/// Runs the verb against the person's real harness homes and real installer state. A
+/// brew or mise run by the person while this test runs reads as a violation: that is a
+/// true report, not a flake to retry.
+#[test]
+fn the_verb_changes_neither_the_real_harness_homes_nor_the_real_installer_state() {
+    let paths = InstallerPaths::resolve(
+        |name| std::env::var(name).ok(),
+        |path| path.exists(),
+        cfg!(target_os = "macos"),
+    );
+    let real = ToolsContext {
+        specs: tool_specs(),
+        paths: paths.clone(),
+    };
+    let guard = InstallerGuard::snapshot(&paths).expect("a snapshot of the real state");
+    observe(&RealHomes::ambient(), |_scratch| {
+        run_tools(&args(&["tools"]), &real).expect("rows");
+    });
+    guard
+        .verify()
+        .expect("the verb changed no real installer state");
 }
 
 #[test]
