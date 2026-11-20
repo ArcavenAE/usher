@@ -1140,3 +1140,109 @@ fn an_unlisted_key_reads_value_not_read_in_every_layer_that_sets_it() {
     }
     assert!(!format!("{map:?}").contains("canary"));
 }
+
+// ---- how an unlisted object is walked --------------------------------------------------
+
+/// An unlisted object is walked to its leaf paths, names only.
+#[test]
+fn an_unlisted_object_is_walked_to_its_leaf_paths_and_names_only() {
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"a": {"z": "canary-leaf"}}"#);
+    let map = rig.seed_map(&[]);
+    let row = reading(&map, "a.z", "user");
+    assert_eq!(row.status, ReadingStatus::ValueNotRead);
+    assert_eq!(row.value, None);
+    assert!(readings(&map, "a").is_empty(), "{:?}", map.readings);
+    assert!(!format!("{map:?}").contains("canary"));
+}
+
+/// An array is a leaf: its elements are values, not keys. So is an empty object.
+#[test]
+fn an_array_and_an_empty_object_are_leaves() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.user_file(),
+        r#"{"a": [1, 2], "e": {}, "n": {"list": ["canary-element"]}}"#,
+    );
+    let map = rig.seed_map(&[]);
+    for key in ["a", "e", "n.list"] {
+        let row = reading(&map, key, "user");
+        assert_eq!(row.status, ReadingStatus::ValueNotRead, "{row:?}");
+        assert_eq!(row.value, None);
+    }
+    assert!(
+        map.readings.iter().all(|r| !r.key.starts_with("a.")),
+        "an array is not walked: {:?}",
+        map.readings
+    );
+    assert!(!format!("{map:?}").contains("canary"));
+}
+
+/// A segment that holds a dot, whitespace or a quote is printed as a JSON string, so it
+/// stays one segment and never reads as two.
+#[test]
+fn a_segment_with_a_dot_whitespace_or_quote_is_printed_as_a_json_string() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.user_file(),
+        r#"{"a": {"b.c": 1, "d e": 2, "f\"g": 3, "plain": 4}}"#,
+    );
+    let map = rig.seed_map(&[]);
+    for key in ["a.\"b.c\"", "a.\"d e\"", "a.\"f\\\"g\"", "a.plain"] {
+        reading(&map, key, "user");
+    }
+    assert!(readings(&map, "a.b.c").is_empty(), "{:?}", map.readings);
+}
+
+/// The walk stops at eight segments: an object still open there gives one row at that
+/// path, with a note, and nothing deeper is listed.
+#[test]
+fn the_walk_stops_at_eight_segments_with_a_note() {
+    let rig = Rig::new();
+    let mut text = String::from("\"canary-deep\"");
+    for depth in (1..=10).rev() {
+        text = format!("{{\"s{depth}\": {text}}}");
+    }
+    rig.write(&rig.user_file(), &text);
+    let map = rig.seed_map(&[]);
+    let path = (1..=8)
+        .map(|n| format!("s{n}"))
+        .collect::<Vec<_>>()
+        .join(".");
+    let row = reading(&map, &path, "user");
+    assert_eq!(row.status, ReadingStatus::ValueNotRead, "{row:?}");
+    assert_eq!(
+        row.note.as_deref(),
+        Some("deeper keys not listed (depth limit 8)")
+    );
+    assert!(
+        map.readings.iter().all(|r| r.key.split('.').count() <= 8),
+        "{:?}",
+        map.readings
+    );
+    assert!(!format!("{map:?}").contains("canary"));
+}
+
+/// A credential key stops the walk at any depth: its own name is one row, and nothing
+/// under it is listed or read.
+#[test]
+fn a_credential_key_is_listed_by_name_at_any_depth_with_nothing_under_it() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.user_file(),
+        r#"{"x": {"oauthAccount": {"canary-k": "canary-v"}}}"#,
+    );
+    let map = rig.seed_map(&[]);
+    let row = reading(&map, "x.oauthAccount", "user");
+    assert_eq!(row.status, ReadingStatus::ValueNotRead, "{row:?}");
+    assert_eq!(row.note.as_deref(), Some("credential key; not opened"));
+    assert_eq!(row.value, None);
+    assert!(
+        map.readings
+            .iter()
+            .all(|r| !r.key.starts_with("x.oauthAccount.")),
+        "{:?}",
+        map.readings
+    );
+    assert!(!format!("{map:?}").contains("canary"));
+}
