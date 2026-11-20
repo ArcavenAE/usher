@@ -9,11 +9,11 @@ publish.workspace = true
 [dependencies]
 usher-core.workspace = true
 rusqlite.workspace = true
+nix.workspace = true
 
 [dev-dependencies]
 usher-testkit.workspace = true
 rusqlite.workspace = true
-nix.workspace = true
 
 [lints]
 workspace = true

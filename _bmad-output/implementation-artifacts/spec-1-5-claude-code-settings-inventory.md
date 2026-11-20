@@ -63,6 +63,15 @@ The frozen Boundaries above stand as written, except the Never line, which carri
 - `inventory_run` and `inventory_source` hold derived state only. Rows are inserted and never changed: the API has no update or delete, and triggers ABORT any UPDATE or DELETE on both tables.
 - `user_version` is 1; a newer version is refused, and so is a non-empty file at version 0. There is no migration framework.
 
+## Rulings applied (PR C)
+
+- **One new dependency.** The account-home resolver takes `nix` (`=0.31.3`, default features off, feature `user`), in `usher-store` only, for the account database lookup and the current uid. The operator's ruling, verbatim: "for usher, (1) allow nix". The frozen Never line names `rusqlite` and `serde_json` as the only crates PR B and C add; this ruling is the one exception, and the spine Stack table carries the row.
+- **Rank direction.** In a source's `rank`, 1 is highest and a smaller number wins. Ranks count vendor deliveries that knowledge does not list, so a gap is normal. First-wins compares only present sources on the host's platform. Two present deliverers with one rank read unknown; only a source that delivers a policy key can tie; an unreadable member counts as one that might deliver.
+- **Binder rule.** A source whose path uses `${CONFIG_DIR}` needs a `paths` item that binds the token over exactly the same versions, so a source range that knowledge splits needs a binder for each part.
+- **Version read from knowledge.** The launcher, the rule and the layout come from the knowledge in use, so a knowledge file with no launcher item reads every version as unknown.
+- **Launch variables.** A launch variable whose value is not valid UTF-8 is refused, naming the variable and never its value.
+- **Key names** are listed sorted by name; values are parsed in memory and dropped.
+
 ## One story, four chained PRs
 
 The parts share the workspace `Cargo.toml` and `sprint-status.yaml`, so they are one chain (rule d), each a draft, each red-first, each based on the previous head.
