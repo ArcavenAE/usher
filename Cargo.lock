@@ -534,6 +534,9 @@ dependencies = [
 [[package]]
 name = "usher-core"
 version = "0.0.0"
+dependencies = [
+ "usher-testkit",
+]
 
 [[package]]
 name = "usher-knowledge"
@@ -561,6 +564,7 @@ version = "0.0.0"
 dependencies = [
  "blake2",
  "ed25519-dalek",
+ "usher-core",
 ]
 
 [[package]]
