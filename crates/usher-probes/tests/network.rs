@@ -3,7 +3,7 @@
 
 use usher_probes::{
     fragment::Network,
-    network::{host_state, profile, profile_with_ports},
+    network::{denied_argv, host_state, profile, profile_with_ports},
 };
 
 // Meaning change: this was the_profile_denies_the_network_first_then_allows_localhost.
@@ -70,6 +70,37 @@ fn a_declared_port_is_allowed_on_localhost_and_nothing_else_is() {
         !text.contains("localhost:7070"),
         "an undeclared port is allowed:\n{text}"
     );
+}
+
+// The crate has one spawn site, the launcher's run. A denied run is an
+// argument vector the launcher runs: the sandbox tool, -p, the profile, the
+// program, then its arguments. Building it starts nothing and needs no sandbox
+// on the host.
+#[test]
+fn a_denied_run_is_an_exact_argv_that_starts_nothing() {
+    let args = ["a", "b c", "--flag=1"];
+    let plain: Vec<String> = [
+        "/usr/bin/sandbox-exec",
+        "-p",
+        profile().as_str(),
+        "/bin/echo",
+    ]
+    .into_iter()
+    .chain(args)
+    .map(str::to_string)
+    .collect();
+    assert_eq!(denied_argv(&[], "/bin/echo", &args), plain);
+
+    let ported: Vec<String> = [
+        "/usr/bin/sandbox-exec",
+        "-p",
+        profile_with_ports(&[8080, 9090]).as_str(),
+        "/usr/bin/nc",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect();
+    assert_eq!(denied_argv(&[8080, 9090], "/usr/bin/nc", &[]), ported);
 }
 
 #[cfg(target_os = "macos")]

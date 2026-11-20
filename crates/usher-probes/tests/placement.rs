@@ -291,3 +291,70 @@ fn the_fixtures_of_the_removed_scan_are_still_bypasses() {
     }
     assert!(find_launch_bypasses("fn clean() { launcher.run(\"x\", &[]); }").is_empty());
 }
+
+// Q8: the crate has one spawn site. network.rs builds an argv and starts
+// nothing, so it holds no spawn; one added back there fails.
+#[test]
+fn network_rs_holds_no_spawn_and_one_added_back_fails() {
+    let argv_only = "pub fn denied_argv(program: &str) -> Vec<String> {\n    vec![SANDBOX_EXEC.to_string(), program.to_string()]\n}\n";
+    let spawning = "pub fn run_denied(scratch: &ScratchHome, program: &str) -> io::Result<Output> {\n    scratch.command(SANDBOX_EXEC).arg(program).output()\n}\n";
+    let scratch = ScratchHome::new().expect("scratch home");
+
+    let pure = tree_with(
+        &scratch,
+        "net-pure",
+        &[("run.rs", SPAWN_SITE), ("network.rs", argv_only)],
+    );
+    assert!(
+        find_bypasses_in_tree(&pure)
+            .expect("the tree reads")
+            .is_empty()
+    );
+
+    let back = tree_with(
+        &scratch,
+        "net-back",
+        &[("run.rs", SPAWN_SITE), ("network.rs", spawning)],
+    );
+    let found = find_bypasses_in_tree(&back).expect("the tree reads");
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].0.ends_with("network.rs"), "{found:?}");
+
+    let real = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/network.rs"))
+        .expect("network.rs reads");
+    assert!(
+        find_launch_bypasses(&real).is_empty(),
+        "network.rs starts a process: {:?}",
+        find_launch_bypasses(&real)
+    );
+}
+
+// Q8: the exec needle is a call form, and the scan reads code, not comments.
+#[test]
+fn exec_is_a_call_form_and_comments_are_not_scanned() {
+    for flagged in [
+        "fn f() { exec(\"x\"); }",
+        "fn f() { execvp(\"x\", &[]); }",
+        "fn f() { libc::execve(p, a, e); }",
+        "fn f() { Command::new(\"x\"); } // a trailing comment does not hide it",
+        "// a comment line\nfn f() { Command::new(\"x\"); }",
+    ] {
+        assert!(
+            !find_launch_bypasses(flagged).is_empty(),
+            "the scan missed: {flagged}"
+        );
+    }
+    for clean in [
+        "const SANDBOX_EXEC: &str = \"/usr/bin/sandbox-exec\";",
+        "// runs under sandbox-exec(1), which is not exec( here",
+        "/// The sandbox-exec tool; Command::new is not called.",
+        "//! Module doc: std::process, exec( and execvp stay in prose.",
+        "fn f() { launcher.run(\"x\", &[]); } // calls exec( through the launcher",
+        "fn executes_now() { let executed = 1; }",
+    ] {
+        assert!(
+            find_launch_bypasses(clean).is_empty(),
+            "the scan flagged: {clean}"
+        );
+    }
+}
