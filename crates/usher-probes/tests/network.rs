@@ -6,17 +6,24 @@ use usher_probes::{
     network::{host_state, profile},
 };
 
+// Meaning change: this was the_profile_denies_the_network_first_then_allows_localhost.
+// A blanket localhost allow lets a probe reach any local service, a forwarding
+// proxy included, so the profile now denies all network and allows nothing; a
+// probe that needs a local port declares it.
 #[test]
-fn the_profile_denies_the_network_first_then_allows_localhost() {
+fn the_profile_denies_all_network_and_allows_nothing() {
     let text = profile();
     assert!(text.starts_with("(version 1)"), "{text}");
-    let deny = text.find("(deny network*)").expect("a network deny");
-    let allow = text
-        .find(r#"(allow network* (remote ip "localhost:*"))"#)
-        .expect("a localhost allow");
-    assert!(deny < allow, "the deny must come first:\n{text}");
-    assert!(text.contains(r#"(allow network-bind (local ip "localhost:*"))"#));
-    assert!(text.contains(r#"(allow network-inbound (local ip "localhost:*"))"#));
+    assert_eq!(
+        text.matches("(deny network*)").count(),
+        1,
+        "one network deny:\n{text}"
+    );
+    assert!(
+        !text.contains("(allow network"),
+        "the profile allows some network operation:\n{text}"
+    );
+    assert!(!text.contains("localhost"), "localhost is named:\n{text}");
 }
 
 #[test]
