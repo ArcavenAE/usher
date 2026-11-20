@@ -1332,7 +1332,11 @@ fn an_undecided_managed_source_above_a_user_value_leaves_the_user_value_not_deci
     let map = adapter.map_settings(&listing, &context).expect("a map");
     let user = reading(&map, "model", "user");
     assert_eq!(user.status, ReadingStatus::NotDecided, "{user:?}");
-    assert!(note_has(user, "managed"), "{user:?}");
+    assert_eq!(
+        user.note.as_deref(),
+        Some("managed not placed: first-wins not decided: two managed sources share rank 3"),
+        "{user:?}"
+    );
     assert!(
         map.readings
             .iter()
