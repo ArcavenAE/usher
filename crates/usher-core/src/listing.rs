@@ -180,8 +180,8 @@ pub struct SeatLine {
     pub read: String,
     /// Where it looked; none for an environment read.
     pub path: Option<PathBuf>,
-    /// Whether the file or directory exists.
-    pub present: bool,
+    /// Whether the file or directory exists; none for an environment read, which has no file.
+    pub present: Option<bool>,
     /// For a listing, the entry names, sorted.
     pub entries: Vec<String>,
     /// For a names read, each name found as its path from the root, sorted by segments.

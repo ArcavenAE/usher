@@ -189,7 +189,10 @@ fn a_presence_item_prints_and_stores_present_or_absent() {
             path.display()
         )
     );
-    assert!(!row(&rig.rows(), "claude-code.fx-client").present);
+    assert_eq!(
+        row(&rig.rows(), "claude-code.fx-client").present,
+        Some(false)
+    );
     rig.write(&path, "SECRET_TOKEN=abc123\n");
     let out = rig.fixture_run(&rig.env(&[]));
     assert_eq!(
@@ -199,7 +202,10 @@ fn a_presence_item_prints_and_stores_present_or_absent() {
             path.display()
         )
     );
-    assert!(row(&rig.rows(), "claude-code.fx-client").present);
+    assert_eq!(
+        row(&rig.rows(), "claude-code.fx-client").present,
+        Some(true)
+    );
     assert!(!out.contains("abc123"));
 }
 
@@ -219,7 +225,7 @@ fn a_listing_item_prints_and_stores_entry_names_only() {
     );
     let rows = rig.rows();
     let stored = row(&rows, "claude-code.fx-packs");
-    assert!(stored.present);
+    assert_eq!(stored.present, Some(true));
     assert_eq!(stored.names, vec![seg(&["alpha"]), seg(&["zeta"])]);
     assert!(!out.contains("inner-secret"));
 }
@@ -261,7 +267,7 @@ fn an_env_item_prints_each_variable_present_or_absent_and_never_a_value() {
     );
     let rows = rig.rows();
     let stored = row(&rows, "claude-code.fx-env");
-    assert!(stored.present);
+    assert_eq!(stored.present, Some(true));
     assert_eq!(stored.names, vec![seg(&["FLEET_TOKEN"])]);
     assert!(!out.contains("sk-live-secret") && !format!("{rows:?}").contains("sk-live-secret"));
 }
@@ -283,7 +289,7 @@ fn a_keys_present_item_prints_membership_and_stores_nothing_under_the_key() {
     );
     let rows = rig.rows();
     let stored = row(&rows, "claude-code.fx-keys");
-    assert!(stored.present);
+    assert_eq!(stored.present, Some(true));
     assert_eq!(stored.names, vec![seg(&["oauthAccount"])]);
     let all = format!("{out}{rows:?}");
     for leaked in ["emailAddress", "alex@example.test"] {
@@ -303,7 +309,7 @@ fn a_keys_present_item_over_a_missing_file_prints_absent_for_the_whole_line() {
             path.display()
         )
     );
-    assert!(!row(&rig.rows(), "claude-code.fx-keys").present);
+    assert_eq!(row(&rig.rows(), "claude-code.fx-keys").present, Some(false));
 }
 
 #[test]

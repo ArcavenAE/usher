@@ -34,20 +34,23 @@ fn seat_lines_round_trip_with_each_name_kept_as_its_segments() {
         SeatRecord {
             part: "mcp",
             item_id: "claude-code.seat-mcp-a",
-            present: true,
+            present: Some(true),
             names: &names,
+            members: &[],
         },
         SeatRecord {
             part: "packs",
             item_id: "claude-code.seat-packs",
-            present: false,
+            present: Some(false),
             names: &[],
+            members: &[],
         },
         SeatRecord {
             part: "auth-route",
             item_id: "claude-code.seat-auth-account",
-            present: true,
+            present: Some(true),
             names: &keys,
+            members: &[],
         },
     ];
     let id = store
@@ -60,20 +63,23 @@ fn seat_lines_round_trip_with_each_name_kept_as_its_segments() {
             SeatRow {
                 part: "mcp".to_string(),
                 item_id: "claude-code.seat-mcp-a".to_string(),
-                present: true,
+                present: Some(true),
                 names: names.clone(),
+                members: Vec::new(),
             },
             SeatRow {
                 part: "packs".to_string(),
                 item_id: "claude-code.seat-packs".to_string(),
-                present: false,
+                present: Some(false),
                 names: Vec::new(),
+                members: Vec::new(),
             },
             SeatRow {
                 part: "auth-route".to_string(),
                 item_id: "claude-code.seat-auth-account".to_string(),
-                present: true,
+                present: Some(true),
                 names: keys,
+                members: Vec::new(),
             },
         ]
     );
@@ -91,14 +97,16 @@ fn a_second_run_keeps_its_own_seat_lines() {
     let one = [SeatRecord {
         part: "mcp",
         item_id: "claude-code.seat-mcp-a",
-        present: true,
+        present: Some(true),
         names: &[],
+        members: &[],
     }];
     let two = [SeatRecord {
         part: "mcp",
         item_id: "claude-code.seat-mcp-a",
-        present: false,
+        present: Some(false),
         names: &[],
+        members: &[],
     }];
     let first = store
         .record_inventory_with_seat(&run(), &[], &one)
@@ -107,8 +115,8 @@ fn a_second_run_keeps_its_own_seat_lines() {
         .record_inventory_with_seat(&run(), &[], &two)
         .expect("two");
     assert_ne!(first, second);
-    assert!(store.seat_of(first).expect("rows")[0].present);
-    assert!(!store.seat_of(second).expect("rows")[0].present);
+    assert_eq!(store.seat_of(first).expect("rows")[0].present, Some(true));
+    assert_eq!(store.seat_of(second).expect("rows")[0].present, Some(false));
 }
 
 #[test]

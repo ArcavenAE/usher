@@ -180,7 +180,7 @@ fn a_presence_item_says_present_or_absent_and_reads_nothing_else() {
         (l.part.as_str(), l.read.as_str()),
         ("fleet-client", "presence")
     );
-    assert!(!l.present);
+    assert_eq!(l.present, Some(false));
     assert_eq!(
         l.path.as_deref(),
         Some(rig.home().join(".fleet/client-env.sh").as_path())
@@ -191,7 +191,7 @@ fn a_presence_item_says_present_or_absent_and_reads_nothing_else() {
     );
     let present = rig.fixture(&context);
     let l = line(&present, "claude-code.fx-client");
-    assert!(l.present);
+    assert_eq!(l.present, Some(true));
     assert!(l.entries.is_empty() && l.names.is_empty() && l.members.is_empty());
     assert!(
         !format!("{present:?}").contains("abc123"),
@@ -206,7 +206,7 @@ fn a_listing_item_names_the_entries_one_level_deep_and_no_more() {
     rig.write(&rig.home().join(".packs/alpha/readme.md"), "x");
     let listing = rig.fixture(&rig.context(&rig.repo, &[]));
     let l = line(&listing, "claude-code.fx-packs");
-    assert!(l.present);
+    assert_eq!(l.present, Some(true));
     assert_eq!(l.entries, ["alpha", "zeta"]);
     assert!(
         !format!("{listing:?}").contains("inner-secret"),
@@ -219,7 +219,8 @@ fn a_listing_item_over_a_missing_directory_is_absent() {
     let rig = Rig::new();
     let listing = rig.fixture(&rig.context(&rig.repo, &[]));
     let l = line(&listing, "claude-code.fx-packs");
-    assert!(!l.present && l.entries.is_empty());
+    assert_eq!(l.present, Some(false));
+    assert!(l.entries.is_empty());
 }
 
 #[test]
@@ -231,7 +232,7 @@ fn a_names_item_lists_concrete_paths_sorted_by_segments_and_never_a_value() {
     );
     let listing = rig.fixture(&rig.context(&rig.repo, &[]));
     let l = line(&listing, "claude-code.fx-servers");
-    assert!(l.present);
+    assert_eq!(l.present, Some(true));
     assert_eq!(
         l.names,
         vec![
@@ -282,7 +283,8 @@ fn a_names_item_over_a_file_that_does_not_parse_lists_no_names_and_no_content() 
     );
     let listing = rig.fixture(&rig.context(&rig.repo, &[]));
     let l = line(&listing, "claude-code.fx-servers");
-    assert!(l.present && l.names.is_empty());
+    assert_eq!(l.present, Some(true));
+    assert!(l.names.is_empty());
     assert!(!format!("{listing:?}").contains("oops-secret"));
 }
 
@@ -292,7 +294,8 @@ fn an_env_item_reports_which_listed_variables_are_set_in_listed_order() {
     let none = rig.fixture(&rig.context(&rig.repo, &[]));
     let l = line(&none, "claude-code.fx-env");
     assert_eq!((l.part.as_str(), l.read.as_str()), ("auth-route", "env"));
-    assert!(l.path.is_none() && !l.present);
+    assert!(l.path.is_none());
+    assert_eq!(l.present, None, "an environment read has no file");
     assert_eq!(
         l.members,
         [
@@ -302,7 +305,7 @@ fn an_env_item_reports_which_listed_variables_are_set_in_listed_order() {
     );
     let one = rig.fixture(&rig.context(&rig.repo, &["FLEET_TOKEN", "UNLISTED_VARIABLE"]));
     let l = line(&one, "claude-code.fx-env");
-    assert!(l.present);
+    assert_eq!(l.present, Some(true));
     assert_eq!(
         l.members,
         [
@@ -325,7 +328,7 @@ fn a_keys_present_item_gives_membership_only_and_nothing_under_the_key() {
     );
     let listing = rig.fixture(&rig.context(&rig.repo, &[]));
     let l = line(&listing, "claude-code.fx-keys");
-    assert!(l.present);
+    assert_eq!(l.present, Some(true));
     assert_eq!(l.members, [("oauthAccount".to_string(), true)]);
     assert!(l.names.is_empty());
     let text = format!("{listing:?}");
@@ -344,7 +347,7 @@ fn a_keys_present_item_over_a_missing_file_is_absent_with_its_key_absent() {
     let rig = Rig::new();
     let listing = rig.fixture(&rig.context(&rig.repo, &[]));
     let l = line(&listing, "claude-code.fx-keys");
-    assert!(!l.present);
+    assert_eq!(l.present, Some(false));
     assert_eq!(l.members, [("oauthAccount".to_string(), false)]);
 }
 
@@ -354,7 +357,7 @@ fn a_file_without_the_key_reads_the_key_absent_with_the_file_present() {
     rig.write(&rig.home().join(".state.json"), r#"{"projects":{}}"#);
     let listing = rig.fixture(&rig.context(&rig.repo, &[]));
     let l = line(&listing, "claude-code.fx-keys");
-    assert!(l.present);
+    assert_eq!(l.present, Some(true));
     assert_eq!(l.members, [("oauthAccount".to_string(), false)]);
 }
 
@@ -387,7 +390,7 @@ fn the_seed_lists_both_mcp_json_files_with_a_blind_spot_stamp_when_both_exist_an
     let paths: Vec<&Path> = lines.iter().filter_map(|l| l.path.as_deref()).collect();
     assert!(paths.contains(&root.as_path()) && paths.contains(&start.as_path()));
     for l in lines {
-        assert!(l.present);
+        assert_eq!(l.present, Some(true));
         assert_eq!(l.note.as_deref(), Some(NOT_STATED), "{l:?}");
     }
 }
@@ -400,7 +403,8 @@ fn the_seed_lists_one_mcp_json_line_when_the_two_paths_are_equal() {
     let lines = mcp_lines(&listing);
     assert_eq!(lines.len(), 1, "{:?}", listing.seat);
     assert_eq!(lines[0].path.as_deref(), Some(root.as_path()));
-    assert!(lines[0].present && lines[0].note.is_none());
+    assert_eq!(lines[0].present, Some(true));
+    assert!(lines[0].note.is_none());
 }
 
 #[test]
@@ -411,7 +415,7 @@ fn the_seed_carries_no_stamp_when_only_one_of_two_differing_mcp_json_files_exist
     let listing = rig.seed(&rig.context(&launch, &[]));
     let lines = mcp_lines(&listing);
     assert_eq!(lines.len(), 2, "{:?}", listing.seat);
-    assert_eq!(lines.iter().filter(|l| l.present).count(), 1);
+    assert_eq!(lines.iter().filter(|l| l.present == Some(true)).count(), 1);
     assert!(lines.iter().all(|l| l.note.is_none()), "{lines:?}");
 }
 
@@ -424,7 +428,7 @@ fn the_seed_reads_the_auth_route_by_variable_presence_and_the_login_key_by_membe
     );
     let listing = rig.seed(&rig.context(&rig.repo, &["ANTHROPIC_API_KEY"]));
     let env = line(&listing, "claude-code.seat-auth-env");
-    assert!(env.present);
+    assert_eq!(env.present, Some(true));
     assert!(
         env.members
             .contains(&("ANTHROPIC_API_KEY".to_string(), true))

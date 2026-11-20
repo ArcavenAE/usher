@@ -81,10 +81,13 @@ pub struct SeatRecord<'a> {
     pub part: &'a str,
     /// The id of the knowledge item behind the line.
     pub item_id: &'a str,
-    /// Whether the file or directory exists, or any listed variable is set.
-    pub present: bool,
+    /// Whether the file or directory exists; none for an environment read.
+    pub present: Option<bool>,
     /// The names found, each a path of segments from the root.
     pub names: &'a [Vec<String>],
+    /// For an environment or keys-present read, each listed member and whether it is
+    /// present, absent ones included.
+    pub members: &'a [(String, bool)],
 }
 
 /// One seat line as stored.
@@ -94,10 +97,13 @@ pub struct SeatRow {
     pub part: String,
     /// The id of the knowledge item behind the line.
     pub item_id: String,
-    /// Whether the file or directory exists, or any listed variable is set.
-    pub present: bool,
+    /// Whether the file or directory exists; none for an environment read.
+    pub present: Option<bool>,
     /// The names found, each a path of segments from the root.
     pub names: Vec<Vec<String>>,
+    /// For an environment or keys-present read, each listed member and whether it is
+    /// present, absent ones included.
+    pub members: Vec<(String, bool)>,
 }
 
 /// One inventory run: when it ran and what it assumed.
