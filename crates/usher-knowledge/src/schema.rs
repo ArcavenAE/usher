@@ -1620,6 +1620,12 @@ impl KnowledgeFile {
         })
     }
 
+    /// Whether `key` is one knowledge marks as a credential. A reader lists such a key by
+    /// name and reads nothing at or under it.
+    pub fn is_credential_key(key: &str) -> bool {
+        CREDENTIAL_KEYS.contains(&key)
+    }
+
     /// The items about `harness` that apply to `installed`.
     pub fn items_for<'a>(
         &'a self,
