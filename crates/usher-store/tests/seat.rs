@@ -131,8 +131,22 @@ fn a_second_run_keeps_its_own_seat_lines() {
 fn a_run_with_no_seat_lines_has_none() {
     let scratch = ScratchHome::new().expect("scratch");
     let mut store = Store::open(&scratch.home().join(".local/state/usher")).expect("a store");
-    let id = store.record_inventory(&run(), &[]).expect("a run");
-    assert!(store.seat_of(id).expect("rows").is_empty());
+    // A run with seat lines comes first, so a reader that returned every row would show
+    // them under the second run too.
+    let with = [SeatRecord {
+        part: "mcp",
+        item_id: "claude-code.seat-mcp-a",
+        present: Some(true),
+        names: &[],
+        members: &[],
+        note: None,
+    }];
+    let first = store
+        .record_inventory_with_seat(&run(), &[], &with)
+        .expect("a run with a seat line");
+    let second = store.record_inventory(&run(), &[]).expect("a run");
+    assert_eq!(store.seat_of(first).expect("rows").len(), 1);
+    assert!(store.seat_of(second).expect("rows").is_empty());
 }
 
 #[test]

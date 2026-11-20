@@ -632,3 +632,36 @@ fn a_second_level_wildcard_over_a_credential_child_reads_nothing_under_it() {
         "{text}"
     );
 }
+
+#[test]
+fn an_item_of_another_harness_at_a_matching_version_adds_no_line() {
+    let rig = Rig::new();
+    let other = r#"
+[[item]]
+id = "other.fx-client"
+harness = "other"
+layer = "slow"
+class = "seat"
+versions = ">=2.1.317, <3.0.0"
+summary = "A client file of another harness."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/other" }
+last_verified = 2026-11-20
+seat = { part = "fleet-client", path = "${HOME}/.other/client-env.sh", read = "presence" }
+"#;
+    rig.write(&rig.home().join(".other/client-env.sh"), "x");
+    let knowledge = KnowledgeFile::parse(&format!("{FIXTURE}{other}")).expect("fixture");
+    let listing = rig.list_with(knowledge, &rig.context(&rig.repo, &[]));
+    assert!(
+        listing.seat.iter().all(|l| l.item_id != "other.fx-client"),
+        "{:?}",
+        listing.seat
+    );
+    assert!(
+        listing
+            .seat
+            .iter()
+            .any(|l| l.item_id == "claude-code.fx-client"),
+        "the harness's own items still list: {:?}",
+        listing.seat
+    );
+}
