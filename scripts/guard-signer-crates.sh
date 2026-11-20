@@ -7,7 +7,10 @@
 # edit, must show neither in `cargo tree -e normal,build`. The same members must
 # not turn on `test-seam`, by a normal dependency or by a feature of their own:
 # the tree is read with all features and without dev-dependencies, and only the
-# declaring crate's own line (the first line of its own tree) is exempt. An
+# declaring crate's own line (the first line of its own tree) is exempt. A
+# manifest scan, read from `cargo metadata`, adds the rule that test-seam is
+# turned on only from [dev-dependencies]: any other dependency kind, or a
+# feature of the member's own that names it, is refused. An
 # empty member list or a tree that does not name its member also fails: a check
 # that saw nothing must not pass.
 #
@@ -28,7 +31,18 @@ if [[ -z "$members" ]]; then
 fi
 
 status=0
+metadata="$("$cargo_bin" metadata --no-deps --format-version 1)"
 while IFS= read -r member; do
+  # kind is null for a normal dependency, "build" or "dev". A target-specific
+  # table shows as its own entry with the same kind.
+  if hits="$(printf '%s\n' "$metadata" | jq -r --arg m "$member" '
+      .packages[] | select(.name == $m) |
+      ( .dependencies[] | select(.kind != "dev" and (.features | index("test-seam"))) | "dependency " + .name ),
+      ( .features | to_entries[] | select(.value | map(test("(^|/)test-seam$")) | any) | "feature " + .key )')" && [[ -n "$hits" ]]; then
+    echo "guard: ${member} declares test-seam outside [dev-dependencies]:" >&2
+    printf '%s\n' "$hits" >&2
+    status=1
+  fi
   tree="$("$cargo_bin" tree --locked -e normal,build --target all --all-features -p "$member" --prefix none)"
   if ! printf '%s\n' "$tree" | grep -q "^${member} "; then
     echo "guard: cargo tree did not list ${member}" >&2
