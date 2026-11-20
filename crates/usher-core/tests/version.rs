@@ -90,3 +90,13 @@ fn two_ranges_are_the_same_when_they_match_exactly_the_same_versions() {
     assert!(!range(">=1.0.0, <2.0.0").same_versions(&range(">=1.0.0, <2.0.1")));
     assert!(!range(">=1.0.0").same_versions(&range(">1.0.0")));
 }
+
+#[test]
+fn surrounding_whitespace_is_trimmed_from_a_version_and_a_range_term() {
+    assert_eq!(
+        Version::parse(" 1.2.3 ").expect("a trimmed version"),
+        Version::new(1, 2, 3)
+    );
+    assert!(range(">= 1.0.0").contains(&v("1.0.0")));
+    assert!(range(" >=1.0.0 , <2.0.0 ").contains(&v("1.5.0")));
+}
