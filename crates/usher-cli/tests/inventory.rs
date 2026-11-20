@@ -241,7 +241,7 @@ source = {{ path = "{path}", layer = "managed", read = "first-wins", rank = {ran
     };
     let knowledge = signed(&format!(
         "schema_version = 3\nsequence = 9\n{}{}",
-        managed("demo.high", "/etc/claude-code/high.json", 4),
+        managed("demo.high", "/etc/claude-code/high.json", 2),
         managed("demo.low", "/etc/claude-code/low.json", 3),
     ));
     let winner = rig.write(

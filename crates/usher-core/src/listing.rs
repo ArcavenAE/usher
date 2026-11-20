@@ -33,7 +33,8 @@ pub struct LaunchContext {
 pub enum SourceStatus {
     /// The version reads it, and nothing hides it.
     InEffect,
-    /// A present source of a higher rank hides it; the row names the winner.
+    /// A present source ranked above it (a smaller rank number; 1 is highest) hides it;
+    /// the row names the winner.
     Shadowed {
         /// The source that wins.
         by: PathBuf,

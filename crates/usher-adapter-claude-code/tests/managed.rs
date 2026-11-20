@@ -61,14 +61,21 @@ source = {{ path = "{path}", layer = "managed", read = "first-wins", rank = {ran
     )
 }
 
-/// A knowledge file with three Linux managed ranks (4 top, 3 middle, 2 low), a higher
-/// macOS-only one, and the control-key list.
+/// A knowledge file with three Linux managed ranks (2 top, 3 middle, 4 low), a macOS-only
+/// one at 1, and the control-key list. A smaller number ranks higher; 1 is the macOS-only
+/// source, absent from this platform, and nothing on this platform sits at 1, as ranks
+/// also count vendor deliveries knowledge does not list.
 fn fixture() -> KnowledgeFile {
+    fixture_with("")
+}
+
+/// The same file with `extra` items added.
+fn fixture_with(extra: &str) -> KnowledgeFile {
     let text = format!(
         r#"
 schema_version = 3
 sequence = 99
-{}{}{}{}{}{}
+{}{}{}{}{}{}{}
 [[item]]
 id = "claude-code.managed-control-keys"
 harness = "claude-code"
@@ -80,21 +87,22 @@ reference = {{ kind = "vendor-docs", locator = "https://example.test/docs/manage
 last_verified = 2026-11-20
 keys = ["policyHelper", "wslInheritsWindowsSettings", "managedSourcesBehavior"]
 "#,
-        item("demo.top", &format!("/{TOP}"), 4, Some(r#"["linux"]"#)),
+        item("demo.top", &format!("/{TOP}"), 2, Some(r#"["linux"]"#)),
         item(
             "demo.middle",
             &format!("/{MIDDLE}"),
             3,
             Some(r#"["linux"]"#)
         ),
-        item("demo.low", &format!("/{LOW}"), 2, Some(r#"["linux"]"#)),
-        item("demo.mac", &format!("/{MAC_ONLY}"), 5, Some(r#"["macos"]"#)),
+        item("demo.low", &format!("/{LOW}"), 4, Some(r#"["linux"]"#)),
+        item("demo.mac", &format!("/{MAC_ONLY}"), 1, Some(r#"["macos"]"#)),
         user_item("demo.every-user", &format!("/{EVERY_USER}"), None),
         user_item(
             "demo.mac-user",
             &format!("/{MAC_USER}"),
             Some(r#"["macos"]"#)
         ),
+        extra,
     );
     let signer = Signer::new();
     let trusted = TrustedKeys::for_tests(&signer.public_key_base64(), None).expect("keys");
@@ -130,6 +138,10 @@ impl Rig {
     }
 
     fn list(&self) -> SourceListing {
+        self.list_with(&fixture())
+    }
+
+    fn list_with(&self, knowledge: &KnowledgeFile) -> SourceListing {
         let home = self.scratch.home().to_path_buf();
         let key = environment_key("host", "alex", "claude-code", &home, &[]).expect("key");
         let context = LaunchContext {
@@ -141,7 +153,7 @@ impl Rig {
             harness_version: Some("2.1.317".to_string()),
         };
         ClaudeCodeAdapter::new(
-            fixture(),
+            knowledge.clone(),
             SystemRoot::at(self.system.clone()),
             Platform::Linux,
         )
@@ -358,4 +370,27 @@ fn a_non_delivering_top_then_a_bad_file_leaves_the_lowest_undecided() {
             ),
         }
     );
+}
+
+/// Two present first-wins sources on one platform with the same rank have no stated
+/// winner, so neither is in effect and neither is guessed.
+#[test]
+fn two_managed_sources_with_one_rank_on_a_platform_read_unknown_naming_the_rank() {
+    let rig = Rig::new();
+    let top = rig.file(TOP, POLICY);
+    let twin_path = "etc/claude-code/managed-twin.json";
+    let twin = rig.file(twin_path, POLICY);
+    let knowledge = fixture_with(&item(
+        "demo.twin",
+        &format!("/{twin_path}"),
+        2,
+        Some(r#"["linux"]"#),
+    ));
+    let listing = rig.list_with(&knowledge);
+    assert_eq!(listing.sources.len(), 2, "{:?}", listing.sources);
+    let tied = SourceStatus::Unknown {
+        reason: "two managed sources share rank 2".to_string(),
+    };
+    assert_eq!(status_of(&listing, &top), &tied);
+    assert_eq!(status_of(&listing, &twin), &tied);
 }
