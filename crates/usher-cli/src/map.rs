@@ -170,6 +170,14 @@ fn not_observed_text(item: &NotObserved) -> String {
         }
         NotObserved::OrganizationDefaultModel => "an organization default model is not observed; if an admin set one, it applies over `model` in user, project and local settings".to_string(),
         NotObserved::BuiltInClassifierRules => "built-in classifier rules are not observed; an array without \"$defaults\" may replace them".to_string(),
+        NotObserved::FileNotRead {
+            layer,
+            path,
+            reason,
+        } => format!(
+            "{layer} file {} {reason}; keys set only there are not shown, and list keys may have more entries",
+            path.display()
+        ),
         NotObserved::LayerMissingFromStack(name) => {
             format!("{name} is not a layer of the settings stack, so its file gives no map rows")
         }
