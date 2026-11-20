@@ -385,7 +385,7 @@ fn an_opt_link_whose_target_is_not_an_installed_version_is_an_error_row() {
 }
 
 #[test]
-fn a_formula_in_two_taps_is_an_error_row_naming_both_taps() {
+fn a_formula_in_two_taps_is_an_error_row_with_the_whole_ruled_line() {
     let rig = Rig::new();
     rig.good_receipt("jq", "1.7.1");
     rig.link("jq", "1.7.1");
@@ -393,10 +393,30 @@ fn a_formula_in_two_taps_is_an_error_row_naming_both_taps() {
     rig.tap_formula("other/extras", true, "jq");
     let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
     assert_eq!(row.verdict, Verdict::Error);
-    let error = row.error.expect("an error row says why");
-    assert!(
-        error.contains("acme/tools") && error.contains("other/extras"),
-        "{error}"
+    assert_eq!(
+        row.error,
+        Some(format!(
+            "{}: installed from two taps, acme/tools and other/extras",
+            rig.brew().prefix.join("Cellar/jq").display()
+        ))
+    );
+}
+
+#[test]
+fn a_formula_in_three_taps_lists_them_joined_by_commas_and_an_and_before_the_last() {
+    let rig = Rig::new();
+    rig.good_receipt("jq", "1.7.1");
+    rig.link("jq", "1.7.1");
+    for tap in ["acme/a", "acme/b", "acme/c"] {
+        rig.tap_formula(tap, false, "jq");
+    }
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
+    assert_eq!(
+        row.error,
+        Some(format!(
+            "{}: installed from two taps, acme/a, acme/b and acme/c",
+            rig.brew().prefix.join("Cellar/jq").display()
+        ))
     );
 }
 
@@ -523,8 +543,29 @@ fn a_full_with_no_colon_reads_mise_core() {
     assert_eq!(row.source, "mise core");
 }
 
+fn backend_error_row(dir: &str, file: &Path, reason: &str) -> ToolRow {
+    ToolRow {
+        name: dir.to_string(),
+        state: InstallState::Installed,
+        source: "mise".to_string(),
+        installed: Reading::Unknown("backend file unreadable".to_string()),
+        current: not_run(),
+        verdict: Verdict::Error,
+        error: Some(format!("{}: {reason}", file.display())),
+        hint: None,
+    }
+}
+
+fn backend_file(rig: &Rig, dir: &str) -> PathBuf {
+    rig.paths
+        .mise_data
+        .join("installs")
+        .join(dir)
+        .join(".mise.backend.toml")
+}
+
 #[test]
-fn a_bad_backend_file_is_an_installed_error_row_with_its_exact_reason() {
+fn a_bad_backend_directory_prints_one_error_row_after_the_tool_rows_with_the_exact_reason() {
     let cases: [(&str, Option<&str>); 6] = [
         ("missing", None),
         ("not valid TOML", Some("short = = =")),
@@ -539,30 +580,72 @@ fn a_bad_backend_file_is_an_installed_error_row_with_its_exact_reason() {
     for (reason, text) in cases {
         let rig = Rig::new();
         rig.mise_version("go", "1.23.0");
-        let file = rig.paths.mise_data.join("installs/go/.mise.backend.toml");
+        rig.mise_tool("codex", "codex", "aqua:openai/codex", "0.160.0");
+        let file = backend_file(&rig, "go");
         if let Some(text) = text {
             fs::write(&file, text).expect("backend file");
         }
-        let row = only(read_mise(&mise_spec("go", "go"), &rig.paths));
-        assert_eq!(row.state, InstallState::Installed, "{reason}");
-        assert_eq!(row.verdict, Verdict::Error, "{reason}");
-        assert_eq!(
-            row.error,
-            Some(format!("{}: {reason}", file.display())),
-            "{reason}"
+        let rows = read_tools(
+            &[mise_spec("go", "go"), mise_spec("codex", "codex")],
+            &rig.paths,
         );
+        assert_eq!(rows.len(), 3, "{reason}: {rows:?}");
+        assert_eq!(rows[0].name, "go", "{reason}");
+        assert_eq!(
+            rows[0].state,
+            InstallState::Missing,
+            "the bad directory reads as absent: {reason}"
+        );
+        assert_eq!(rows[1].source, "mise aqua", "{reason}");
+        assert_eq!(rows[2], backend_error_row("go", &file, reason), "{reason}");
+        let errors = rows.iter().filter(|r| r.verdict == Verdict::Error).count();
+        assert_eq!(errors, 1, "one fault is printed once: {reason}");
     }
 }
 
 #[test]
-fn an_unreadable_backend_file_is_an_error_row_carrying_the_io_error() {
+fn a_bad_backend_directory_still_prints_its_row_when_no_mise_entry_is_listed() {
+    let rig = Rig::new();
+    rig.mise_version("orphan", "1.0.0");
+    let file = backend_file(&rig, "orphan");
+    let rows = read_tools(&[brew_spec("jq", "jq")], &rig.paths);
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    assert_eq!(rows[0].name, "jq");
+    assert_eq!(rows[1], backend_error_row("orphan", &file, "missing"));
+}
+
+#[test]
+fn bad_backend_directories_print_one_row_each_in_directory_name_order() {
+    let rig = Rig::new();
+    rig.mise_version("b-tool", "1.0.0");
+    rig.mise_version("a-tool", "1.0.0");
+    let rows = read_tools(&[brew_spec("jq", "jq")], &rig.paths);
+    let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
+    assert_eq!(names, ["jq", "a-tool", "b-tool"]);
+}
+
+#[test]
+fn a_bad_backend_directory_reads_as_absent_to_the_entry_that_would_have_matched_it() {
+    let rig = Rig::new();
+    rig.mise_version("go", "1.23.0");
+    let row = only(read_mise(&mise_spec("go", "go"), &rig.paths));
+    assert_eq!(row.state, InstallState::Missing);
+    assert_eq!(row.installed, Reading::None);
+}
+
+#[test]
+fn an_unreadable_backend_file_gets_its_own_error_row_carrying_the_io_error() {
     let rig = Rig::new();
     rig.mise_tool("go", "go", "core:go", "1.23.0");
-    let file = rig.paths.mise_data.join("installs/go/.mise.backend.toml");
+    let file = backend_file(&rig, "go");
     fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).expect("chmod");
-    let row = only(read_mise(&mise_spec("go", "go"), &rig.paths));
+    let rows = read_tools(&[mise_spec("go", "go")], &rig.paths);
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    assert_eq!(rows[0].state, InstallState::Missing);
+    let row = &rows[1];
     assert_eq!(row.verdict, Verdict::Error);
-    let error = row.error.expect("an error row says why");
+    assert_eq!(row.name, "go");
+    let error = row.error.clone().expect("an error row says why");
     assert!(
         error.starts_with(&format!("{}: ", file.display())),
         "{error}"
@@ -732,6 +815,10 @@ fn each_tool_with_no_recorded_installer_reads_exactly_the_ruled_row_with_no_comm
     );
 }
 
+/// PATH is not read in this change: the verb reads installer files only, so a placed
+/// executable cannot be found and cannot be run. This red places executables named like
+/// the tool on disk and proves the row is unchanged and nothing is touched. PATH comes
+/// with the readers that need it, each with its own red.
 #[test]
 fn an_executable_with_the_tools_name_changes_nothing_because_nothing_is_looked_up() {
     let rig = Rig::new();
@@ -970,11 +1057,15 @@ fn running_the_verb_leaves_installer_state_and_a_watched_harness_home_unchanged(
     guard.verify().expect("the verb changed no installer state");
 }
 
-/// Runs the verb against the person's real harness homes and real installer state. A
-/// brew or mise run by the person while this test runs reads as a violation: that is a
-/// true report, not a flake to retry.
+/// Runs the verb against the real installer state, then again with scratch harness
+/// homes under observation. The real harness homes are left out on purpose: the verb
+/// opens none, and a harness session on the same host writes there while the test runs,
+/// so a change would be a false report against the verb. A brew or mise run by the person
+/// while this test runs reads as a violation: that is a true report, not a flake to
+/// retry. The first verb that reads a harness home must watch that home in its real
+/// location, and say how it tells usher's writes from the session's.
 #[test]
-fn the_verb_changes_neither_the_real_harness_homes_nor_the_real_installer_state() {
+fn the_verb_changes_no_real_installer_state_and_no_scratch_harness_home() {
     let paths = InstallerPaths::resolve(
         |name| std::env::var(name).ok(),
         |path| path.exists(),
@@ -985,12 +1076,33 @@ fn the_verb_changes_neither_the_real_harness_homes_nor_the_real_installer_state(
         paths: paths.clone(),
     };
     let guard = InstallerGuard::snapshot(&paths).expect("a snapshot of the real state");
-    observe(&RealHomes::ambient(), |_scratch| {
-        run_tools(&args(&["tools"]), &real).expect("rows");
-    });
+    run_tools(&args(&["tools"]), &real).expect("rows");
     guard
         .verify()
         .expect("the verb changed no real installer state");
+
+    let rig = Rig::new();
+    let home = rig.scratch.home();
+    fs::create_dir_all(home.join(".claude")).expect("a claude home");
+    fs::write(home.join(".claude.json"), "{}").expect("global state");
+    fs::create_dir_all(home.join(".codex")).expect("a codex home");
+    let watched = RealHomes::from_homes(vec![
+        NamedHome {
+            name: "claude-code",
+            path: home.join(".claude"),
+        },
+        NamedHome {
+            name: "claude-code-global-state",
+            path: home.join(".claude.json"),
+        },
+        NamedHome {
+            name: "codex",
+            path: home.join(".codex"),
+        },
+    ]);
+    observe(&watched, |_scratch| {
+        run_tools(&args(&["tools"]), &context(&rig)).expect("rows");
+    });
 }
 
 #[test]
