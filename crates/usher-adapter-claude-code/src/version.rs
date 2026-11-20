@@ -119,7 +119,7 @@ fn read(
 
 /// The first `claude` on `PATH` that `sh` would run: a regular file with an execute bit,
 /// found by the same walk. An empty entry is the launch directory and a relative one is
-/// joined to it. It must be the launcher, either by path or as a link straight to it.
+/// joined to it. It must be the launcher, judged by real path.
 fn check_path_claude(
     launcher: &Path,
     context: &LaunchContext,
@@ -151,17 +151,12 @@ fn check_path_claude(
             name.to_string_lossy()
         ));
     };
-    let is_launcher = hit == launcher
-        || fs::read_link(&hit)
-            .map(|raw| {
-                let absolute = if raw.is_absolute() {
-                    raw
-                } else {
-                    hit.parent().unwrap_or(Path::new("/")).join(raw)
-                };
-                normalize(&absolute) == launcher
-            })
-            .unwrap_or(false);
+    // Identity is the real path, so how the entry is spelled and how many links lead to
+    // the launcher do not matter.
+    let is_launcher = match (fs::canonicalize(&hit), fs::canonicalize(launcher)) {
+        (Ok(found), Ok(expected)) => found == expected,
+        _ => false,
+    };
     if is_launcher {
         Ok(())
     } else {
