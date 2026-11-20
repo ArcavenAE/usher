@@ -206,6 +206,38 @@ pub struct WireRequest {
     pub body: Vec<(String, String)>,
 }
 
+impl WireRequest {
+    /// The HTTP method.
+    pub fn method(&self) -> Method {
+        self.method
+    }
+
+    /// The https host.
+    pub fn host(&self) -> &str {
+        &self.host
+    }
+
+    /// The path with placeholders filled.
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// The query fields, in descriptor order.
+    pub fn query(&self) -> &[(String, String)] {
+        &self.query
+    }
+
+    /// The headers, lowercase names, `user-agent` first.
+    pub fn headers(&self) -> &[(String, String)] {
+        &self.headers
+    }
+
+    /// The body fields, in descriptor order.
+    pub fn body(&self) -> &[(String, String)] {
+        &self.body
+    }
+}
+
 /// What came back: the status, any redirect target, and the body bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Response {
