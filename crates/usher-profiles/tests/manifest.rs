@@ -139,7 +139,8 @@ fn a_name_is_one_to_sixty_four_of_lowercase_digits_and_hyphens_starting_with_a_l
 #[test]
 fn a_harness_id_has_the_same_pattern_as_a_name() {
     for bad in ["Claude", "1x", "a b", "a_b"] {
-        let text = VALID.replace("claude-code", bad);
+        // Quoted, so the id reaches the pattern check and not the TOML parser.
+        let text = VALID.replace("[harnesses.claude-code]", &format!("[harnesses.\"{bad}\"]"));
         names_field(&refusal(&text), "harnesses");
     }
     let text = VALID.replace("claude-code", "goose");
