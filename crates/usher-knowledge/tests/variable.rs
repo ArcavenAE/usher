@@ -219,25 +219,54 @@ fn a_source_that_uses_the_config_dir_token_needs_a_binder_for_the_same_versions(
     KnowledgeFile::parse(&file(&[BINDER, SOURCE])).expect("a binder for the same versions");
 }
 
+/// The key's variable list does not move with the harness version: every range counts,
+/// the names are sorted, and a name that two ranges share appears once.
 #[test]
-fn launch_variables_lists_the_names_for_the_harness_and_version_sorted() {
+fn launch_variables_lists_every_range_sorted_and_deduplicated() {
     let flag = BINDER
         .replace("demo.config-dir-variable", "demo.flag")
         .replace(VARIABLE, r#"variable = { name = "DEMO_A_FLAG" }"#);
-    let parsed = KnowledgeFile::parse(&file(&[BINDER, &flag, SOURCE])).expect("valid");
+    let later = BINDER
+        .replace("demo.config-dir-variable", "demo.later")
+        .replace(">=1.0.0, <2.0.0", ">=2.0.0, <3.0.0");
+    let other = BINDER
+        .replace("demo.config-dir-variable", "other.config")
+        .replace("harness = \"demo\"", "harness = \"other\"")
+        .replace(VARIABLE, r#"variable = { name = "OTHER_DIR" }"#);
+    let parsed =
+        KnowledgeFile::parse(&file(&[BINDER, &flag, &later, &other, SOURCE])).expect("valid");
     assert_eq!(
-        parsed.launch_variables("demo", &version("1.2.0")),
-        ["DEMO_A_FLAG", "DEMO_CONFIG_DIR"]
+        parsed.launch_variables("demo"),
+        ["DEMO_A_FLAG", "DEMO_CONFIG_DIR"],
+        "both ranges name DEMO_CONFIG_DIR, and it is listed once"
+    );
+    assert_eq!(parsed.launch_variables("other"), ["OTHER_DIR"]);
+    assert!(parsed.launch_variables("nothing").is_empty());
+}
+
+/// Token binding stays version-scoped and is never part of the key.
+#[test]
+fn binding_names_the_variable_and_default_for_a_token_at_a_version() {
+    let parsed = KnowledgeFile::parse(&file(&[BINDER, SOURCE])).expect("valid");
+    let binding = parsed
+        .binding("demo", &version("1.2.0"), "${CONFIG_DIR}")
+        .expect("the token is bound at 1.2.0");
+    assert_eq!(binding.variable(), "DEMO_CONFIG_DIR");
+    assert_eq!(binding.default(), "${HOME}/.demo");
+    assert!(
+        parsed
+            .binding("demo", &version("2.0.0"), "${CONFIG_DIR}")
+            .is_none()
     );
     assert!(
         parsed
-            .launch_variables("demo", &version("2.0.0"))
-            .is_empty()
+            .binding("demo", &version("1.2.0"), "${HOME}")
+            .is_none()
     );
     assert!(
         parsed
-            .launch_variables("other", &version("1.2.0"))
-            .is_empty()
+            .binding("other", &version("1.2.0"), "${CONFIG_DIR}")
+            .is_none()
     );
 }
 
@@ -254,10 +283,12 @@ fn the_embedded_seed_names_claude_config_dir_and_binds_the_config_directory() {
     assert_eq!(variable.binds(), Some("${CONFIG_DIR}"));
     assert_eq!(variable.default(), Some("${HOME}/.claude"));
     assert_eq!(item.last_verified().to_string(), "2026-11-20");
-    assert_eq!(
-        seed.launch_variables("claude-code", &version("2.1.317")),
-        ["CLAUDE_CONFIG_DIR"]
-    );
+    assert_eq!(seed.launch_variables("claude-code"), ["CLAUDE_CONFIG_DIR"]);
+    let binding = seed
+        .binding("claude-code", &version("2.1.317"), "${CONFIG_DIR}")
+        .expect("the config directory is bound");
+    assert_eq!(binding.variable(), "CLAUDE_CONFIG_DIR");
+    assert_eq!(binding.default(), "${HOME}/.claude");
     for harness in ["codex", "goose"] {
         assert!(
             seed.items()

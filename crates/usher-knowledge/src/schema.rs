@@ -308,6 +308,26 @@ pub enum VersionRule {
     SymlinkTargetLastComponent,
 }
 
+/// A path token bound to a launch variable, with the default it takes when the variable
+/// is unset or empty.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Binding {
+    variable: String,
+    default: String,
+}
+
+impl Binding {
+    /// The variable's name.
+    pub fn variable(&self) -> &str {
+        &self.variable
+    }
+
+    /// The path the token takes while the variable is unset or empty.
+    pub fn default(&self) -> &str {
+        &self.default
+    }
+}
+
 /// A launch variable a harness reads, and the path token it moves.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaunchVariable {
@@ -963,9 +983,17 @@ impl KnowledgeFile {
 
     /// The launch variable names harness knowledge lists for `harness` at `installed`,
     /// sorted. Every caller keys an environment from this one lookup (AD-17).
-    pub fn launch_variables(&self, harness: &str, installed: &Version) -> Vec<&str> {
-        let _ = (harness, installed);
+    pub fn launch_variables(&self, harness: &str) -> Vec<&str> {
+        let _ = harness;
         Vec::new()
+    }
+
+    /// The variable that binds `token` for `harness` at `installed`, with the default the
+    /// token takes while it is unset or empty. Version-scoped, and never part of an
+    /// environment key.
+    pub fn binding(&self, harness: &str, installed: &Version, token: &str) -> Option<Binding> {
+        let _ = (harness, installed, token);
+        None
     }
 
     /// The items about `harness` that apply to `installed`.
