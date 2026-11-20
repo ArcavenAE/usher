@@ -166,6 +166,9 @@ impl SourceLister for ClaudeCodeAdapter {
         }
 
         let mut present: Vec<(&Candidate, fs::Metadata)> = Vec::new();
+        // First-wins candidates that could not be checked: each might deliver, so each
+        // counts as an unreadable file at its rank.
+        let mut unchecked: Vec<(u32, PathBuf)> = Vec::new();
         for candidate in &candidates {
             match fs::metadata(&candidate.path) {
                 Ok(meta) => present.push((candidate, meta)),
@@ -174,6 +177,9 @@ impl SourceLister for ClaudeCodeAdapter {
                 // with the error kind and never any content.
                 Err(error) if error.kind() != io::ErrorKind::NotFound => {
                     if candidate.platform_ok {
+                        if candidate.fact.read() == ReadRule::FirstWins {
+                            unchecked.push((candidate.fact.rank(), candidate.path.clone()));
+                        }
                         not_checked.push(NotCheckedLayer {
                             layer: layer_name(candidate.fact.layer()).to_string(),
                             reason: format!(
@@ -237,7 +243,7 @@ impl SourceLister for ClaudeCodeAdapter {
             .collect();
 
         let statuses = if known {
-            self.statuses(&present, &parsed, &control)
+            self.statuses(&present, &parsed, &control, &unchecked)
         } else {
             vec![
                 SourceStatus::Unknown {
@@ -293,6 +299,7 @@ impl ClaudeCodeAdapter {
         present: &[(&Candidate, fs::Metadata)],
         parsed: &[Option<Parsed>],
         control: &HashSet<String>,
+        unchecked: &[(u32, PathBuf)],
     ) -> Vec<SourceStatus> {
         let mut statuses: Vec<Option<SourceStatus>> = vec![None; present.len()];
         // Sources that do not take part in first-wins are decided on their own.
@@ -329,15 +336,24 @@ impl ClaudeCodeAdapter {
         // `present` is sorted by layer then rank, so `first_wins` is in rank order. The
         // decision is made rank by rank and never guessed past a point it cannot be made.
         let mut decision = Decision::Pending;
-        let mut index = 0;
-        while index < first_wins.len() {
-            let rank = present[first_wins[index]].0.fact.rank();
-            let group: Vec<usize> = first_wins[index..]
+        let mut ranks: Vec<u32> = first_wins
+            .iter()
+            .map(|&member| present[member].0.fact.rank())
+            .chain(unchecked.iter().map(|(rank, _)| *rank))
+            .collect();
+        ranks.sort_unstable();
+        ranks.dedup();
+        for rank in ranks {
+            let group: Vec<usize> = first_wins
                 .iter()
                 .copied()
-                .take_while(|other| present[*other].0.fact.rank() == rank)
+                .filter(|member| present[*member].0.fact.rank() == rank)
                 .collect();
-            index += group.len();
+            let hidden: Vec<&Path> = unchecked
+                .iter()
+                .filter(|(at, _)| *at == rank)
+                .map(|(_, path)| path.as_path())
+                .collect();
             match &decision {
                 Decision::Winner(by) => {
                     for other in group {
@@ -352,7 +368,15 @@ impl ClaudeCodeAdapter {
                     }
                 }
                 Decision::Pending => {
-                    decision = decide_rank(rank, &group, present, parsed, control, &mut statuses);
+                    decision = decide_rank(
+                        rank,
+                        &group,
+                        &hidden,
+                        present,
+                        parsed,
+                        control,
+                        &mut statuses,
+                    );
                 }
             }
         }
@@ -382,6 +406,7 @@ enum Decision {
 fn decide_rank(
     rank: u32,
     group: &[usize],
+    hidden: &[&Path],
     present: &[(&Candidate, fs::Metadata)],
     parsed: &[Option<Parsed>],
     control: &HashSet<String>,
@@ -418,27 +443,27 @@ fn decide_rank(
             });
         }
     }
-    match (delivering.as_slice(), unreadable.as_slice()) {
-        ([], []) => Decision::Pending,
-        ([only], []) => {
+    let cause = match (unreadable.first(), hidden.first()) {
+        (Some(&bad), _) => Some(format!("{} could not be read", path(bad).display())),
+        (None, Some(path)) => Some(format!("{} could not be checked", path.display())),
+        (None, None) => None,
+    };
+    match (delivering.as_slice(), cause) {
+        ([], None) => Decision::Pending,
+        ([only], None) => {
             statuses[*only] = Some(SourceStatus::InEffect);
             Decision::Winner(path(*only))
         }
-        ([], [bad, ..]) => {
-            Decision::Undecided(format!("{} could not be read", path(*bad).display()))
-        }
-        (_, [bad, ..]) => {
+        ([], Some(cause)) => Decision::Undecided(cause),
+        (_, Some(cause)) => {
             for &member in &delivering {
                 statuses[member] = Some(SourceStatus::Unknown {
-                    reason: format!(
-                        "first-wins not decided: {} could not be read",
-                        path(*bad).display()
-                    ),
+                    reason: format!("first-wins not decided: {cause}"),
                 });
             }
-            Decision::Undecided(format!("{} could not be read", path(*bad).display()))
+            Decision::Undecided(cause)
         }
-        (_, []) => {
+        (_, None) => {
             let reason = format!("two managed sources share rank {rank}");
             for &member in &delivering {
                 statuses[member] = Some(SourceStatus::Unknown {
