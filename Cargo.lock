@@ -535,6 +535,7 @@ dependencies = [
 name = "usher-core"
 version = "0.0.0"
 dependencies = [
+ "usher-core",
  "usher-testkit",
 ]
 
