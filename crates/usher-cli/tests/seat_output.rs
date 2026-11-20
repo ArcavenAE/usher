@@ -402,3 +402,47 @@ fn two_differing_mcp_json_files_print_two_lines_with_names_first_then_the_stamp(
         )
     );
 }
+
+/// Puts a directory at mode 000 and restores it on drop, so the scratch home can be
+/// removed even when an assertion fails.
+struct Locked(PathBuf);
+
+impl Locked {
+    fn new(dir: PathBuf) -> Self {
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o000)).expect("mode");
+        Locked(dir)
+    }
+}
+
+impl Drop for Locked {
+    fn drop(&mut self) {
+        let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o755));
+    }
+}
+
+#[test]
+fn a_seat_path_under_an_unreadable_directory_prints_not_checked_in_plain_words() {
+    let rig = Rig::new();
+    let file = rig.write(&rig.home().join(".fleet/client-env.sh"), "SECRET=x");
+    let _locked = Locked::new(file.parent().expect("a parent").to_path_buf());
+    if fs::metadata(&file).is_ok() {
+        usher_testkit::skip(
+            "a_seat_path_under_an_unreadable_directory_prints_not_checked_in_plain_words",
+            "this process can look through a mode 000 directory, so there is nothing to test",
+        );
+        return;
+    }
+    let out = rig.fixture_run(&rig.env(&[]));
+    assert_eq!(
+        line_for(&out, "claude-code.fx-client"),
+        format!(
+            "fleet-client  {}  not checked (permission denied) (knowledge item claude-code.fx-client)",
+            file.display()
+        )
+    );
+    assert!(!out.contains("PermissionDenied"), "{out}");
+    let stored = rig.rows();
+    let row = row(&stored, "claude-code.fx-client");
+    assert_eq!(row.present, None);
+    assert_eq!(row.note.as_deref(), Some("permission denied"));
+}

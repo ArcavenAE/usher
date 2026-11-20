@@ -5,6 +5,7 @@
 
 use std::collections::BTreeSet;
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use usher_adapter_claude_code::ClaudeCodeAdapter;
@@ -663,5 +664,47 @@ seat = { part = "fleet-client", path = "${HOME}/.other/client-env.sh", read = "p
             .any(|l| l.item_id == "claude-code.fx-client"),
         "the harness's own items still list: {:?}",
         listing.seat
+    );
+}
+
+/// Puts a directory at mode 000 and restores it on drop, so the scratch home can be
+/// removed even when an assertion fails.
+struct Locked(PathBuf);
+
+impl Locked {
+    fn new(dir: PathBuf) -> Self {
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o000)).expect("mode");
+        Locked(dir)
+    }
+}
+
+impl Drop for Locked {
+    fn drop(&mut self) {
+        let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o755));
+    }
+}
+
+#[test]
+fn a_seat_path_that_cannot_be_checked_says_why_in_plain_words_and_keeps_its_path() {
+    let rig = Rig::new();
+    let file = rig.write(&rig.home().join(".fleet/client-env.sh"), "SECRET=x");
+    let _locked = Locked::new(file.parent().expect("a parent").to_path_buf());
+    // Probe the effect, not the uid: root and ACLs can look through a mode 000 directory.
+    if fs::metadata(&file).is_ok() {
+        usher_testkit::skip(
+            "a_seat_path_that_cannot_be_checked_says_why_in_plain_words_and_keeps_its_path",
+            "this process can look through a mode 000 directory, so there is nothing to test",
+        );
+        return;
+    }
+    let listing = rig.fixture(&rig.context(&rig.repo, &[]));
+    let l = line(&listing, "claude-code.fx-client");
+    assert_eq!(l.present, None, "not a definite absence");
+    assert_eq!(l.path.as_deref(), Some(file.as_path()));
+    assert_eq!(l.note.as_deref(), Some("permission denied"));
+    let text = format!("{listing:?}");
+    assert!(
+        !text.contains("PermissionDenied") && !text.contains("SECRET=x"),
+        "{text}"
     );
 }

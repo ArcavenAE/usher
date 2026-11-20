@@ -269,3 +269,21 @@ fn an_item_that_needs_no_path_still_prints_normally_when_the_variable_is_relativ
     assert!(env_line.starts_with("auth-route  env  "), "{env_line}");
     assert!(!env_line.contains("not checked"), "{env_line}");
 }
+
+#[test]
+fn a_relative_variable_prints_the_server_managed_cache_not_checked() {
+    let rig = Rig::new();
+    let out = rig.run(&rig.env(Some("relative/dir")));
+    assert!(
+        out.lines()
+            .any(|l| l == format!("not checked: server-managed cache ({REASON})")),
+        "{out}"
+    );
+}
+
+#[test]
+fn an_unset_variable_with_no_cache_file_prints_no_cache_line() {
+    let rig = Rig::new();
+    let out = rig.run(&rig.env(None));
+    assert!(!out.contains("server-managed cache"), "{out}");
+}
