@@ -1145,3 +1145,57 @@ fn every_registered_query_name_is_a_plain_token() {
         }
     }
 }
+
+// ---- what a redirect's text may put in an error ----
+
+fn redirect_error(location: &str) -> UsherError {
+    let transport = RecordingTransport::new().answering_redirect(location);
+    port(&transport)
+        .call(knowledge_request())
+        .expect_err("an unlisted redirect must fail")
+}
+
+#[test]
+fn a_valid_host_name_in_a_refused_redirect_is_echoed_and_no_path_or_query_is() {
+    let err = redirect_error("https://elsewhere.invalid/secret?token=1");
+    let text = err.to_string();
+    assert!(text.contains("elsewhere.invalid"), "{text}");
+    assert!(!text.contains("secret"), "the path is echoed: {text}");
+    assert!(!text.contains("token"), "the query is echoed: {text}");
+}
+
+#[test]
+fn a_host_that_is_not_a_valid_name_is_never_echoed() {
+    let long = "a".repeat(254);
+    for host in [
+        "ev\u{1b}il.invalid".to_string(),
+        "user@assets.invalid".to_string(),
+        "assets.invalid:443".to_string(),
+        "caf\u{e9}.invalid".to_string(),
+        "a b.invalid".to_string(),
+        String::new(),
+        long,
+    ] {
+        let err = redirect_error(&format!("https://{host}/x"));
+        let text = err.to_string();
+        assert!(
+            text.contains("a host that is not a valid name"),
+            "{host:?}: {text}"
+        );
+        assert!(!text.contains('\u{1b}'), "{host:?}: the error holds ESC");
+        if !host.is_empty() {
+            assert!(!text.contains(&host), "{host:?}: the host is echoed");
+        }
+        assert_four_fields(&err);
+    }
+}
+
+#[test]
+fn a_refused_redirect_path_on_a_listed_host_is_not_echoed() {
+    let transport =
+        RecordingTransport::new().answering_redirect(format!("https://{ASSETS_HOST}/secret path"));
+    let err = port(&transport)
+        .call_described(&REDIRECTING, described_request().with("file", "k.toml"))
+        .expect_err("a path with a space must fail");
+    assert!(!err.to_string().contains("secret"), "{err}");
+}
