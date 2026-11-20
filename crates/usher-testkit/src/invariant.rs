@@ -265,6 +265,7 @@ mod tests {
         for managed in [
             "/Library/Application Support/ClaudeCode",
             "/etc/claude-code",
+            "/scratch-home/.claude.json",
         ] {
             assert!(
                 paths.contains(&Path::new(managed)),
