@@ -219,6 +219,25 @@ impl<T: Transport, P: Policy> Port<T, P> {
     /// Checks a request against its descriptor and the policy, sends it, and
     /// follows a redirect only to a host the descriptor lists.
     pub fn call(&self, request: Request) -> Result<Response, UsherError> {
+        self.send_described(descriptor(request.egress()), request)
+    }
+
+    /// The same as [`Port::call`] with a descriptor the caller builds. Compiled
+    /// only for tests, so shipping code cannot send with a hand-built one.
+    #[cfg(feature = "test-seam")]
+    pub fn call_described(
+        &self,
+        descriptor: &Descriptor,
+        request: Request,
+    ) -> Result<Response, UsherError> {
+        self.send_described(descriptor, request)
+    }
+
+    fn send_described(
+        &self,
+        _descriptor: &Descriptor,
+        request: Request,
+    ) -> Result<Response, UsherError> {
         let _ = (&self.transport, &self.policy, request);
         Err(UsherError::new(
             "egress",
