@@ -463,10 +463,67 @@ fn a_tie_of_an_unreadable_source_and_a_deliverer_leaves_both_unknown_and_names_t
         ),
         other => panic!("expected unknown, got {other:?}"),
     }
-    assert!(
-        matches!(status_of(&listing, &twin), SourceStatus::Unknown { .. }),
-        "{:?}",
-        status_of(&listing, &twin)
+    assert_eq!(
+        status_of(&listing, &twin),
+        &SourceStatus::Unknown {
+            reason: format!(
+                "first-wins not decided: {} could not be read",
+                top.display()
+            ),
+        }
+    );
+    assert_eq!(
+        status_of(&listing, &middle),
+        &SourceStatus::Unknown {
+            reason: format!(
+                "first-wins not decided: {} could not be read",
+                top.display()
+            ),
+        }
+    );
+}
+
+/// Only sources that deliver can tie: two that deliver nothing drop out together, and the
+/// decision moves to the next rank down.
+#[test]
+fn a_tie_where_neither_member_delivers_moves_the_decision_down() {
+    let rig = Rig::new();
+    let top = rig.file(TOP, "{}");
+    let twin = rig.file(TWIN, r#"{"policyHelper":"h"}"#);
+    let low = rig.file(LOW, POLICY);
+    let listing = rig.list_with(&with_twin(2));
+    assert_eq!(listing.sources.len(), 3, "{:?}", listing.sources);
+    assert_eq!(
+        status_of(&listing, &top),
+        &unread("delivers no policy key: empty")
+    );
+    assert_eq!(
+        status_of(&listing, &twin),
+        &unread("delivers no policy key: only control keys")
+    );
+    assert_eq!(status_of(&listing, &low), &SourceStatus::InEffect);
+}
+
+/// An unreadable member that ties with one that delivers nothing is alone in the
+/// decision, so it follows the single-file rule and not the tie rule.
+#[test]
+fn a_tie_of_an_unreadable_source_and_an_empty_one_is_not_a_rank_tie() {
+    let rig = Rig::new();
+    let top = rig.file(TOP, "{ not json");
+    let twin = rig.file(TWIN, "{}");
+    let middle = rig.file(MIDDLE, POLICY);
+    let listing = rig.list_with(&with_twin(2));
+    assert_eq!(listing.sources.len(), 3, "{:?}", listing.sources);
+    match status_of(&listing, &top) {
+        SourceStatus::Unknown { reason } => assert!(
+            reason.contains("not valid JSON at line 1, column "),
+            "{reason}"
+        ),
+        other => panic!("expected unknown, got {other:?}"),
+    }
+    assert_eq!(
+        status_of(&listing, &twin),
+        &unread("delivers no policy key: empty")
     );
     assert_eq!(
         status_of(&listing, &middle),

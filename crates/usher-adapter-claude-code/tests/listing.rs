@@ -119,6 +119,18 @@ fn a_present_user_file_is_listed_in_effect_with_its_key_names_and_no_value() {
     );
 }
 
+/// Names come back sorted by name, whatever order the file wrote them in.
+#[test]
+fn key_names_are_sorted_by_name_not_by_file_order() {
+    let rig = Rig::new();
+    rig.user(r#"{"permissions":{},"model":"m"}"#);
+    let listing = rig.list(&rig.context(Some(VERSION), true));
+    match &listing.sources[0].keys {
+        KeyNames::Names { names, .. } => assert_eq!(names, &["model", "permissions"]),
+        other => panic!("expected names, got {other:?}"),
+    }
+}
+
 #[test]
 fn an_invalid_file_is_listed_with_a_reason_and_nothing_aborts() {
     let rig = Rig::new();
