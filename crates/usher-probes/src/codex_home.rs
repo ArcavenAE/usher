@@ -68,10 +68,11 @@ fn plain_file_name(name: &str) -> bool {
         && !name.contains(['/', '\\'])
 }
 
-/// A fresh codex home for a probe: a new directory under the scratch home that
-/// holds exactly the files the probe writes, as `(name, text)` pairs. A name
-/// with a path separator, or `auth.json`, is refused, and nothing already in
-/// the scratch codex home is carried over.
+/// The codex home for a probe: the scratch home's own codex home, which must be
+/// empty, written with exactly the files the probe gives, as `(name, text)`
+/// pairs. A name with a path separator, or `auth.json`, is refused, a codex
+/// home that already holds anything is refused, and a refused call writes
+/// nothing. Returns the directory, for `CODEX_HOME`.
 pub fn probe_home(scratch: &ScratchHome, files: &[(&str, &str)]) -> io::Result<PathBuf> {
     if let Some((name, _)) = files.iter().find(|(name, _)| !plain_file_name(name)) {
         return Err(io::Error::new(
@@ -79,9 +80,15 @@ pub fn probe_home(scratch: &ScratchHome, files: &[(&str, &str)]) -> io::Result<P
             format!("`{name}` is not a file name a probe home may hold"),
         ));
     }
-    let home = fresh_dir(scratch, "probe-codex-home")?;
+    let home = scratch.codex_home();
+    if fs::read_dir(home)?.next().is_some() {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "the scratch codex home already holds files, so it is not a fresh probe home",
+        ));
+    }
     for (name, text) in files {
         fs::write(home.join(name), text)?;
     }
-    Ok(home)
+    Ok(home.to_path_buf())
 }
