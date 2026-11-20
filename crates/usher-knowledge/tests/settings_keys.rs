@@ -274,7 +274,11 @@ fn a_key_path_is_names_joined_by_dots_and_no_star_appears() {
                 r#"settings_key = {{ key = "{bad}", merge = "list-merge", sensitive = false, scopes = ["any"] }}"#
             ),
         );
-        rejects(&text, &["demo.key-allow", "key", bad]);
+        if bad.contains('*') {
+            rejects(&text, &["demo.key-allow", "key", bad, "wildcard"]);
+        } else {
+            rejects(&text, &["demo.key-allow", "key", bad]);
+        }
     }
     accepts(&with(
         ALLOW,
@@ -626,4 +630,81 @@ fn the_seed_names_no_default_model_variable_as_an_override() {
         .filter_map(|item| item.settings_key())
         .any(|fact| fact.overrides().is_some());
     assert!(seen, "the seed names at least one override");
+}
+
+fn same_layers(scopes: &Scopes, want: &[SourceLayer]) -> bool {
+    match scopes {
+        Scopes::Layers(have) => {
+            have.len() == want.len() && want.iter().all(|layer| have.contains(layer))
+        }
+        _ => false,
+    }
+}
+
+/// Every seeded key's scope, as the vendor's settings reference gives it for that key
+/// (its "Scope" line). The autoMode arrays take the scope of the autoMode entry, which
+/// states one for the whole object. Compared as sets, so the written order is free.
+#[test]
+fn the_seed_gives_every_key_the_scope_the_settings_reference_states() {
+    use SourceLayer::{Managed, User};
+    let any = [
+        "permissions.allow",
+        "permissions.ask",
+        "permissions.deny",
+        "permissions.defaultMode",
+        "model",
+        "env",
+        "fallbackModel",
+        "availableModels",
+        "modelSettings",
+    ];
+    for key in any {
+        assert_eq!(seeded(key).scopes(), &Scopes::Any, "{key}");
+    }
+    for key in [
+        "autoMode.environment",
+        "autoMode.allow",
+        "autoMode.soft_deny",
+        "autoMode.hard_deny",
+        "autoMode.classifyAllShell",
+        "modelPicker",
+    ] {
+        assert!(
+            same_layers(seeded(key).scopes(), &[User, Managed]),
+            "{key}: {:?}",
+            seeded(key).scopes()
+        );
+    }
+    for key in [
+        "policyHelper",
+        "wslInheritsWindowsSettings",
+        "managedSourcesBehavior",
+    ] {
+        assert!(
+            same_layers(seeded(key).scopes(), &[Managed]),
+            "{key}: {:?}",
+            seeded(key).scopes()
+        );
+    }
+    assert_eq!(any.len() + 6 + 3, SEEDED_KEYS.len());
+}
+
+#[test]
+fn the_seed_cites_the_model_entry_of_the_settings_reference() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    let item = file
+        .items()
+        .iter()
+        .find(|item| {
+            item.harness() == "claude-code"
+                && item
+                    .settings_key()
+                    .is_some_and(|fact| fact.key() == "model")
+        })
+        .expect("the model item");
+    assert_eq!(item.reference().kind(), ReferenceKind::VendorDocs);
+    assert_eq!(
+        item.reference().locator(),
+        "https://code.claude.com/docs/en/settings-reference#model"
+    );
 }
