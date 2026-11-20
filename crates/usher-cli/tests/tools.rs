@@ -11,8 +11,8 @@ use usher_cli::{
     InventoryEnv, LaunchEnvironment, ToolsContext, read_brew, read_mise, read_tools, run, run_tools,
 };
 use usher_core::{
-    Hint, HintKind, InstallState, Installer, InstallerPaths, Reading, ToolRow, ToolSpec, Verdict,
-    render_rows,
+    BrewPaths, Hint, HintKind, InstallState, Installer, InstallerPaths, Reading, Recorded, ToolRow,
+    ToolSpec, Verdict, render_rows,
 };
 use usher_knowledge::Platform;
 use usher_testkit::{InstallerGuard, NamedHome, RealHomes, ScratchHome, observe};
@@ -29,22 +29,28 @@ impl Rig {
         let scratch = ScratchHome::new().expect("scratch");
         let root = scratch.root().to_path_buf();
         let paths = InstallerPaths {
-            brew_repository: root.join("brew"),
-            brew_prefix: root.join("brew"),
-            brew_cache: root.join("brew-cache"),
+            brew: Some(BrewPaths {
+                repository: root.join("brew"),
+                prefix: root.join("brew"),
+                cache: root.join("brew-cache"),
+            }),
             mise_data: root.join("mise/data"),
             mise_cache: root.join("mise/cache"),
             mise_state: root.join("mise/state"),
         };
-        fs::create_dir_all(&paths.brew_prefix).expect("brew prefix");
+        fs::create_dir_all(&paths.brew.as_ref().expect("brew").prefix).expect("brew prefix");
         fs::create_dir_all(&paths.mise_data).expect("mise data");
         Rig { scratch, paths }
     }
 
+    fn brew(&self) -> &BrewPaths {
+        self.paths.brew.as_ref().expect("brew paths")
+    }
+
     fn cellar(&self, formula: &str, version: &str) -> PathBuf {
         let dir = self
-            .paths
-            .brew_prefix
+            .brew()
+            .prefix
             .join("Cellar")
             .join(formula)
             .join(version);
@@ -67,7 +73,7 @@ impl Rig {
     }
 
     fn link(&self, formula: &str, version: &str) {
-        let dir = self.paths.brew_prefix.join("var/homebrew/linked");
+        let dir = self.brew().prefix.join("var/homebrew/linked");
         fs::create_dir_all(&dir).expect("linked dir");
         symlink(
             format!("../../../Cellar/{formula}/{version}"),
@@ -79,8 +85,8 @@ impl Rig {
     fn tap_formula(&self, tap: &str, sharded: bool, formula: &str) {
         let (org, name) = tap.split_once('/').expect("org/name");
         let mut dir = self
-            .paths
-            .brew_repository
+            .brew()
+            .repository
             .join("Library/Taps")
             .join(org)
             .join(format!("homebrew-{name}"))
@@ -108,11 +114,10 @@ impl Rig {
     }
 }
 
-fn spec(name: &str, installer: Installer, package: &str) -> ToolSpec {
+fn spec(name: &'static str, installer: Installer, package: &'static str) -> ToolSpec {
     ToolSpec {
-        name: name.to_string(),
-        installer,
-        package: package.to_string(),
+        name,
+        install: Some(Recorded { installer, package }),
     }
 }
 

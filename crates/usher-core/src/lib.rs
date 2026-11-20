@@ -25,8 +25,9 @@ pub use listing::{
     SourceLister, SourceListing, SourceStatus, SystemRoot,
 };
 pub use tools::{
-    Hint, HintKind, InstallState, Installer, InstallerPaths, Reading, ToolRow, ToolSpec, Verdict,
-    allowed_invocations, command_text, never_call, no_update_env, render_rows, tool_specs,
+    BrewPaths, Hint, HintKind, InstallState, Installer, InstallerPaths, Reading, Recorded, ToolRow,
+    ToolSpec, Verdict, allowed_invocations, command_text, never_call, no_update_env, render_rows,
+    tool_specs,
 };
 
 /// The one error type every usher surface reports through.

@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use usher_core::{
-    Hint, HintKind, InstallState, Installer, InstallerPaths, Reading, ToolRow, Verdict,
+    BrewPaths, Hint, HintKind, InstallState, Installer, InstallerPaths, Reading, ToolRow, Verdict,
     allowed_invocations, command_text, never_call, no_update_env, render_rows,
 };
 
@@ -231,6 +231,10 @@ fn resolve(env: &[(&str, &str)], existing: &[&str], macos: bool) -> InstallerPat
     InstallerPaths::resolve(get, exists, macos)
 }
 
+fn brew(paths: &InstallerPaths) -> &BrewPaths {
+    paths.brew.as_ref().expect("brew paths were found")
+}
+
 fn p(text: &str) -> PathBuf {
     PathBuf::from(text)
 }
@@ -247,9 +251,9 @@ fn brew_paths_come_from_the_environment_when_it_is_absolute() {
         &["/opt/homebrew"],
         true,
     );
-    assert_eq!(paths.brew_repository, p("/b/repo"));
-    assert_eq!(paths.brew_prefix, p("/b/prefix"));
-    assert_eq!(paths.brew_cache, p("/b/cache"));
+    assert_eq!(brew(&paths).repository, p("/b/repo"));
+    assert_eq!(brew(&paths).prefix, p("/b/prefix"));
+    assert_eq!(brew(&paths).cache, p("/b/cache"));
 }
 
 #[test]
@@ -259,33 +263,33 @@ fn a_relative_brew_variable_is_ignored() {
         &["/opt/homebrew"],
         true,
     );
-    assert_eq!(paths.brew_repository, p("/opt/homebrew"));
+    assert_eq!(brew(&paths).repository, p("/opt/homebrew"));
 }
 
 #[test]
 fn brew_falls_back_to_the_first_fixed_location_that_exists() {
     let apple = resolve(&[("HOME", "/h")], &["/opt/homebrew"], true);
-    assert_eq!(apple.brew_repository, p("/opt/homebrew"));
-    assert_eq!(apple.brew_prefix, p("/opt/homebrew"));
+    assert_eq!(brew(&apple).repository, p("/opt/homebrew"));
+    assert_eq!(brew(&apple).prefix, p("/opt/homebrew"));
 
     let intel = resolve(&[("HOME", "/h")], &["/usr/local/Homebrew"], true);
-    assert_eq!(intel.brew_repository, p("/usr/local/Homebrew"));
-    assert_eq!(intel.brew_prefix, p("/usr/local"));
+    assert_eq!(brew(&intel).repository, p("/usr/local/Homebrew"));
+    assert_eq!(brew(&intel).prefix, p("/usr/local"));
 
     let both = resolve(
         &[("HOME", "/h")],
         &["/opt/homebrew", "/usr/local/Homebrew"],
         true,
     );
-    assert_eq!(both.brew_repository, p("/opt/homebrew"));
+    assert_eq!(brew(&both).repository, p("/opt/homebrew"));
 }
 
 #[test]
 fn the_brew_cache_defaults_by_platform() {
     let mac = resolve(&[("HOME", "/h")], &["/opt/homebrew"], true);
-    assert_eq!(mac.brew_cache, p("/h/Library/Caches/Homebrew"));
+    assert_eq!(brew(&mac).cache, p("/h/Library/Caches/Homebrew"));
     let linux = resolve(&[("HOME", "/h")], &["/opt/homebrew"], false);
-    assert_eq!(linux.brew_cache, p("/h/.cache/Homebrew"));
+    assert_eq!(brew(&linux).cache, p("/h/.cache/Homebrew"));
 }
 
 #[test]

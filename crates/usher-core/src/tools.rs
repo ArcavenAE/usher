@@ -25,15 +25,23 @@ impl Installer {
     }
 }
 
-/// One tool to look for: its name, the installer that owns it and its package name there.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ToolSpec {
-    /// The name shown to the person.
-    pub name: String,
+/// An installer and the package name it knows a tool by, as recorded for one tool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Recorded {
     /// The installer that owns the tool.
     pub installer: Installer,
     /// The package name the installer knows it by.
-    pub package: String,
+    pub package: &'static str,
+}
+
+/// One tool to look for: its name and, where one is recorded, its installer. An entry
+/// with no recorded installer is never looked up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ToolSpec {
+    /// The name shown to the person.
+    pub name: &'static str,
+    /// The recorded install, if any.
+    pub install: Option<Recorded>,
 }
 
 /// The tools usher looks for. One function, so where the list lives can change without
@@ -47,8 +55,10 @@ pub fn tool_specs() -> Vec<ToolSpec> {
 pub enum InstallState {
     /// Found.
     Installed,
-    /// Not found.
+    /// Looked for and not found.
     Missing,
+    /// Not looked for, because no installer is recorded.
+    NoInstaller,
 }
 
 /// A version as read, or why it is not known.
@@ -58,6 +68,8 @@ pub enum Reading {
     Known(String),
     /// Not known, and why.
     Unknown(String),
+    /// Looked for and found nothing.
+    None,
 }
 
 /// Whether a tool is behind its source.
@@ -114,15 +126,22 @@ pub struct ToolRow {
     pub hint: Option<Hint>,
 }
 
+/// Where Homebrew keeps its state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BrewPaths {
+    /// The Homebrew repository.
+    pub repository: PathBuf,
+    /// The Homebrew prefix (holds `Cellar` and `opt`).
+    pub prefix: PathBuf,
+    /// The Homebrew cache.
+    pub cache: PathBuf,
+}
+
 /// Where each installer keeps its state, found without running the installer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallerPaths {
-    /// The Homebrew repository.
-    pub brew_repository: PathBuf,
-    /// The Homebrew prefix (holds `Cellar`).
-    pub brew_prefix: PathBuf,
-    /// The Homebrew cache.
-    pub brew_cache: PathBuf,
+    /// Homebrew's paths, or none when brew is not found.
+    pub brew: Option<BrewPaths>,
     /// The mise data directory (holds `installs` and `shims`).
     pub mise_data: PathBuf,
     /// The mise cache directory.
@@ -141,9 +160,7 @@ impl InstallerPaths {
     ) -> Self {
         let _ = (get, exists, macos);
         Self {
-            brew_repository: PathBuf::new(),
-            brew_prefix: PathBuf::new(),
-            brew_cache: PathBuf::new(),
+            brew: None,
             mise_data: PathBuf::new(),
             mise_cache: PathBuf::new(),
             mise_state: PathBuf::new(),

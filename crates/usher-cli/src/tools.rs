@@ -30,7 +30,8 @@ pub fn read_mise(spec: &ToolSpec, paths: &InstallerPaths) -> Vec<ToolRow> {
     Vec::new()
 }
 
-/// Reads every tool from the installer that owns it.
+/// Reads every tool from the installer that owns it, one row per installed entry of a
+/// name, or one row for a name with none installed.
 pub fn read_tools(specs: &[ToolSpec], paths: &InstallerPaths) -> Vec<ToolRow> {
     let _ = (specs, paths);
     Vec::new()
