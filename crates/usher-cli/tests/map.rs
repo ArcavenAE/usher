@@ -132,8 +132,13 @@ fn last_run_settings(env: &InventoryEnv) -> Vec<usher_store::SettingRow> {
 
 // ---- the printed map ---------------------------------------------------------------------
 
-/// The layout of a setting row is its own; what is pinned is that one line carries the key,
-/// the status words, the value and the file.
+/// One reading is one line: key path, status words, the value when there is one,
+/// `(<layer>: <file>)`, then `; <note>` when there is a note. Fields are two spaces apart;
+/// a list entry adds `[<index>]` after the key path; a string value prints without quotes
+/// and any other value prints as compact JSON.
+///
+/// Provisional: the row layout and the values shown rest on choices the operator has not
+/// finally settled, so a change there is expected to edit this test.
 #[test]
 fn a_setting_in_effect_prints_its_status_value_and_file_on_one_line() {
     let rig = Rig::new();
@@ -143,26 +148,100 @@ fn a_setting_in_effect_prints_its_status_value_and_file_on_one_line() {
     assert!(line.contains("model"), "{line}");
     assert!(line.contains(ReadingStatus::InEffect.display()), "{line}");
     assert!(line.contains(&file.display().to_string()), "{line}");
+    let expected = format!(
+        "model  {}  project-model  (project: {})",
+        ReadingStatus::InEffect.display(),
+        file.display()
+    );
+    assert_eq!(line.trim(), expected, "{out}");
 }
 
-/// The 1.5 sources block comes first and is the same text; the settings block follows it.
+/// A list entry carries its index right after the key path.
+///
+/// Provisional: as above, the row layout is not final.
 #[test]
-fn the_sources_block_comes_first_and_the_settings_block_follows() {
+fn a_list_entry_prints_its_index_after_the_key_path() {
     let rig = Rig::new();
-    let user = rig.write(&rig.user_file(), r#"{"model": "user-model"}"#);
-    let other = Rig::new();
-    other.write(&other.user_file(), r#"{"model": "user-model"}"#);
-    let inventory_text =
-        inventory(&other.env(), SystemRoot::at(other.system.clone())).expect("an inventory");
-    let first = inventory_text.lines().next().expect("a stamp line");
+    let file = rig.write(
+        &rig.user_file(),
+        r#"{"autoMode": {"allow": ["first", "second"]}}"#,
+    );
     let out = rig.map(&rig.env());
-    assert_eq!(out.lines().next(), Some(first), "{out}");
-    let source_line = out.find(&user.display().to_string()).expect("a source row");
-    let setting_line = out.find("user-model").expect("a setting row");
-    assert!(source_line < setting_line, "{out}");
+    let line = line_with(&out, "second");
+    let expected = format!(
+        "autoMode.allow[1]  {}  second  (user: {})",
+        ReadingStatus::InEffect.display(),
+        file.display()
+    );
+    assert_eq!(line.trim(), expected, "{out}");
+}
+
+/// A value that is not a string prints as compact JSON.
+///
+/// Provisional: as above, and it rests on which keys are listed by default.
+#[test]
+fn a_value_that_is_not_a_string_prints_as_compact_json() {
+    let rig = Rig::new();
+    let file = rig.write(
+        &rig.system.join("etc/claude-code/managed-settings.json"),
+        r#"{"wslInheritsWindowsSettings": true}"#,
+    );
+    let out = rig.map(&rig.env());
+    let line = line_with(&out, "wslInheritsWindowsSettings  ");
+    let expected = format!(
+        "wslInheritsWindowsSettings  {}  true  (managed: {})",
+        ReadingStatus::InEffect.display(),
+        file.display()
+    );
+    assert_eq!(line.trim(), expected, "{out}");
+}
+
+/// The first block of `usher map` is the text `usher inventory` prints for the same
+/// environment, byte for byte, seat block included; the settings block follows it. The run
+/// records the same sources and seat rows an inventory run records.
+#[test]
+fn the_map_starts_with_the_whole_inventory_text_and_records_the_same_sources_and_seat() {
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"model": "user-model"}"#);
+    let env = rig.env();
+    let inventory_text = inventory(&env, SystemRoot::at(rig.system.clone())).expect("an inventory");
+    let out = rig.map(&env);
+    assert!(
+        out.starts_with(&inventory_text),
+        "the map does not start with the inventory text.\n--- inventory:\n{inventory_text}\n--- map:\n{out}"
+    );
+    let rest = &out[inventory_text.len()..];
+    assert!(rest.contains("user-model"), "the settings follow:\n{out}");
+    let store = Store::open(&env.state_dir).expect("the store opens");
+    let runs = store.runs().expect("runs");
+    assert_eq!(runs.len(), 2, "{runs:?}");
+    assert_eq!(
+        (runs[0].verb.as_str(), runs[1].verb.as_str()),
+        ("inventory", "map")
+    );
+    let seat_of = |id| store.seat_of(id).expect("seat rows");
+    assert!(
+        !seat_of(runs[0].id).is_empty(),
+        "the rig records a seat block"
+    );
+    assert_eq!(seat_of(runs[0].id), seat_of(runs[1].id));
+    let sources_of = |id| {
+        store
+            .sources_of(id)
+            .expect("sources")
+            .into_iter()
+            .map(|mut row| {
+                row.run_id = 0;
+                row
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(sources_of(runs[0].id), sources_of(runs[1].id));
 }
 
 /// A command line `usher map <dir>` runs the verb; a missing directory is a named refusal.
+///
+/// Provisional: it looks for a printed value of a default key.
 #[test]
 fn run_dispatches_map_with_a_directory_and_refuses_it_without_one() {
     let rig = Rig::new();
@@ -182,6 +261,8 @@ fn run_dispatches_map_with_a_directory_and_refuses_it_without_one() {
 // ---- the footer --------------------------------------------------------------------------
 
 /// The reader names what it does not observe as data; the verb renders each as text.
+///
+/// Provisional: the footer wording is not final.
 #[test]
 fn the_footer_says_what_the_map_does_not_observe() {
     let rig = Rig::new();
@@ -195,8 +276,33 @@ fn the_footer_says_what_the_map_does_not_observe() {
         assert!(out.contains(text), "`{text}` is missing from:\n{out}");
     }
     assert!(!out.contains("built-in classifier rules"), "{out}");
+    assert!(
+        out.contains(
+            "an organization default model is not observed; if an admin set one, it applies over `model` in user, project and local settings"
+        ),
+        "the organization default model text is missing, with `model` listed:\n{out}"
+    );
 }
 
+/// A source whose layer is not in the settings stack gives no rows, and the footer says so
+/// by the layer's name.
+///
+/// Provisional: the footer wording is not final.
+#[test]
+fn the_footer_names_a_source_whose_layer_is_not_in_the_settings_stack() {
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"model": "m"}"#);
+    rig.write(&rig.scratch.home().join(".claude.json"), "{}");
+    let out = rig.map(&rig.env());
+    assert!(
+        out.contains(
+            "global-state is not a layer of the settings stack, so its file gives no map rows"
+        ),
+        "{out}"
+    );
+}
+
+/// Provisional: the footer wording is not final.
 #[test]
 fn the_classifier_line_is_printed_only_when_an_auto_mode_list_entry_is_in_effect() {
     let rig = Rig::new();
@@ -230,7 +336,10 @@ fn one_map_records_one_run_with_the_map_verb_its_sources_and_its_readings() {
     );
     assert!(!store.sources_of(runs[0].id).expect("sources").is_empty());
     let rows = store.settings_of(runs[0].id).expect("settings");
-    let model = rows.iter().find(|r| r.key == "model").expect("a model row");
+    let model = rows
+        .iter()
+        .find(|r| r.key == r#"["model"]"#)
+        .expect("a model row, keyed as a JSON array of segments");
     assert_eq!(model.layer, "user");
     assert_eq!(model.status, ReadingStatus::InEffect.token());
     assert_eq!(model.method, "rebuilt");
@@ -345,6 +454,9 @@ fn stored_check_list(state_dir: &Path) -> Vec<String> {
 
 /// A unique token in an `env` value, in an unlisted key and under a credential key appears
 /// in neither the output nor any file the run stored.
+///
+/// Provisional: it looks for printed names, which rest on the row layout and the default
+/// key list.
 #[test]
 fn canaries_reach_neither_the_output_nor_the_store() {
     let rig = Rig::new();
@@ -377,19 +489,22 @@ fn an_env_reading_is_stored_as_value_not_read_with_no_value() {
     let rows = last_run_settings(&env);
     let row = rows
         .iter()
-        .find(|r| r.key == "env.FLEET_TOKEN")
+        .find(|r| r.key == r#"["env","FLEET_TOKEN"]"#)
         .unwrap_or_else(|| panic!("no env.FLEET_TOKEN row in {rows:?}"));
     assert_eq!(row.status, ReadingStatus::ValueNotRead.token());
     assert_eq!(row.value_text, None);
     assert!(
         rows.iter()
-            .all(|r| r.value_text.is_none() || r.key != "env")
+            .all(|r| r.value_text.is_none() || r.key != r#"["env"]"#)
     );
     assert_nowhere(&rig, &env, &out, "canary-stored-token");
 }
 
-/// A segment that holds a dot is one segment: it prints as a JSON string, and it never
-/// collides in the store with the same text as two segments.
+/// A segment that holds a dot is one segment: it prints as a JSON string, and the store
+/// keeps the segments as a JSON array, so it never collides with the same text as two
+/// segments.
+///
+/// Provisional: the printed form rests on the row layout, which is not final.
 #[test]
 fn a_dotted_segment_is_one_segment_in_the_output_and_the_store() {
     let rig = Rig::new();
@@ -407,10 +522,13 @@ fn a_dotted_segment_is_one_segment_in_the_output_and_the_store() {
         .iter()
         .find(|r| r.layer == "project" && r.key.contains('b'))
         .expect("the two-segment row");
-    assert_ne!(dotted.key, split.key, "{rows:?}");
+    assert_eq!(dotted.key, r#"["a","b.c"]"#, "{rows:?}");
+    assert_eq!(split.key, r#"["a","b","c"]"#, "{rows:?}");
 }
 
 /// A credential key at the top of a file is listed by name with nothing under it.
+///
+/// Provisional: it rests on the row layout and the default key list.
 #[test]
 fn a_top_level_credential_key_is_listed_by_name_and_nothing_under_it_is_printed() {
     let rig = Rig::new();
