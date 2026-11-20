@@ -311,6 +311,8 @@ pub enum SeatRead {
     Names,
     /// The presence of the listed environment variables.
     Env,
+    /// Whether a JSON file's top-level object has each listed key, nothing under it read.
+    KeysPresent,
 }
 
 /// What harness knowledge says about one part of the seat.
@@ -343,6 +345,11 @@ impl SeatFact {
     /// The key paths whose names are read, `*` standing for one level.
     pub fn key_paths(&self) -> &[String] {
         &self.key_paths
+    }
+
+    /// The top-level keys whose membership is read.
+    pub fn keys(&self) -> &[String] {
+        &[]
     }
 
     /// The environment variables whose presence is read.

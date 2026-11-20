@@ -441,3 +441,123 @@ fn a_seat_item_needs_its_reference_and_its_date() {
     );
     rejects(&no_date, &["demo.seat-packs", "last_verified"]);
 }
+
+// keys-present: whether a top-level key is a member of a JSON file's top-level object,
+// the one place a credential key may be named. It never reads under the key.
+
+const ACCOUNT_ITEM: &str = r#"
+[[item]]
+id = "demo.seat-account"
+harness = "demo"
+layer = "slow"
+class = "seat"
+versions = ">=1.0.0, <2.0.0"
+summary = "Whether the global state file carries the account key."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/account" }
+last_verified = 2026-11-20
+seat = { part = "auth-route", path = "${HOME}/.demo.json", read = "keys-present", keys = ["oauthAccount"] }
+"#;
+
+const ACCOUNT: &str = r#"seat = { part = "auth-route", path = "${HOME}/.demo.json", read = "keys-present", keys = ["oauthAccount"] }"#;
+
+fn with_account(seat: &str) -> String {
+    format!("{FILE}{}", ACCOUNT_ITEM.replace(ACCOUNT, seat))
+}
+
+#[test]
+fn keys_present_naming_the_account_key_parses_and_reads_back() {
+    let file = KnowledgeFile::parse(&with_account(ACCOUNT)).expect("a valid file");
+    let account = file.items()[5].seat().expect("the account seat fact");
+    assert_eq!(account.part(), SeatPart::AuthRoute);
+    assert_eq!(account.read(), SeatRead::KeysPresent);
+    assert_eq!(account.path(), Some("${HOME}/.demo.json"));
+    assert_eq!(account.keys(), ["oauthAccount"]);
+    assert!(account.key_paths().is_empty());
+    assert!(account.variables().is_empty());
+    let mcp = file.items()[0].seat().expect("mcp");
+    assert!(mcp.keys().is_empty());
+}
+
+#[test]
+fn a_key_path_into_the_account_key_is_still_refused_beside_a_keys_present_item() {
+    for bad in [
+        "oauthAccount",
+        "oauthAccount.*",
+        "oauthAccount.emailAddress",
+    ] {
+        let seat = format!(
+            r#"seat = {{ part = "mcp", path = "${{HOME}}/.demo.json", read = "names", key_paths = ["{bad}"] }}"#
+        );
+        let text = format!("{}{ACCOUNT_ITEM}", FILE.replace(MCP, &seat));
+        rejects(&text, &["demo.seat-mcp", "key_paths", bad]);
+    }
+}
+
+#[test]
+fn keys_are_plain_unique_top_level_names() {
+    for bad in [
+        r#"["oauthAccount.x"]"#,
+        r#"["oauthAccount", "oauthAccount"]"#,
+        r#"["a.b"]"#,
+        r#"["*"]"#,
+        r#"["a*"]"#,
+        r#"[""]"#,
+        "[]",
+    ] {
+        let seat = format!(
+            r#"seat = {{ part = "auth-route", path = "${{HOME}}/.demo.json", read = "keys-present", keys = {bad} }}"#
+        );
+        rejects(&with_account(&seat), &["demo.seat-account", "keys"]);
+    }
+    let missing =
+        r#"seat = { part = "auth-route", path = "${HOME}/.demo.json", read = "keys-present" }"#;
+    rejects(&with_account(missing), &["demo.seat-account", "keys"]);
+    accepts(&with_account(
+        r#"seat = { part = "auth-route", path = "${HOME}/.demo.json", read = "keys-present", keys = ["hasCompletedOnboarding", "oauthAccount"] }"#,
+    ));
+}
+
+#[test]
+fn keys_belong_to_keys_present_and_keys_present_takes_nothing_else() {
+    let on_names = with(
+        MCP,
+        r#"seat = { part = "mcp", path = "${HOME}/.demo.json", read = "names", key_paths = ["mcpServers.*"], keys = ["oauthAccount"] }"#,
+    );
+    rejects(&on_names, &["demo.seat-mcp", "keys"]);
+    let on_presence = with(
+        TOOLCHAIN,
+        r#"seat = { part = "toolchain", path = "${REPO}/mise.toml", read = "presence", keys = ["x"] }"#,
+    );
+    rejects(&on_presence, &["demo.seat-toolchain", "keys"]);
+    for extra in [r#"key_paths = ["a"]"#, r#"variables = ["DEMO_API_KEY"]"#] {
+        let seat = format!(
+            r#"seat = {{ part = "auth-route", path = "${{HOME}}/.demo.json", read = "keys-present", keys = ["oauthAccount"], {extra} }}"#
+        );
+        rejects(&with_account(&seat), &["demo.seat-account", "keys-present"]);
+    }
+    let no_path =
+        r#"seat = { part = "auth-route", read = "keys-present", keys = ["oauthAccount"] }"#;
+    rejects(&with_account(no_path), &["demo.seat-account", "path"]);
+}
+
+#[test]
+fn keys_present_reads_only_a_file_another_item_already_names() {
+    let unnamed = r#"seat = { part = "auth-route", path = "${HOME}/.other.json", read = "keys-present", keys = ["oauthAccount"] }"#;
+    rejects(
+        &with_account(unnamed),
+        &["demo.seat-account", "${HOME}/.other.json"],
+    );
+    let source = r#"
+[[item]]
+id = "demo.source-state"
+harness = "demo"
+layer = "slow"
+class = "sources"
+versions = ">=1.0.0, <2.0.0"
+summary = "The other state file."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/state" }
+last_verified = 2026-11-20
+source = { path = "${HOME}/.other.json", layer = "user", read = "read", rank = 1, always_present = false }
+"#;
+    accepts(&format!("{}{source}", with_account(unnamed)));
+}
