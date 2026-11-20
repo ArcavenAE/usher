@@ -9,12 +9,14 @@ use std::{error::Error, fmt};
 
 mod environment;
 mod listing;
+mod version;
 
 pub use environment::{EnvironmentKey, environment_key, key_variables};
 pub use listing::{
     AbsentLayer, CheckedPath, KeyNames, LaunchContext, ListedSource, NotCheckedLayer, SeatLine,
     SourceLister, SourceListing, SourceStatus, SystemRoot,
 };
+pub use version::{Version, VersionRange};
 
 /// The one error type every usher surface reports through.
 ///
