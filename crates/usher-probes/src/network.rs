@@ -1,7 +1,6 @@
 //! Running a harness with the network denied except localhost.
 
-use std::io;
-use std::process::Output;
+use std::{io, process::Output};
 
 use usher_testkit::ScratchHome;
 

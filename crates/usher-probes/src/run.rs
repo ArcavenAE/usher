@@ -1,8 +1,6 @@
 //! The probe runner: find the harness, check the control, then the claim.
 
-use std::ffi::OsStr;
-use std::fmt;
-use std::path::PathBuf;
+use std::{ffi::OsStr, fmt, path::PathBuf};
 
 use usher_testkit::ScratchHome;
 

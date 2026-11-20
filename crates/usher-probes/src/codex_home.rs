@@ -1,8 +1,10 @@
 //! A scratch copy of a codex home: config files only, never credentials,
 //! removed when dropped.
 
-use std::io;
-use std::path::{Path, PathBuf};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 use usher_testkit::ScratchHome;
 
