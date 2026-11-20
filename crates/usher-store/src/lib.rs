@@ -15,7 +15,7 @@ use usher_core::UsherError;
 const DB_FILE: &str = "usher.db";
 
 /// The schema version this build writes and reads.
-const USER_VERSION: i64 = 1;
+const USER_VERSION: i64 = 2;
 
 /// How long a connection waits on a locked database.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -56,6 +56,26 @@ BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
 CREATE TRIGGER inventory_source_no_update BEFORE UPDATE ON inventory_source
 BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
 CREATE TRIGGER inventory_source_no_delete BEFORE DELETE ON inventory_source
+BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
+";
+
+/// Version 2: the seat lines of a run. One row per seat item: its part, whether the file or
+/// directory exists (null for an environment read and for an item that could not be
+/// checked), the names found as JSON arrays of path segments, the (name, present) pairs of
+/// an environment or keys-present read, and the reason an item could not be checked.
+const SEAT_SCHEMA: &str = "
+CREATE TABLE inventory_seat (
+    run_id INTEGER NOT NULL REFERENCES inventory_run(id),
+    part TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    present INTEGER CHECK (present IS NULL OR present IN (0, 1)),
+    names TEXT NOT NULL,
+    members TEXT NOT NULL,
+    note TEXT
+);
+CREATE TRIGGER inventory_seat_no_update BEFORE UPDATE ON inventory_seat
+BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
+CREATE TRIGGER inventory_seat_no_delete BEFORE DELETE ON inventory_seat
 BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
 ";
 
@@ -463,7 +483,9 @@ fn create_schema(conn: &Connection, db_path: &Path) -> Result<(), UsherError> {
         if rows > 0 {
             return Ok(false);
         }
-        conn.execute_batch(&format!("{SCHEMA}PRAGMA user_version = {USER_VERSION};"))?;
+        conn.execute_batch(&format!(
+            "{SCHEMA}{SEAT_SCHEMA}PRAGMA user_version = {USER_VERSION};"
+        ))?;
         Ok(true)
     })();
     match result {
@@ -476,6 +498,35 @@ fn create_schema(conn: &Connection, db_path: &Path) -> Result<(), UsherError> {
         }
         Err(err) => {
             // As above: the connection is dropped with the error, so a failed ROLLBACK changes nothing.
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(step(&err))
+        }
+    }
+}
+
+/// Moves a version 1 store to version 2 in one transaction under the write lock: the seat
+/// table and its triggers are created and the version is set, or nothing changes. The
+/// version is read again inside the lock, so two opens at once both succeed and the second
+/// finds version 2.
+fn migrate_to_current(conn: &Connection) -> Result<(), UsherError> {
+    let step = |err: &rusqlite::Error| db_error("move the inventory tables to version 2", err);
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|err| step(&err))?;
+    let result = (|| -> Result<(), rusqlite::Error> {
+        let now: i64 = conn.query_row("SELECT user_version FROM pragma_user_version", [], |r| {
+            r.get(0)
+        })?;
+        if now == 1 {
+            conn.execute_batch(&format!(
+                "{SEAT_SCHEMA}PRAGMA user_version = {USER_VERSION};"
+            ))?;
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => conn.execute_batch("COMMIT").map_err(|err| step(&err)),
+        Err(err) => {
+            // The connection is dropped with the error, so a failed ROLLBACK changes nothing.
             let _ = conn.execute_batch("ROLLBACK");
             Err(step(&err))
         }
@@ -547,6 +598,8 @@ impl Store {
             .map_err(|err| db_error("turn on foreign keys", &err))?;
         if version == 0 {
             create_schema(&conn, &db_path)?;
+        } else if version < USER_VERSION {
+            migrate_to_current(&conn)?;
         }
         Ok(Self { conn })
     }
