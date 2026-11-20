@@ -260,16 +260,29 @@ fn run_or_panic_returns_the_fragment_when_the_probe_ran() {
     assert!(fragment.render().contains(r#"version = "1.2.3""#));
 }
 
+// Meaning change (Q6): the probe home is no longer a fresh directory beside
+// the scratch codex home. It is the scratch codex home itself, written only
+// when it is empty, so what was in it can never leak into a probe.
 #[test]
-fn a_codex_probe_home_holds_only_the_files_the_probe_wrote() {
+fn a_codex_probe_home_is_the_empty_scratch_codex_home_holding_only_the_files_the_probe_wrote() {
     let scratch = ScratchHome::new().expect("scratch home");
-    // Anything already in the scratch codex home must not leak into the probe.
-    std::fs::create_dir_all(scratch.codex_home().join("sessions")).expect("stray dirs");
-    std::fs::write(scratch.codex_home().join("auth.json"), "{}").expect("stray auth");
-    std::fs::write(scratch.codex_home().join("history.jsonl"), "{}").expect("stray history");
+    assert_eq!(
+        std::fs::read_dir(scratch.codex_home())
+            .expect("the scratch codex home")
+            .count(),
+        0,
+        "control: the scratch codex home starts empty"
+    );
 
-    let home =
-        probe_home(&scratch, &[("config.toml", "model = \"demo\"\n")]).expect("a probe home");
+    let home = probe_home(
+        &scratch,
+        &[
+            ("config.toml", "model = \"demo\"\n"),
+            ("extra.toml", "x = 1\n"),
+        ],
+    )
+    .expect("a probe home");
+    assert_eq!(home, scratch.codex_home());
     let mut names: Vec<String> = std::fs::read_dir(&home)
         .expect("probe home dir")
         .map(|entry| {
@@ -281,28 +294,65 @@ fn a_codex_probe_home_holds_only_the_files_the_probe_wrote() {
         })
         .collect();
     names.sort();
-    assert_eq!(names, ["config.toml"]);
+    assert_eq!(names, ["config.toml", "extra.toml"]);
     assert_eq!(
         std::fs::read_to_string(home.join("config.toml")).expect("written config"),
         "model = \"demo\"\n"
     );
-    assert!(
-        home.starts_with(scratch.root()),
-        "the probe home is outside the scratch root"
-    );
 }
 
 #[test]
-fn a_probe_home_refuses_credentials_and_names_that_leave_the_directory() {
+fn a_codex_probe_home_is_refused_when_the_scratch_codex_home_is_not_empty() {
     let scratch = ScratchHome::new().expect("scratch home");
+    // Control: the same call on an empty scratch codex home is accepted.
+    let clean = ScratchHome::new().expect("a second scratch home");
+    assert!(probe_home(&clean, &[("config.toml", "x = 1\n")]).is_ok());
+
+    for stray in ["auth.json", "history.jsonl", "config.toml"] {
+        let scratch_with_stray = ScratchHome::new().expect("scratch home");
+        std::fs::write(scratch_with_stray.codex_home().join(stray), "{}").expect("a stray file");
+        let result = probe_home(&scratch_with_stray, &[("model.toml", "x = 1\n")]);
+        assert!(result.is_err(), "a stray `{stray}` was not refused");
+        // The stray stays as it was and the probe wrote nothing beside it.
+        let names: Vec<String> = std::fs::read_dir(scratch_with_stray.codex_home())
+            .expect("the codex home")
+            .map(|entry| {
+                entry
+                    .expect("entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        assert_eq!(names, [stray], "the refused call touched the codex home");
+    }
+    // A stray directory counts too.
+    std::fs::create_dir_all(scratch.codex_home().join("sessions")).expect("stray dir");
+    assert!(probe_home(&scratch, &[("config.toml", "x = 1\n")]).is_err());
+}
+
+// Meaning change (Q6): each name is tried on its own scratch home, because a
+// second call on a written codex home is now refused for being non-empty and
+// would hide whether the name was the reason.
+#[test]
+fn a_probe_home_refuses_credentials_and_names_that_leave_the_directory() {
+    let control = ScratchHome::new().expect("scratch home");
     assert!(
-        probe_home(&scratch, &[("config.toml", "x = 1\n")]).is_ok(),
+        probe_home(&control, &[("config.toml", "x = 1\n")]).is_ok(),
         "control: a plain config file is accepted"
     );
     for name in ["auth.json", "../escape.toml", "sub/config.toml", ""] {
+        let scratch = ScratchHome::new().expect("scratch home");
         assert!(
             probe_home(&scratch, &[(name, "x = 1\n")]).is_err(),
             "`{name}` must be refused"
+        );
+        assert_eq!(
+            std::fs::read_dir(scratch.codex_home())
+                .expect("the codex home")
+                .count(),
+            0,
+            "a refused `{name}` left a file in the codex home"
         );
     }
 }
