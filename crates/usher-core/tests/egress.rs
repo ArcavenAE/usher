@@ -619,6 +619,7 @@ fn a_percent_sign_or_dot_segment_in_a_path_value_is_refused_naming_the_field_and
         let err = port(&transport)
             .call(Request::new(Egress::KnowledgeUpdate).with("file", value))
             .expect_err("a percent sign or a dot segment must fail");
+        assert_eq!(err.step(), "send knowledge-update", "{value:?}");
         assert!(
             err.to_string().contains("file"),
             "{value:?}: the error names the field: {err}"
