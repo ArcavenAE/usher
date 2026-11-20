@@ -16,7 +16,8 @@ class = "paths"
 versions = ">=2.1.317, <3.0.0"
 summary = "CLAUDE_CONFIG_DIR relocates the user config home."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/env-vars" }
-last_verified = 2026-11-02
+last_verified = 2026-11-20
+variable = { name = "CLAUDE_CONFIG_DIR", binds = "${CONFIG_DIR}", default = "${HOME}/.claude" }
 
 [[item]]
 id = "claude-code.source-managed-file"
@@ -27,7 +28,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "The managed settings file on macOS. Managed sources are first-wins; the file ranks below server-managed and MDM delivery."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/managed-settings" }
 last_verified = 2026-11-15
-source = { path = "/Library/Application Support/ClaudeCode/managed-settings.json", layer = "managed", read = "first-wins", rank = 3, always_present = false }
+source = { path = "/Library/Application Support/ClaudeCode/managed-settings.json", layer = "managed", read = "first-wins", rank = 3, always_present = false, platforms = ["macos"] }
 
 [[item]]
 id = "claude-code.source-managed-file-linux"
@@ -38,7 +39,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "The managed settings file on Linux and WSL; same tier and rank as the macOS file. The Windows path is not listed yet."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/managed-settings" }
 last_verified = 2026-11-15
-source = { path = "/etc/claude-code/managed-settings.json", layer = "managed", read = "first-wins", rank = 3, always_present = false }
+source = { path = "/etc/claude-code/managed-settings.json", layer = "managed", read = "first-wins", rank = 3, always_present = false, platforms = ["linux"] }
 
 [[item]]
 id = "claude-code.source-user-settings"

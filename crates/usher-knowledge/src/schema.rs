@@ -228,6 +228,7 @@ pub struct SourceFact {
     read: ReadRule,
     rank: u32,
     always_present: bool,
+    platforms: Option<Vec<Platform>>,
 }
 
 /// An operating system a source is read on. WSL counts as Linux.
@@ -245,7 +246,7 @@ pub enum Platform {
 impl SourceFact {
     /// The platforms the source is read on; `None` means every platform.
     pub fn platforms(&self) -> Option<&[Platform]> {
-        None
+        self.platforms.as_deref()
     }
 
     /// Whether the layer always exists on a platform, so its absence is named.
@@ -290,6 +291,7 @@ pub struct Item {
     source: Option<SourceFact>,
     keys: Vec<String>,
     version_from: Option<VersionFrom>,
+    variable: Option<LaunchVariable>,
 }
 
 /// How a harness version is read from disk without running the harness.
@@ -382,7 +384,7 @@ impl VersionFrom {
 impl Item {
     /// The launch variable a `paths` item names, when it names one.
     pub fn variable(&self) -> Option<&LaunchVariable> {
-        None
+        self.variable.as_ref()
     }
 
     /// How to read the harness version from disk, for a `paths` item that says so.
@@ -621,12 +623,6 @@ const VERSION_PLACEHOLDER: &str = "${VERSION}";
 
 /// A path starts with a token or `/`, and holds no token outside the five and `extra`.
 fn check_path(path: &str, owner: &str, what: &str, extra: &[&str]) -> Result<(), UsherError> {
-    if !(path.starts_with("${") || path.starts_with('/')) {
-        return Err(fail(
-            format!("{owner}: {what}"),
-            format!("`{path}` must be absolute: start with a path token or `/`"),
-        ));
-    }
     let mut rest = path;
     while let Some(start) = rest.find("${") {
         let from = &rest[start..];
@@ -647,6 +643,13 @@ fn check_path(path: &str, owner: &str, what: &str, extra: &[&str]) -> Result<(),
             ));
         }
         rest = &from[end + 1..];
+    }
+    let rooted = path.starts_with('/') || PATH_TOKENS.iter().any(|token| path.starts_with(token));
+    if !rooted {
+        return Err(fail(
+            format!("{owner}: {what}"),
+            format!("`{path}` must be absolute: start with a path token or `/`"),
+        ));
     }
     Ok(())
 }
@@ -748,7 +751,14 @@ fn parse_source(table: &dyn TableLike, owner: &str) -> Result<SourceFact, UsherE
     let owner = format!("{owner} source");
     reject_unknown_keys(
         source,
-        &["path", "layer", "read", "rank", "always_present"],
+        &[
+            "path",
+            "layer",
+            "read",
+            "rank",
+            "always_present",
+            "platforms",
+        ],
         &owner,
     )?;
     let path = text_field(source, "path", &owner)?;
@@ -780,12 +790,142 @@ fn parse_source(table: &dyn TableLike, owner: &str) -> Result<SourceFact, UsherE
                 "`always_present` is missing or not a boolean (true or false)",
             )
         })?;
+    let platforms = parse_platforms(source, &owner)?;
     Ok(SourceFact {
         path: path.to_string(),
         layer,
         read,
         rank,
         always_present,
+        platforms,
+    })
+}
+
+impl Platform {
+    fn parse(name: &str) -> Option<Self> {
+        match name {
+            "macos" => Some(Platform::Macos),
+            "linux" => Some(Platform::Linux),
+            "windows" => Some(Platform::Windows),
+            _ => None,
+        }
+    }
+}
+
+fn parse_platforms(
+    source: &dyn TableLike,
+    owner: &str,
+) -> Result<Option<Vec<Platform>>, UsherError> {
+    let Some(entry) = source.get("platforms") else {
+        return Ok(None);
+    };
+    let list = entry.as_array().ok_or_else(|| {
+        fail(
+            format!("{owner}: platforms"),
+            "`platforms` must be a list of macos, linux and windows",
+        )
+    })?;
+    if list.is_empty() {
+        return Err(fail(
+            format!("{owner}: platforms"),
+            "`platforms` is empty; leave the field out to mean every platform",
+        ));
+    }
+    let mut platforms = Vec::new();
+    for value in list {
+        let name = value.as_str().ok_or_else(|| {
+            fail(
+                format!("{owner}: platforms"),
+                "every entry of `platforms` must be a string",
+            )
+        })?;
+        let platform = Platform::parse(name).ok_or_else(|| {
+            fail(
+                format!("{owner}: platforms"),
+                format!("`{name}` is not one of macos, linux, windows"),
+            )
+        })?;
+        if platforms.contains(&platform) {
+            return Err(fail(
+                format!("{owner}: platforms"),
+                format!("`{name}` is listed twice in `platforms`"),
+            ));
+        }
+        platforms.push(platform);
+    }
+    Ok(Some(platforms))
+}
+
+const CONFIG_DIR_TOKEN: &str = "${CONFIG_DIR}";
+
+fn parse_variable(table: &dyn TableLike, owner: &str) -> Result<LaunchVariable, UsherError> {
+    let variable = table
+        .get("variable")
+        .and_then(TomlItem::as_table_like)
+        .ok_or_else(|| {
+            fail(
+                format!("{owner}: variable"),
+                "`variable` must be a table (name, and optionally binds and default)",
+            )
+        })?;
+    let owner = format!("{owner} variable");
+    reject_unknown_keys(variable, &["name", "binds", "default"], &owner)?;
+    let name = text_field(variable, "name", &owner)?;
+    let mut chars = name.chars();
+    let first_ok = chars.next().is_some_and(|c| c.is_ascii_uppercase());
+    if !first_ok || !chars.all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_') {
+        return Err(fail(
+            format!("{owner}: name"),
+            format!(
+                "`{name}` is not a variable name: upper-case letters, digits and underscores, starting with a letter"
+            ),
+        ));
+    }
+    let binds = match variable.get("binds") {
+        None => None,
+        Some(_) => {
+            let token = text_field(variable, "binds", &owner)?;
+            if token != CONFIG_DIR_TOKEN {
+                return Err(fail(
+                    format!("{owner}: binds"),
+                    format!("`{token}` cannot be bound; only {CONFIG_DIR_TOKEN} can"),
+                ));
+            }
+            Some(token.to_string())
+        }
+    };
+    let default = match variable.get("default") {
+        None => None,
+        Some(_) => Some(text_field(variable, "default", &owner)?.to_string()),
+    };
+    match (&binds, &default) {
+        (Some(_), None) => {
+            return Err(fail(
+                format!("{owner}: default"),
+                "a variable that binds a token needs a `default`, the path the token takes while the variable is unset",
+            ));
+        }
+        (None, Some(_)) => {
+            return Err(fail(
+                format!("{owner}: default"),
+                "`default` is only for a variable that binds a token",
+            ));
+        }
+        _ => {}
+    }
+    if let Some(default) = &default {
+        check_path(default, &owner, "default", &[])?;
+        if default.contains(CONFIG_DIR_TOKEN) {
+            return Err(fail(
+                format!("{owner}: default"),
+                format!("`{default}` names {CONFIG_DIR_TOKEN}, the token it is the default of"),
+            ));
+        }
+    }
+    Ok(LaunchVariable {
+        name: name.to_string(),
+        binds,
+        default,
     })
 }
 
@@ -806,6 +946,7 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
             "source",
             "keys",
             "version_from",
+            "variable",
         ],
         &owner,
     )?;
@@ -860,6 +1001,16 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
     } else {
         None
     };
+    let variable = if class == Class::Paths && table.contains_key("variable") {
+        Some(parse_variable(table, &owner)?)
+    } else if table.contains_key("variable") {
+        return Err(fail(
+            format!("{owner}: variable"),
+            format!("only items of class `paths` carry `variable`, not `{class_name}`"),
+        ));
+    } else {
+        None
+    };
     Ok(Item {
         id: id.to_string(),
         harness: harness.to_string(),
@@ -872,7 +1023,62 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
         source,
         keys,
         version_from,
+        variable,
     })
+}
+
+/// Cross-item checks on launch variables: no two items of a harness name the same
+/// variable or bind the same token over versions that overlap, and every source that
+/// uses the config-directory token has a binder for exactly its versions.
+fn check_variables(items: &[Item]) -> Result<(), UsherError> {
+    let binders: Vec<(&Item, &LaunchVariable)> = items
+        .iter()
+        .filter_map(|item| item.variable.as_ref().map(|variable| (item, variable)))
+        .collect();
+    for (index, (first, one)) in binders.iter().enumerate() {
+        for (second, two) in &binders[index + 1..] {
+            if first.harness != second.harness || !first.versions.overlaps(&second.versions) {
+                continue;
+            }
+            let clash = if one.name == two.name {
+                Some(format!("the variable `{}`", one.name))
+            } else if one.binds.is_some() && one.binds == two.binds {
+                Some(format!("the token `{}`", CONFIG_DIR_TOKEN))
+            } else {
+                None
+            };
+            if let Some(clash) = clash {
+                return Err(fail(
+                    format!("item `{}`", second.id),
+                    format!(
+                        "items `{}` and `{}` both name {clash} over versions that overlap",
+                        first.id, second.id
+                    ),
+                ));
+            }
+        }
+    }
+    for item in items {
+        let Some(source) = &item.source else { continue };
+        if !source.path.contains(CONFIG_DIR_TOKEN) {
+            continue;
+        }
+        let bound = binders.iter().any(|(binder, variable)| {
+            binder.harness == item.harness
+                && variable.binds.as_deref() == Some(CONFIG_DIR_TOKEN)
+                && binder.versions.same_versions(&item.versions)
+        });
+        if !bound {
+            return Err(fail(
+                format!("item `{}`", item.id),
+                format!(
+                    "the source path uses {CONFIG_DIR_TOKEN}, and no `paths` item of harness `{}` binds it over the same versions as this item",
+                    item.harness
+                ),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn parse_support(table: &dyn TableLike, index: usize) -> Result<SupportEntry, UsherError> {
@@ -952,6 +1158,7 @@ impl KnowledgeFile {
             }
             items.push(item);
         }
+        check_variables(&items)?;
         let mut support = Vec::new();
         for (index, table) in tables(&doc, "support")?.into_iter().enumerate() {
             support.push(parse_support(table, index + 1)?);
@@ -981,19 +1188,39 @@ impl KnowledgeFile {
         &self.items
     }
 
-    /// The launch variable names harness knowledge lists for `harness` at `installed`,
-    /// sorted. Every caller keys an environment from this one lookup (AD-17).
+    /// The launch variable names harness knowledge lists for `harness` across every
+    /// version range, sorted and without repeats. Every caller keys an environment from
+    /// this one lookup (AD-17), so the key does not move with the harness version.
     pub fn launch_variables(&self, harness: &str) -> Vec<&str> {
-        let _ = harness;
-        Vec::new()
+        let mut names: Vec<&str> = self
+            .items
+            .iter()
+            .filter(|item| item.harness == harness)
+            .filter_map(|item| {
+                item.variable
+                    .as_ref()
+                    .map(|variable| variable.name.as_str())
+            })
+            .collect();
+        names.sort_unstable();
+        names.dedup();
+        names
     }
 
     /// The variable that binds `token` for `harness` at `installed`, with the default the
     /// token takes while it is unset or empty. Version-scoped, and never part of an
     /// environment key.
     pub fn binding(&self, harness: &str, installed: &Version, token: &str) -> Option<Binding> {
-        let _ = (harness, installed, token);
-        None
+        self.items_for(harness, installed).find_map(|item| {
+            let variable = item.variable.as_ref()?;
+            if variable.binds.as_deref() != Some(token) {
+                return None;
+            }
+            Some(Binding {
+                variable: variable.name.clone(),
+                default: variable.default.clone()?,
+            })
+        })
     }
 
     /// The items about `harness` that apply to `installed`.

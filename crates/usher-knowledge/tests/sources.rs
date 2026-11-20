@@ -17,6 +17,17 @@ summary = "The user settings file."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/settings" }
 last_verified = 2026-11-02
 source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", rank = 1, always_present = true }
+
+[[item]]
+id = "demo.config-dir-variable"
+harness = "demo"
+layer = "slow"
+class = "paths"
+versions = ">=1.0.0, <2.0.0"
+summary = "DEMO_CONFIG_DIR relocates the user config home."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/env" }
+last_verified = 2026-11-20
+variable = { name = "DEMO_CONFIG_DIR", binds = "${CONFIG_DIR}", default = "${HOME}/.demo" }
 "#;
 
 fn rejects(text: &str, needles: &[&str]) {
@@ -208,6 +219,17 @@ summary = "The user settings file, no longer read."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/settings" }
 last_verified = 2026-11-02
 source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "not-read", rank = 1, always_present = true }
+
+[[item]]
+id = "demo.config-dir-variable-later"
+harness = "demo"
+layer = "slow"
+class = "paths"
+versions = ">=1.5.0, <2.0.0"
+summary = "DEMO_CONFIG_DIR relocates the user config home."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/env" }
+last_verified = 2026-11-20
+variable = { name = "DEMO_CONFIG_DIR", binds = "${CONFIG_DIR}", default = "${HOME}/.demo" }
 "#
     );
     let file = KnowledgeFile::parse(&text).expect("one source, two version ranges");
