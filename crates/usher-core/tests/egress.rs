@@ -1244,3 +1244,41 @@ fn a_header_value_with_a_leading_or_trailing_space_has_its_own_status_and_no_ech
         );
     }
 }
+
+// ---- empty values ----
+
+#[test]
+fn an_empty_value_is_refused_in_every_place_naming_the_place_and_the_field() {
+    let (control, _) = query_call("fine");
+    control.expect("the control call goes through");
+
+    let transport = RecordingTransport::new().answering_ok("body");
+    let err = port(&transport)
+        .call_described(&SHAPED, described_request().with("q1", ""))
+        .expect_err("an empty query value must fail");
+    assert_eq!(err.step(), "send test-shaped");
+    assert_eq!(err.status(), "query q1 is empty");
+    assert!(transport.sent().is_empty());
+
+    let transport = RecordingTransport::new().answering_ok("body");
+    let err = port(&transport)
+        .call_described(&SHAPED, described_request().with("b1", ""))
+        .expect_err("an empty body value must fail");
+    assert_eq!(err.step(), "send test-shaped");
+    assert_eq!(err.status(), "body b1 is empty");
+    assert!(transport.sent().is_empty());
+
+    let (result, transport) = header_call("");
+    let err = result.expect_err("an empty header value must fail");
+    assert_eq!(err.step(), "send test-extra-header");
+    assert_eq!(err.status(), "header x-note is empty");
+    assert!(transport.sent().is_empty());
+
+    let transport = RecordingTransport::new().answering_ok("body");
+    let err = port(&transport)
+        .call(Request::new(Egress::KnowledgeUpdate).with("file", ""))
+        .expect_err("an empty path value must fail");
+    assert_eq!(err.step(), "send knowledge-update");
+    assert_eq!(err.status(), "path file is empty");
+    assert!(transport.sent().is_empty());
+}
