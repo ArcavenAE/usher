@@ -2,11 +2,10 @@
 #
 # Every item names its harness, a version range, a reference and the date it
 # was last verified. The facts below come from the settings observability
-# research map of 2026-11-02, or from the vendor pages named in each reference on
-# the date shown. Support entries are usher's own statement: Claude Code offers
-# inventory; codex and goose have no adapter yet, so nothing is offered.
+# research map of 2026-11-02 and cite the sources it cites. Support entries are
+# usher's own statement: no adapter exists yet, so nothing is offered.
 
-schema_version = 1
+schema_version = 2
 sequence = 2
 
 [[item]]
@@ -18,6 +17,83 @@ versions = ">=2.1.317, <3.0.0"
 summary = "CLAUDE_CONFIG_DIR relocates the user config home."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/env-vars" }
 last_verified = 2026-11-02
+
+[[item]]
+id = "claude-code.source-managed-file"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The managed settings file on macOS. Managed sources are first-wins; the file ranks below server-managed and MDM delivery."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/managed-settings" }
+last_verified = 2026-11-15
+source = { path = "/Library/Application Support/ClaudeCode/managed-settings.json", layer = "managed", read = "first-wins", rank = 3 }
+
+[[item]]
+id = "claude-code.source-managed-file-linux"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The managed settings file on Linux and WSL; same tier and rank as the macOS file. The Windows path is not listed yet."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/managed-settings" }
+last_verified = 2026-11-15
+source = { path = "/etc/claude-code/managed-settings.json", layer = "managed", read = "first-wins", rank = 3 }
+
+[[item]]
+id = "claude-code.source-user-settings"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The user settings file; CLAUDE_CONFIG_DIR relocates the folder it lives in."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
+last_verified = 2026-11-15
+source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", rank = 1 }
+
+[[item]]
+id = "claude-code.source-project-settings"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The shared project settings file, read from the directory the session starts in, which is the repository root only when the session starts there."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
+last_verified = 2026-11-15
+source = { path = "${LAUNCH_DIR}/.claude/settings.json", layer = "project", read = "read", rank = 1 }
+
+[[item]]
+id = "claude-code.source-local-settings"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The personal project settings file, kept out of git. Claude Code reads and writes it at the repository root; it stays beside .claude/settings.json outside a git repository, when the root is the home directory, on Windows, or when the root, .git or .claude is not owned by the user, and a copy an earlier version left in the starting directory is still read."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
+last_verified = 2026-11-15
+source = { path = "${REPO}/.claude/settings.local.json", layer = "local", read = "read", rank = 1 }
+
+[[item]]
+id = "claude-code.source-global-state"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The file Claude Code writes for itself: account details, MCP server configurations, per-project state. Whether CLAUDE_CONFIG_DIR relocates it is not stated on the settings page."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
+last_verified = 2026-11-15
+source = { path = "${HOME}/.claude.json", layer = "global-state", read = "read", rank = 1 }
+
+[[item]]
+id = "claude-code.source-server-managed-cache"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "The cache of server-managed settings, written to ~/.claude/remote-settings.json. Whether CLAUDE_CONFIG_DIR relocates it is not stated; the path uses the config-directory token on the reading that ~/.claude names that folder."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/server-managed-settings" }
+last_verified = 2026-11-15
+source = { path = "${CONFIG_DIR}/remote-settings.json", layer = "server-managed-cache", read = "read", rank = 1 }
 
 [[item]]
 id = "codex.home-variable"
@@ -38,100 +114,6 @@ versions = ">=1.57.0, <2.0.0"
 summary = "GOOSE_PATH_ROOT, when absolute, relocates goose config, data and state."
 reference = { kind = "source", locator = "https://raw.githubusercontent.com/aaif-goose/goose/main/crates/goose/src/config/paths.rs" }
 last_verified = 2026-11-02
-
-[[item]]
-id = "claude-code.user-settings"
-harness = "claude-code"
-layer = "slow"
-class = "paths"
-versions = ">=2.1.317, <3.0.0"
-summary = "The user settings file is settings.json in the config home; CLAUDE_CONFIG_DIR relocates the home."
-locations = [
-  { template = "{config_dir}/settings.json", scope = "user", shape = "file" },
-]
-reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
-last_verified = 2026-11-10
-
-[[item]]
-id = "claude-code.project-settings"
-harness = "claude-code"
-layer = "slow"
-class = "paths"
-versions = ">=2.1.317, <3.0.0"
-summary = "A project has a shared .claude/settings.json and a personal .claude/settings.local.json."
-locations = [
-  { template = "{root}/.claude/settings.json", scope = "project", shape = "file" },
-  { template = "{root}/.claude/settings.local.json", scope = "local", shape = "file" },
-]
-reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
-last_verified = 2026-11-10
-
-[[item]]
-id = "claude-code.global-config-file"
-harness = "claude-code"
-layer = "slow"
-class = "paths"
-versions = ">=2.1.317, <3.0.0"
-summary = "Claude Code writes its own state to .claude.json, in the home or, when CLAUDE_CONFIG_DIR is set, under that directory."
-locations = [
-  { template = "{global_config_dir}/.claude.json", scope = "global-config", shape = "file" },
-]
-reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/claude-directory" }
-last_verified = 2026-11-10
-
-[[item]]
-id = "claude-code.remote-settings-cache"
-harness = "claude-code"
-layer = "slow"
-class = "paths"
-versions = ">=2.1.317, <3.0.0"
-summary = "The cached copy of server-managed settings is remote-settings.json in the config home."
-locations = [
-  { template = "{config_dir}/remote-settings.json", scope = "managed", shape = "file" },
-]
-reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/claude-directory" }
-last_verified = 2026-11-10
-
-[[item]]
-id = "claude-code.managed-settings-files"
-harness = "claude-code"
-layer = "slow"
-class = "paths"
-versions = ">=2.1.317, <3.0.0"
-summary = "Managed settings files sit in a system directory: managed-settings.json, then the *.json files of managed-settings.d."
-locations = [
-  { template = "{system}/Library/Application Support/ClaudeCode/managed-settings.json", scope = "managed", shape = "file", platform = "macos" },
-  { template = "{system}/Library/Application Support/ClaudeCode/managed-settings.d", scope = "managed", shape = "json-dir", platform = "macos" },
-  { template = "{system}/etc/claude-code/managed-settings.json", scope = "managed", shape = "file", platform = "linux" },
-  { template = "{system}/etc/claude-code/managed-settings.d", scope = "managed", shape = "json-dir", platform = "linux" },
-]
-reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/managed-settings" }
-last_verified = 2026-11-02
-
-[[item]]
-id = "claude-code.settings-keys-cited"
-harness = "claude-code"
-layer = "fast"
-class = "keys"
-versions = ">=2.1.317, <3.0.0"
-summary = "Top-level settings keys the vendor settings pages name. The list is partial: a key not here is reported as unrecognized, not as invalid."
-keys = [
-  "$schema", "permissions", "env", "hooks", "model", "fallbackModel", "modelPicker",
-  "availableModels", "deniedModels", "modelSettings", "effortLevel", "maxEffortLevel",
-  "enabledPlugins", "extraKnownMarketplaces", "spinnerTipsEnabled", "apiKeyHelper",
-  "cleanupPeriodDays", "desktopSessionCleanupPeriodDays", "autoMode",
-  "disableClaudeAiConnectors", "enableArtifact", "disableArtifact", "isolatePeerMachines",
-  "remoteControlAtStartup", "crossSessionInbound", "useAutoModeDuringPlan",
-  "syncClaudeAiSkills", "syncClaudeAiPlugins", "allowManagedPermissionRulesOnly",
-  "requiredMinimumVersion", "managedSourcesBehavior",
-]
-reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
-last_verified = 2026-11-10
-
-[[support]]
-harness = "claude-code"
-versions = ">=2.1.317, <3.0.0"
-capabilities = ["inventory"]
 
 [[support]]
 harness = "claude-code"

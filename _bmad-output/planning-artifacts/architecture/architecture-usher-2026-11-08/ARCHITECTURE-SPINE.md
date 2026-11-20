@@ -58,7 +58,11 @@ no adapter depends on another adapter.
 - **Rule:** usher ships as one executable. `usher <command>` (CLI), `usher mcp` (stdio MCP
   server), `usher daemon` (watcher) and `usher collector` (light collector) are modes of it.
   Client modes resolve one state directory per OS user from the OS user's account home (not
-  `$HOME`, which a harness or sandbox may override), and open one store there (AD-7). No mode
+  `$HOME`, which a harness or sandbox may override), and open one store there (AD-7). The state
+  directory is `<account home>/Library/Application Support/usher` on macOS and
+  `<account home>/.local/state/usher` on Linux, and the database in it is `usher.db`; no `XDG_*`
+  variable and no `HOME` override moves either (architect ruling 01M7GFSGTF, 2026-11-15). Windows
+  stays deferred (Q14). No mode
   requires the daemon: bootstrap (FR-46), apply and removal (FR-67) work with no daemon. The v2 app
   (AD-21) is a separate optional bundle that opens this same store and adds no state of its own.
 
@@ -359,7 +363,7 @@ no adapter depends on another adapter.
 | Naming | Crates `usher-<area>`; adapters `usher-adapter-<harness>` (`claude-code`, `claude-desktop`, `codex`, `goose`); CLI verbs are plain English (`map`, `compare`, `propose`, `apply`, `rollback`, `remove`) |
 | Identifiers | ULIDs for journal entries, proposals and reports; environments keyed per AD-17 |
 | Time | RFC 3339 in UTC everywhere stored or reported |
-| Path tokens (FR-20) | `${HOME}`, `${CONFIG_DIR}` (the harness config directory), `${REPO}` (repository root), `${USER}`; patterns are globs (`*`, `**`, `?`) on `/`-separated paths; tokens resolve per environment at apply time |
+| Path tokens (FR-20) | `${HOME}`, `${CONFIG_DIR}` (the harness config directory), `${REPO}` (repository root), `${LAUNCH_DIR}` (the directory the harness session starts in: the absolute directory of the environment's AD-17 key), `${USER}`; patterns are globs (`*`, `**`, `?`) on `/`-separated paths; tokens resolve per environment at apply time |
 | Errors | One `UsherError` type in `usher-core` carrying the step, the command or check, its exit status or error, and at least one next action (FR-46) |
 | Derived state only | The store and reports hold settings values AD-8 allows, names, hashes and counts; never file contents, prompt text or environment variable values (names only); session records by named fields only |
 | Usher's own config | TOML in the state directory; never inside a harness file |

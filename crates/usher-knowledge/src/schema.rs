@@ -12,7 +12,6 @@ use std::fmt;
 use toml_edit::{DocumentMut, Item as TomlItem, TableLike};
 use usher_core::UsherError;
 
-use crate::location::{Location, parse_keys, parse_locations};
 use crate::support::{Capability, SupportReport};
 use crate::version::{Version, VersionRange};
 
@@ -20,13 +19,13 @@ use crate::version::{Version, VersionRange};
 const EMBEDDED: &str = include_str!("../knowledge/harness-knowledge.toml");
 
 /// The only schema version this build reads.
-const SUPPORTED_SCHEMA: u32 = 1;
+const SUPPORTED_SCHEMA: u32 = 2;
 
 const STEP: &str = "load harness knowledge";
 const NEXT: &str =
     "fix the entry in the knowledge file, then run `cargo test -p usher-knowledge` to check it";
 
-pub(crate) fn fail(check: impl Into<String>, status: impl Into<String>) -> UsherError {
+fn fail(check: impl Into<String>, status: impl Into<String>) -> UsherError {
     UsherError::new(STEP, check, status, NEXT)
 }
 
@@ -56,6 +55,8 @@ pub enum Class {
     Layers,
     /// File and directory locations (slow).
     Paths,
+    /// Settings sources, with the layer each belongs to and whether the version reads it (slow).
+    Sources,
     /// Where credentials live (slow).
     CredentialStores,
     /// Settings keys and what they do (fast).
@@ -75,6 +76,7 @@ impl Class {
         match name {
             "layers" => Some(Class::Layers),
             "paths" => Some(Class::Paths),
+            "sources" => Some(Class::Sources),
             "credential-stores" => Some(Class::CredentialStores),
             "keys" => Some(Class::Keys),
             "defaults" => Some(Class::Defaults),
@@ -88,7 +90,7 @@ impl Class {
     /// The layer this class belongs to.
     pub fn layer(self) -> Layer {
         match self {
-            Class::Layers | Class::Paths | Class::CredentialStores => Layer::Slow,
+            Class::Layers | Class::Paths | Class::Sources | Class::CredentialStores => Layer::Slow,
             Class::Keys | Class::Defaults | Class::Hazards | Class::NeverCall | Class::Disputed => {
                 Layer::Fast
             }
@@ -154,6 +156,103 @@ impl fmt::Display for Date {
     }
 }
 
+/// The harness layer a settings source belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceLayer {
+    /// Managed by an organization or the vendor.
+    Managed,
+    /// The person's own settings.
+    User,
+    /// Shared settings in a repository.
+    Project,
+    /// Personal settings in a repository.
+    Local,
+    /// The harness's own state file.
+    GlobalState,
+    /// The cache of server-managed settings.
+    ServerManagedCache,
+}
+
+impl SourceLayer {
+    fn parse(name: &str) -> Option<Self> {
+        match name {
+            "managed" => Some(SourceLayer::Managed),
+            "user" => Some(SourceLayer::User),
+            "project" => Some(SourceLayer::Project),
+            "local" => Some(SourceLayer::Local),
+            "global-state" => Some(SourceLayer::GlobalState),
+            "server-managed-cache" => Some(SourceLayer::ServerManagedCache),
+            _ => None,
+        }
+    }
+}
+
+/// Whether a harness version reads a source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadRule {
+    /// The version reads it.
+    Read,
+    /// The version does not read it.
+    NotRead,
+    /// Read only when no higher-ranked source of the vendor's managed tier delivers a
+    /// policy: under the default, "exists" means "delivers at least one policy key", so a
+    /// file holding only control keys is skipped.
+    FirstWins,
+}
+
+impl ReadRule {
+    fn parse(name: &str) -> Option<Self> {
+        match name {
+            "read" => Some(ReadRule::Read),
+            "not-read" => Some(ReadRule::NotRead),
+            "first-wins" => Some(ReadRule::FirstWins),
+            _ => None,
+        }
+    }
+}
+
+/// The tokens a source path may contain; each resolves per launch environment.
+const PATH_TOKENS: [&str; 5] = [
+    "${HOME}",
+    "${CONFIG_DIR}",
+    "${REPO}",
+    "${LAUNCH_DIR}",
+    "${USER}",
+];
+
+/// What harness knowledge says about one settings source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceFact {
+    path: String,
+    layer: SourceLayer,
+    read: ReadRule,
+    rank: u32,
+}
+
+impl SourceFact {
+    /// The path pattern, in the five path tokens.
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// The layer the source belongs to.
+    pub fn layer(&self) -> SourceLayer {
+        self.layer
+    }
+
+    /// Whether the version reads it.
+    pub fn read(&self) -> ReadRule {
+        self.read
+    }
+
+    /// Precedence within the vendor's managed tier, counting every managed delivery the
+    /// vendor lists, listed here or not; 1 is highest. Sources of other layers each use
+    /// their own rank.
+    pub fn rank(&self) -> u32 {
+        self.rank
+    }
+}
+
 /// One fact about a harness, with its source and the date it was last verified.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
@@ -165,11 +264,15 @@ pub struct Item {
     summary: String,
     reference: Reference,
     last_verified: Date,
-    locations: Vec<Location>,
-    keys: Vec<String>,
+    source: Option<SourceFact>,
 }
 
 impl Item {
+    /// The settings-source fact, for an item of class `sources`.
+    pub fn source(&self) -> Option<&SourceFact> {
+        self.source.as_ref()
+    }
+
     /// The item's unique id.
     pub fn id(&self) -> &str {
         &self.id
@@ -208,16 +311,6 @@ impl Item {
     /// The date the fact was last verified against its source.
     pub fn last_verified(&self) -> Date {
         self.last_verified
-    }
-
-    /// The settings locations the item names; empty unless the class is `paths`.
-    pub fn locations(&self) -> &[Location] {
-        &self.locations
-    }
-
-    /// The setting names the item cites; empty unless the class is `keys`.
-    pub fn keys(&self) -> &[String] {
-        &self.keys
     }
 }
 
@@ -270,11 +363,7 @@ pub struct KnowledgeFile {
     support: Vec<SupportEntry>,
 }
 
-pub(crate) fn text_field<'a>(
-    table: &'a dyn TableLike,
-    key: &str,
-    owner: &str,
-) -> Result<&'a str, UsherError> {
+fn text_field<'a>(table: &'a dyn TableLike, key: &str, owner: &str) -> Result<&'a str, UsherError> {
     table
         .get(key)
         .and_then(TomlItem::as_str)
@@ -289,7 +378,7 @@ pub(crate) fn text_field<'a>(
 
 /// Fails on any key outside `allowed`, so a misspelled table or field is an
 /// error and not an empty or half-read file.
-pub(crate) fn reject_unknown_keys(
+fn reject_unknown_keys(
     table: &dyn TableLike,
     allowed: &[&str],
     owner: &str,
@@ -399,6 +488,78 @@ fn parse_range(table: &dyn TableLike, owner: &str) -> Result<VersionRange, Usher
     VersionRange::parse(text).map_err(|why| fail(format!("{owner}: versions"), why))
 }
 
+/// A source path starts with a token or `/`, and holds no token outside the five.
+fn check_source_path(path: &str, owner: &str) -> Result<(), UsherError> {
+    if !(path.starts_with("${") || path.starts_with('/')) {
+        return Err(fail(
+            format!("{owner}: source path"),
+            format!("`{path}` must start with a path token or `/`"),
+        ));
+    }
+    let mut rest = path;
+    while let Some(start) = rest.find("${") {
+        let from = &rest[start..];
+        let Some(end) = from.find('}') else {
+            return Err(fail(
+                format!("{owner}: source path"),
+                format!("`{from}` has a token that is never closed"),
+            ));
+        };
+        let token = &from[..=end];
+        if !PATH_TOKENS.contains(&token) {
+            return Err(fail(
+                format!("{owner}: source path"),
+                format!(
+                    "`{token}` is not a path token; known tokens are {}",
+                    PATH_TOKENS.join(", ")
+                ),
+            ));
+        }
+        rest = &from[end + 1..];
+    }
+    Ok(())
+}
+
+fn parse_source(table: &dyn TableLike, owner: &str) -> Result<SourceFact, UsherError> {
+    let source = table
+        .get("source")
+        .and_then(TomlItem::as_table_like)
+        .ok_or_else(|| {
+            fail(
+                format!("{owner}: source"),
+                "an item of class `sources` needs a `source` table (path, layer, read, rank)",
+            )
+        })?;
+    let owner = format!("{owner} source");
+    reject_unknown_keys(source, &["path", "layer", "read", "rank"], &owner)?;
+    let path = text_field(source, "path", &owner)?;
+    check_source_path(path, &owner)?;
+    let layer_name = text_field(source, "layer", &owner)?;
+    let layer = SourceLayer::parse(layer_name).ok_or_else(|| {
+        fail(
+            format!("{owner}: layer"),
+            format!(
+                "`{layer_name}` is not one of managed, user, project, local, global-state, server-managed-cache"
+            ),
+        )
+    })?;
+    let read_name = text_field(source, "read", &owner)?;
+    let read = ReadRule::parse(read_name).ok_or_else(|| {
+        fail(
+            format!("{owner}: read"),
+            format!("`{read_name}` is not one of read, not-read, first-wins"),
+        )
+    })?;
+    let rank = u32::try_from(number_field(source, "rank", &owner)?)
+        .map_err(|_| fail(format!("{owner}: rank"), "`rank` is too large"))?;
+    Ok(SourceFact {
+        path: path.to_string(),
+        layer,
+        read,
+        rank,
+    })
+}
+
 fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
     let id = text_field(table, "id", &format!("item #{index}"))?;
     let owner = format!("item `{id}`");
@@ -413,8 +574,7 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
             "summary",
             "reference",
             "last_verified",
-            "locations",
-            "keys",
+            "source",
         ],
         &owner,
     )?;
@@ -439,20 +599,16 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
             format!("class `{class_name}` belongs to the other layer than `{layer_name}`"),
         ));
     }
-    let locations = parse_locations(table, &owner)?;
-    if !locations.is_empty() && class != Class::Paths {
+    let source = if class == Class::Sources {
+        Some(parse_source(table, &owner)?)
+    } else if table.contains_key("source") {
         return Err(fail(
-            format!("{owner}: locations"),
-            "`locations` belongs only on items of class `paths`",
+            format!("{owner}: source"),
+            format!("only items of class `sources` carry a `source` table, not `{class_name}`"),
         ));
-    }
-    let keys = parse_keys(table, &owner)?;
-    if !keys.is_empty() && class != Class::Keys {
-        return Err(fail(
-            format!("{owner}: keys"),
-            "`keys` belongs only on items of class `keys`",
-        ));
-    }
+    } else {
+        None
+    };
     Ok(Item {
         id: id.to_string(),
         harness: harness.to_string(),
@@ -462,8 +618,7 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
         summary: text_field(table, "summary", &owner)?.to_string(),
         reference: parse_reference(table, id)?,
         last_verified: parse_date(table, id)?,
-        locations,
-        keys,
+        source,
     })
 }
 
@@ -606,7 +761,7 @@ mod tests {
     use super::*;
 
     const VALID: &str = r#"
-schema_version = 1
+schema_version = 2
 sequence = 7
 
 [[item]]
@@ -740,7 +895,7 @@ capabilities = ["inventory", "map"]
             &VALID.replace("sequence = 7", "sequence = \"seven\""),
             "sequence",
         );
-        rejects(&VALID.replace("schema_version = 1\n", ""), "schema_version");
+        rejects(&VALID.replace("schema_version = 2\n", ""), "schema_version");
     }
 
     #[test]
@@ -750,15 +905,15 @@ capabilities = ["inventory", "map"]
 
     #[test]
     fn items_must_be_tables() {
-        rejects("schema_version = 1\nsequence = 1\nitem = 3\n", "[[item]]");
+        rejects("schema_version = 2\nsequence = 1\nitem = 3\n", "[[item]]");
     }
 
     #[test]
     fn the_file_reports_its_version() {
         let file = KnowledgeFile::parse(VALID).expect("valid");
         assert_eq!(file.version().sequence(), 7);
-        assert_eq!(file.version().schema_version(), 1);
-        assert_eq!(file.version().to_string(), "knowledge v7 (schema 1)");
+        assert_eq!(file.version().schema_version(), 2);
+        assert_eq!(file.version().to_string(), "knowledge v7 (schema 2)");
     }
 
     #[test]
@@ -781,7 +936,7 @@ capabilities = ["inventory", "map"]
         assert!(lines.contains(&"demo 1.5.0: apply unsupported".to_string()));
         assert_eq!(
             lines.last().map(String::as_str),
-            Some("knowledge v7 (schema 1)")
+            Some("knowledge v7 (schema 2)")
         );
     }
 
@@ -818,42 +973,17 @@ capabilities = ["inventory", "map"]
     }
 
     #[test]
-    fn the_embedded_seed_offers_inventory_for_claude_code_and_nothing_else() {
+    fn the_embedded_seed_offers_no_capability_and_says_so() {
         let file = KnowledgeFile::embedded().expect("embedded");
-        let claude = file.support("claude-code", &v("2.1.317"));
-        assert!(claude.known());
-        assert_eq!(claude.offered(), [Capability::Inventory]);
-        for (harness, version) in [("codex", "0.160.1"), ("goose", "1.57.0")] {
+        for (harness, version) in [
+            ("claude-code", "2.1.317"),
+            ("codex", "0.160.1"),
+            ("goose", "1.57.0"),
+        ] {
             let report = file.support(harness, &v(version));
             assert!(report.known(), "{harness} has a support entry");
             assert!(report.offered().is_empty(), "{harness} offers nothing yet");
             assert_eq!(report.unsupported(), Capability::ALL);
         }
-        // An older Claude Code than the seed was checked against offers nothing.
-        let older = file.support("claude-code", &v("2.1.0"));
-        assert!(older.offered().is_empty());
-    }
-
-    #[test]
-    fn the_embedded_seed_names_the_claude_code_locations_and_keys() {
-        let file = KnowledgeFile::embedded().expect("embedded");
-        let version = v("2.1.317");
-        let mut scopes: Vec<&str> = file
-            .items_for("claude-code", &version)
-            .flat_map(|item| item.locations())
-            .map(|location| location.scope().name())
-            .collect();
-        scopes.sort_unstable();
-        scopes.dedup();
-        assert_eq!(
-            scopes,
-            ["global-config", "local", "managed", "project", "user"]
-        );
-        let keys: Vec<&str> = file
-            .items_for("claude-code", &version)
-            .flat_map(|item| item.keys())
-            .map(String::as_str)
-            .collect();
-        assert!(keys.contains(&"permissions") && keys.contains(&"env"));
     }
 }

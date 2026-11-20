@@ -132,20 +132,16 @@ mod tests {
 
     const SEED: &str = include_str!("../knowledge/harness-knowledge.toml");
 
-    /// The sequence of the embedded seed, which every test starts from.
-    fn base() -> u64 {
-        held().current().version().sequence()
-    }
-
     fn with_sequence(sequence: u64) -> String {
-        SEED.replace(
-            &format!("sequence = {}\n", base()),
-            &format!("sequence = {sequence}\n"),
-        )
+        SEED.replace("\nsequence = 2\n", &format!("\nsequence = {sequence}\n"))
     }
 
+    /// The held file for these tests: the embedded content at sequence 1, so
+    /// the update cases keep their numbers when the embedded sequence moves.
     fn held() -> Knowledge {
-        Knowledge::embedded().expect("embedded")
+        Knowledge {
+            current: KnowledgeFile::parse(&with_sequence(1)).expect("embedded content"),
+        }
     }
 
     fn sequence(knowledge: &Knowledge) -> u64 {
@@ -163,7 +159,7 @@ mod tests {
     #[test]
     fn a_valid_update_is_taken_and_its_version_reported() {
         let signer = Signer::new();
-        let file = with_sequence(base() + 1);
+        let file = with_sequence(2);
         let mut knowledge = held();
         let version = knowledge
             .update(
@@ -172,11 +168,8 @@ mod tests {
                 &trusting(&signer, None),
             )
             .expect("accepted");
-        assert_eq!(
-            version.to_string(),
-            format!("knowledge v{} (schema 1)", base() + 1)
-        );
-        assert_eq!(sequence(&knowledge), base() + 1);
+        assert_eq!(version.to_string(), "knowledge v2 (schema 2)");
+        assert_eq!(sequence(&knowledge), 2);
     }
 
     #[test]
@@ -185,7 +178,7 @@ mod tests {
         let (current_key, next_key) = (current.public_key_base64(), next.public_key_base64());
         let trusted = TrustedKeys::from_pairs(&[("current", &current_key), ("next", &next_key)])
             .expect("pairs");
-        let file = with_sequence(base() + 1);
+        let file = with_sequence(2);
         let mut knowledge = held();
         knowledge
             .update(
@@ -194,13 +187,13 @@ mod tests {
                 &trusted,
             )
             .expect("accepted");
-        assert_eq!(sequence(&knowledge), base() + 1);
+        assert_eq!(sequence(&knowledge), 2);
     }
 
     #[test]
     fn a_next_key_signature_is_accepted() {
         let (current, next) = (Signer::new(), Signer::new());
-        let file = with_sequence(base() + 1);
+        let file = with_sequence(2);
         let mut knowledge = held();
         knowledge
             .update(
@@ -209,13 +202,13 @@ mod tests {
                 &trusting(&current, Some(&next)),
             )
             .expect("accepted");
-        assert_eq!(sequence(&knowledge), base() + 1);
+        assert_eq!(sequence(&knowledge), 2);
     }
 
     #[test]
     fn a_changed_byte_is_rejected_and_the_old_knowledge_stays() {
         let signer = Signer::new();
-        let file = with_sequence(base() + 1);
+        let file = with_sequence(2);
         let signature = signer.sign(file.as_bytes(), "sequence 2");
         let tampered = file.replace("goose", "g00se");
         let mut knowledge = held();
@@ -225,13 +218,13 @@ mod tests {
         assert_eq!(err.check(), "verify the update's minisign signature");
         assert!(err.status().contains("does not match"), "{}", err.status());
         assert!(!err.next_action().is_empty());
-        assert_eq!(sequence(&knowledge), base());
+        assert_eq!(sequence(&knowledge), 1);
     }
 
     #[test]
     fn a_key_outside_the_list_is_rejected_and_named() {
         let (trusted, stranger) = (Signer::new(), Signer::new());
-        let file = with_sequence(base() + 1);
+        let file = with_sequence(2);
         let signature = stranger.sign(file.as_bytes(), "sequence 2");
         let mut knowledge = held();
         let err = knowledge
@@ -247,13 +240,13 @@ mod tests {
             "{}",
             err.status()
         );
-        assert_eq!(sequence(&knowledge), base());
+        assert_eq!(sequence(&knowledge), 1);
     }
 
     #[test]
     fn a_dropped_key_is_revoked() {
         let (old, current) = (Signer::new(), Signer::new());
-        let file = with_sequence(base() + 1);
+        let file = with_sequence(2);
         let mut knowledge = held();
         let err = knowledge
             .update(
@@ -270,7 +263,7 @@ mod tests {
         let signer = Signer::new();
         let trusted = trusting(&signer, None);
         let mut knowledge = held();
-        let three = with_sequence(base() + 2);
+        let three = with_sequence(3);
         knowledge
             .update(
                 three.as_bytes(),
@@ -278,7 +271,7 @@ mod tests {
                 &trusted,
             )
             .expect("accepted");
-        for sequence_number in [base() + 2, base() + 1] {
+        for sequence_number in [3, 2] {
             let file = with_sequence(sequence_number);
             let err = knowledge
                 .update(
@@ -289,21 +282,19 @@ mod tests {
                 .expect_err("not higher");
             assert_eq!(err.check(), "check the update's sequence number");
             assert!(
-                err.status().contains(&format!(
-                    "sequence {sequence_number} is not higher than {}",
-                    base() + 2
-                )),
+                err.status()
+                    .contains(&format!("sequence {sequence_number} is not higher than 3")),
                 "{}",
                 err.status()
             );
-            assert_eq!(sequence(&knowledge), base() + 2);
+            assert_eq!(sequence(&knowledge), 3);
         }
     }
 
     #[test]
     fn a_signed_file_that_breaks_the_schema_is_rejected() {
         let signer = Signer::new();
-        let file = with_sequence(base() + 1).replace(
+        let file = with_sequence(2).replace(
             "reference = { kind = \"vendor-docs\", locator = \"https://code.claude.com/docs/en/env-vars\" }\n",
             "",
         );
@@ -321,7 +312,7 @@ mod tests {
             "{}",
             err.check()
         );
-        assert_eq!(sequence(&knowledge), base());
+        assert_eq!(sequence(&knowledge), 1);
     }
 
     #[test]
@@ -337,13 +328,13 @@ mod tests {
             )
             .expect_err("bad signature");
         assert_eq!(err.check(), "verify the update's minisign signature");
-        assert_eq!(sequence(&knowledge), base());
+        assert_eq!(sequence(&knowledge), 1);
     }
 
     #[test]
     fn a_legacy_ed_signature_is_rejected() {
         let signer = Signer::new();
-        let file = with_sequence(base() + 1);
+        let file = with_sequence(2);
         let mut knowledge = held();
         let err = knowledge
             .update(
@@ -357,13 +348,13 @@ mod tests {
             "{}",
             err.status()
         );
-        assert_eq!(sequence(&knowledge), base());
+        assert_eq!(sequence(&knowledge), 1);
     }
 
     #[test]
     fn a_malformed_signature_is_rejected() {
         let signer = Signer::new();
-        let file = with_sequence(base() + 1);
+        let file = with_sequence(2);
         for bad in ["", "not a signature", "untrusted comment: x\nAAAA\n"] {
             let mut knowledge = held();
             let err = knowledge
@@ -374,14 +365,14 @@ mod tests {
                 "{bad}: {}",
                 err.status()
             );
-            assert_eq!(sequence(&knowledge), base());
+            assert_eq!(sequence(&knowledge), 1);
         }
     }
 
     #[test]
     fn a_build_with_no_trusted_keys_accepts_nothing() {
         let signer = Signer::new();
-        let file = with_sequence(base() + 1);
+        let file = with_sequence(2);
         let mut knowledge = held();
         let err = knowledge
             .update(
@@ -392,6 +383,6 @@ mod tests {
             .expect_err("no keys");
         assert_eq!(err.status(), "this build trusts no keys");
         assert!(err.next_action().contains("USHER_TRUSTED_KEYS"));
-        assert_eq!(sequence(&knowledge), base());
+        assert_eq!(sequence(&knowledge), 1);
     }
 }

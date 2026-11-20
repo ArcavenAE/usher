@@ -8,11 +8,6 @@ publish.workspace = true
 
 [dependencies]
 usher-core.workspace = true
-usher-knowledge.workspace = true
-usher-adapter-claude-code.workspace = true
-
-[dev-dependencies]
-usher-testkit.workspace = true
 
 [lints]
 workspace = true
