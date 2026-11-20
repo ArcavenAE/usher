@@ -946,16 +946,45 @@ fn wire_request_has_no_public_field() {
 #[test]
 fn wire_request_has_no_public_function_that_returns_one() {
     let source = include_str!("../src/egress.rs");
+    assert_eq!(
+        source.matches("impl WireRequest {").count(),
+        1,
+        "WireRequest has exactly one inherent impl block"
+    );
+    assert!(
+        !source.contains("for WireRequest"),
+        "no trait impl for WireRequest: that covers Default, From and the rest"
+    );
+    let start = source
+        .find("pub struct WireRequest {")
+        .expect("the struct is in egress.rs");
+    let derives: Vec<&str> = source[..start]
+        .lines()
+        .rev()
+        .take_while(|l| l.starts_with("#[") || l.starts_with("///") || l.is_empty())
+        .collect();
+    assert!(
+        !derives.iter().any(|l| l.contains("Default")),
+        "WireRequest must not derive Default"
+    );
+
     let body = block(source, "impl WireRequest {");
-    for line in body.lines() {
-        let line = line.trim();
-        if line.starts_with("pub fn") {
+    let mut rest = body;
+    let mut signatures = 0;
+    while let Some(at) = rest.find("pub fn") {
+        let from = &rest[at..];
+        let open = from.find('{').expect("a signature ends at its brace");
+        let signature = &from[..open];
+        if let Some((_, returned)) = signature.split_once("->") {
             assert!(
-                !line.contains("-> Self") && !line.contains("-> WireRequest"),
-                "a public function returns a WireRequest: {line}"
+                !returned.contains("Self") && !returned.contains("WireRequest"),
+                "a public function returns a WireRequest: {signature}"
             );
         }
+        signatures += 1;
+        rest = &from[open..];
     }
+    assert!(signatures >= 6, "the accessors are in this block");
     assert!(
         body.contains("pub fn host("),
         "the accessors are in this block"
