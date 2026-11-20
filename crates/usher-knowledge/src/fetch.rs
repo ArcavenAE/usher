@@ -113,8 +113,8 @@ mod tests {
             2,
             "one request for the file, one for the signature"
         );
-        assert_eq!(sent[0].path, "/knowledge.toml");
-        assert_eq!(sent[1].path, "/knowledge.toml.minisig");
+        assert_eq!(sent[0].path, "/harness-knowledge.toml");
+        assert_eq!(sent[1].path, "/harness-knowledge.toml.minisig");
         for wire in &sent {
             assert_eq!(wire.host, HOST);
             assert_eq!(wire.method, Method::Get);
