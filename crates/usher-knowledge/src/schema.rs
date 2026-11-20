@@ -6,14 +6,15 @@
 //! range, a reference and the date it was last verified (FR-30). A file that
 //! breaks any of that does not load.
 
-use std::collections::HashSet;
-use std::fmt;
+use std::{collections::HashSet, fmt};
 
 use toml_edit::{DocumentMut, Item as TomlItem, TableLike};
 use usher_core::UsherError;
 
-use crate::support::{Capability, SupportReport};
-use crate::version::{Version, VersionRange};
+use crate::{
+    support::{Capability, SupportReport},
+    version::{Version, VersionRange},
+};
 
 /// The knowledge file built into this release.
 const EMBEDDED: &str = include_str!("../knowledge/harness-knowledge.toml");

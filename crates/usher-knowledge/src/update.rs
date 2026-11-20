@@ -9,8 +9,10 @@
 use minisign_verify::{Error as VerifyError, Signature};
 use usher_core::UsherError;
 
-use crate::schema::{KnowledgeFile, KnowledgeVersion};
-use crate::trust::{TrustedKeys, key_id_of_signature};
+use crate::{
+    schema::{KnowledgeFile, KnowledgeVersion},
+    trust::{TrustedKeys, key_id_of_signature},
+};
 
 const STEP: &str = "update harness knowledge";
 const KEEP_SIGNING: &str = "usher keeps using the knowledge it has; obtain the update again, signed with minisign's default mode by a trusted key";
@@ -127,8 +129,9 @@ fn verify_signature(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use usher_testkit::Signer;
+
+    use super::*;
 
     const SEED: &str = include_str!("../knowledge/harness-knowledge.toml");
 

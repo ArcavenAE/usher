@@ -117,8 +117,9 @@ pub fn render(entries: &[Entry]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use usher_testkit::Signer;
+
+    use super::*;
 
     fn key() -> String {
         Signer::new().public_key_base64()
