@@ -26,12 +26,12 @@ fn the_host_name_is_not_answered_by_a_program_on_the_path() {
     let program = bin.join("hostname");
     fs::write(&program, format!("#!/bin/sh\necho {PLANTED}\n")).expect("a program");
     fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).expect("mode");
-    // The system's own name, from the system's hostname program by absolute path, which
-    // asks the kernel the same question gethostname does.
-    let system = Command::new("/bin/hostname")
-        .output()
-        .expect("/bin/hostname runs");
-    let expected = String::from_utf8_lossy(&system.stdout).trim().to_string();
+    // The system's own name, asked of the system directly.
+    let expected = nix::unistd::gethostname()
+        .expect("the system host name")
+        .to_string_lossy()
+        .trim()
+        .to_string();
     assert!(!expected.is_empty() && expected != PLANTED);
     let path = format!(
         "{}:{}",
