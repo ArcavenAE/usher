@@ -177,6 +177,17 @@ fn a_relative_layout_is_refused() {
     rejects(&text, &["demo.launcher", "layout", "absolute"]);
 }
 
+/// A layout must start at a root: `/` or one of the five path tokens. `${VERSION}` is a
+/// capture placeholder, never a root, so a layout that is only the placeholder is relative.
+#[test]
+fn a_layout_that_is_only_the_version_placeholder_is_refused_as_relative() {
+    let text = with_link(&LINK.replace(
+        "${HOME}/.local/share/demo/versions/${VERSION}",
+        "${VERSION}",
+    ));
+    rejects(&text, &["demo.launcher", "layout", "absolute"]);
+}
+
 #[test]
 fn version_outside_the_layout_is_refused() {
     rejects(

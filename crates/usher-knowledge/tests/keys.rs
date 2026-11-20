@@ -74,6 +74,16 @@ fn a_key_name_must_be_a_non_empty_string() {
 }
 
 #[test]
+fn a_key_name_padded_with_spaces_is_refused_naming_the_item() {
+    for padded in ["[\"beta\", \" alpha\"]", "[\"beta\", \"alpha \"]"] {
+        rejects(
+            &FILE.replace("[\"beta\", \"alpha\"]", padded),
+            &["demo.control-keys", "padded"],
+        );
+    }
+}
+
+#[test]
 fn a_repeated_key_name_is_refused_naming_it() {
     rejects(
         &FILE.replace("[\"beta\", \"alpha\"]", "[\"beta\", \"alpha\", \"beta\"]"),
