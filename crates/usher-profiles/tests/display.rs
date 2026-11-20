@@ -201,3 +201,40 @@ fn a_refusal_shows_a_c1_control_in_a_tool_name_as_text_and_holds_no_raw_one() {
         err.status()
     );
 }
+
+// Ruling 7.1 PR A, Q7 and its correction: the bidi format controls are
+// escaped too. Every literal below is written as an escape in the source.
+#[test]
+fn a_bidi_format_control_is_written_as_an_uppercase_u_escape() {
+    let shown = display_name("a\u{202e}b");
+    assert_eq!(shown, "a\\u202Eb");
+    assert!(!shown.contains('\u{202e}'));
+    assert_eq!(shown.as_bytes(), b"a\\u202Eb");
+
+    let set = [
+        0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069,
+    ];
+    for n in set {
+        let c = char::from_u32(n).expect("a char");
+        assert_eq!(display_name(&c.to_string()), format!("\\u{n:04X}"));
+    }
+    // Control: the neighbours of each range stay as written.
+    for n in [0x200C, 0x200D, 0x2010, 0x2029, 0x202F, 0x2065, 0x206A] {
+        let c = char::from_u32(n).expect("a char");
+        assert_eq!(display_name(&c.to_string()), c.to_string());
+    }
+}
+
+#[test]
+fn a_refusal_holds_no_raw_bidi_control_in_any_field() {
+    let err = refusal(&format!("{VALID}\n[tools]\n\"a\\u202Eb\" = \">=1.0.0\"\n"));
+    for value in [err.step(), err.check(), err.status(), err.next_action()] {
+        assert!(!value.contains('\u{202e}'), "a raw U+202E in {value:?}");
+    }
+    assert!(
+        err.check().contains("a\\u202Eb") || err.status().contains("a\\u202Eb"),
+        "{} / {}",
+        err.check(),
+        err.status()
+    );
+}
