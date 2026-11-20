@@ -9,6 +9,20 @@ use std::path::{Path, PathBuf};
 use usher_store::{Platform, Store, account_home, account_home_of, ensure_owned, state_dir_under};
 use usher_testkit::ScratchHome;
 
+/// A uid that the account database of this host maps to no account, found by asking it:
+/// the top of the uid range holds `nobody` on macOS, so no constant is safe everywhere.
+fn unmapped_uid() -> u32 {
+    (0..64u32)
+        .map(|step| 3_999_999_999 - step)
+        .find(|uid| {
+            matches!(
+                nix::unistd::User::from_uid(nix::unistd::Uid::from_raw(*uid)),
+                Ok(None)
+            )
+        })
+        .expect("a uid among the 64 below 3_999_999_999 that no account has")
+}
+
 /// The uid of whoever runs the tests: the owner of a file the test just made.
 fn current_uid() -> u32 {
     let scratch = ScratchHome::new().expect("scratch");
@@ -44,10 +58,11 @@ fn the_current_account_home_is_that_of_the_current_uid() {
 
 #[test]
 fn an_unknown_uid_is_refused_naming_it_with_a_next_action() {
-    let err = account_home_of(u32::MAX - 1).expect_err("no such account");
+    let unknown = unmapped_uid();
+    let err = account_home_of(unknown).expect_err("no such account");
     assert_eq!(err.step(), "resolve the account home");
     assert!(
-        err.status().contains(&(u32::MAX - 1).to_string()),
+        err.status().contains(&unknown.to_string()),
         "{}",
         err.status()
     );
