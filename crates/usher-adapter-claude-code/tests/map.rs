@@ -134,6 +134,10 @@ impl Rig {
     }
 
     fn context(&self, set: &[&str]) -> LaunchContext {
+        self.context_at(Some(VERSION), set)
+    }
+
+    fn context_at(&self, version: Option<&str>, set: &[&str]) -> LaunchContext {
         let home = self.home();
         let key = environment_key("host", "alex", "claude-code", &self.repo, &[])
             .expect("an absolute directory");
@@ -148,7 +152,7 @@ impl Rig {
             home,
             repo: Some(self.repo.clone()),
             user: "alex".to_string(),
-            harness_version: Some(VERSION.to_string()),
+            harness_version: version.map(str::to_string),
         }
     }
 
@@ -683,4 +687,31 @@ fn no_env_child_is_in_effect_or_shadowed_in_any_layer() {
         "{:?}",
         map.readings
     );
+}
+
+// ---- a whole source the version does not read ------------------------------------------
+
+/// A row that is unread because its whole source is unread names the source item, not the
+/// key item.
+#[test]
+fn a_row_of_an_unread_source_names_the_source_item() {
+    let rig = Rig::new();
+    rig.write(&rig.project_file(), r#"{"model": "project-model"}"#);
+    let adapter = rig.adapter(KnowledgeFile::embedded().expect("embedded"));
+    let context = rig.context(&[]);
+    let mut listing = rig.listing(&adapter, &context);
+    let project = listing
+        .sources
+        .iter_mut()
+        .find(|s| s.layer == "project")
+        .expect("a project source");
+    let item = project.item_id.clone();
+    project.status = SourceStatus::Unread {
+        reason: "this version skips it".to_string(),
+    };
+    let map = adapter.map_settings(&listing, &context).expect("a map");
+    let row = reading(&map, "model", "project");
+    assert_eq!(row.status, ReadingStatus::Unread);
+    assert!(note_has(row, &item), "{row:?}");
+    assert!(!note_has(row, "claude-code.key-model"), "{row:?}");
 }
