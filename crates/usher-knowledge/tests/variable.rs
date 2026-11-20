@@ -33,7 +33,7 @@ source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", 
 const VARIABLE: &str = r#"variable = { name = "DEMO_CONFIG_DIR", binds = "${CONFIG_DIR}", default = "${HOME}/.demo" }"#;
 
 fn file(items: &[&str]) -> String {
-    format!("schema_version = 3\nsequence = 9\n{}", items.concat())
+    format!("schema_version = 4\nsequence = 9\n{}", items.concat())
 }
 
 fn rejects(text: &str, needles: &[&str]) {
@@ -97,6 +97,7 @@ fn only_a_paths_item_may_carry_a_variable() {
 fn a_variable_name_is_upper_case_letters_digits_and_underscores() {
     for bad in [
         "demo_config_dir",
+        "DEMO_dir",
         "1DEMO",
         "_DEMO",
         "DEMO-DIR",
@@ -176,13 +177,13 @@ fn a_default_is_an_absolute_path_that_names_neither_its_own_token_nor_the_versio
 }
 
 #[test]
-fn two_items_of_one_harness_may_not_share_a_name_or_a_token_over_the_same_versions() {
+fn two_items_of_one_harness_may_not_bind_one_token_over_overlapping_versions() {
     let overlapping = BINDER
         .replace("demo.config-dir-variable", "demo.second")
         .replace(">=1.0.0, <2.0.0", ">=1.5.0, <3.0.0");
     rejects(
         &file(&[BINDER, &overlapping, SOURCE]),
-        &["demo.config-dir-variable", "demo.second", "DEMO_CONFIG_DIR"],
+        &["demo.config-dir-variable", "demo.second"],
     );
     let same_token = overlapping.replace("DEMO_CONFIG_DIR", "DEMO_OTHER_DIR");
     rejects(
@@ -223,22 +224,36 @@ fn a_source_that_uses_the_config_dir_token_needs_a_binder_for_the_same_versions(
 /// the names are sorted, and a name that two ranges share appears once.
 #[test]
 fn launch_variables_lists_every_range_sorted_and_deduplicated() {
+    // Every variable the key is expected to hold binds a token; one variable that binds
+    // nothing sits beside them and stays out. The flag is bound in the later range only,
+    // so a lookup that reads the first range alone misses it, and it binds the other
+    // token, since two binders of one token may not overlap in versions.
     let flag = BINDER
         .replace("demo.config-dir-variable", "demo.flag")
-        .replace(VARIABLE, r#"variable = { name = "DEMO_A_FLAG" }"#);
+        .replace(">=1.0.0, <2.0.0", ">=2.0.0, <3.0.0")
+        .replace(
+            VARIABLE,
+            r#"variable = { name = "DEMO_A_FLAG", binds = "${GLOBAL_STATE_DIR}", default = "${HOME}" }"#,
+        );
+    let plain = BINDER
+        .replace("demo.config-dir-variable", "demo.plain")
+        .replace(VARIABLE, r#"variable = { name = "DEMO_B_PLAIN" }"#);
     let later = BINDER
         .replace("demo.config-dir-variable", "demo.later")
         .replace(">=1.0.0, <2.0.0", ">=2.0.0, <3.0.0");
     let other = BINDER
         .replace("demo.config-dir-variable", "other.config")
         .replace("harness = \"demo\"", "harness = \"other\"")
-        .replace(VARIABLE, r#"variable = { name = "OTHER_DIR" }"#);
-    let parsed =
-        KnowledgeFile::parse(&file(&[BINDER, &flag, &later, &other, SOURCE])).expect("valid");
+        .replace(
+            VARIABLE,
+            r#"variable = { name = "OTHER_DIR", binds = "${CONFIG_DIR}", default = "${HOME}/.other" }"#,
+        );
+    let parsed = KnowledgeFile::parse(&file(&[BINDER, &flag, &plain, &later, &other, SOURCE]))
+        .expect("valid");
     assert_eq!(
         parsed.launch_variables("demo"),
         ["DEMO_A_FLAG", "DEMO_CONFIG_DIR"],
-        "both ranges name DEMO_CONFIG_DIR, and it is listed once"
+        "both ranges name DEMO_CONFIG_DIR and it is listed once; DEMO_B_PLAIN binds nothing"
     );
     assert_eq!(parsed.launch_variables("other"), ["OTHER_DIR"]);
     assert!(parsed.launch_variables("nothing").is_empty());

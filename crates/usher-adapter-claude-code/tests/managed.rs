@@ -73,7 +73,7 @@ fn fixture() -> KnowledgeFile {
 fn fixture_with(extra: &str) -> KnowledgeFile {
     let text = format!(
         r#"
-schema_version = 3
+schema_version = 4
 sequence = 99
 {}{}{}{}{}{}{}
 [[item]]
