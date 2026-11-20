@@ -135,6 +135,17 @@ last_verified = 2026-11-20
 settings_key = { key = "fx.scoped", merge = "scalar", sensitive = false, scopes = ["user", "local"] }
 
 [[item]]
+id = "claude-code.fx-nested"
+harness = "claude-code"
+layer = "fast"
+class = "settings-keys"
+versions = ">=2.1.317, <3.0.0"
+summary = "A nested plain scalar."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/nested" }
+last_verified = 2026-11-20
+settings_key = { key = "fx.nested.leaf", merge = "scalar", sensitive = false, scopes = ["any"] }
+
+[[item]]
 id = "claude-code.fx-secret"
 harness = "claude-code"
 layer = "fast"
@@ -1533,4 +1544,85 @@ fn a_sensitive_child_note_says_the_key_is_sensitive() {
     let map = rig.seed_map(&[]);
     let row = reading(&map, "env.FLEET_TOKEN", "user");
     assert_eq!(row.note.as_deref(), Some("key is sensitive"), "{row:?}");
+}
+
+// ---- a layer the listing cannot place, by the keys it sets ------------------------------
+
+const TIE: &str = "first-wins not decided: two managed sources share rank 3";
+
+/// The fixture map with the managed source marked unplaced, as a rank tie leaves it.
+fn fixture_map_with_unplaced_managed(rig: &Rig) -> SettingsMap {
+    let adapter = rig.adapter(KnowledgeFile::parse(FIXTURE).expect("fixture"));
+    let context = rig.context(&[]);
+    let mut listing = rig.listing(&adapter, &context);
+    let managed = listing
+        .sources
+        .iter_mut()
+        .find(|s| s.layer == "managed")
+        .expect("a managed source");
+    managed.status = SourceStatus::Unknown {
+        reason: TIE.to_string(),
+    };
+    adapter.map_settings(&listing, &context).expect("a map")
+}
+
+/// An unplaced layer whose file was read blocks a key below it only when its object holds
+/// that key's path. A member that sets only another key leaves the user value in effect.
+#[test]
+fn an_unplaced_managed_file_that_does_not_set_the_key_leaves_the_user_value_in_effect() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.system.join("etc/claude-code/managed-settings.json"),
+        r#"{"theme": "x"}"#,
+    );
+    rig.write(&rig.user_file(), r#"{"model": "user-model"}"#);
+    let adapter = rig.adapter(KnowledgeFile::embedded().expect("embedded"));
+    let context = rig.context(&[]);
+    let mut listing = rig.listing(&adapter, &context);
+    let managed = listing
+        .sources
+        .iter_mut()
+        .find(|s| s.layer == "managed")
+        .expect("a managed source");
+    managed.status = SourceStatus::Unknown {
+        reason: TIE.to_string(),
+    };
+    let map = adapter.map_settings(&listing, &context).expect("a map");
+    let user = reading(&map, "model", "user");
+    assert_eq!(user.status, ReadingStatus::InEffect, "{user:?}");
+    assert_eq!(user.value, text("user-model"));
+}
+
+/// The block follows the full key path: a member that sets the nested key blocks it, and a
+/// member that sets only a sibling path does not.
+#[test]
+fn an_unplaced_file_blocks_a_nested_key_only_when_it_sets_that_path() {
+    let sets = Rig::new();
+    sets.write(
+        &sets.system.join("etc/claude-code/managed-settings.json"),
+        r#"{"fx": {"nested": {"leaf": "managed-leaf"}}}"#,
+    );
+    sets.write(
+        &sets.user_file(),
+        r#"{"fx": {"nested": {"leaf": "user-leaf"}}}"#,
+    );
+    let map = fixture_map_with_unplaced_managed(&sets);
+    let user = reading(&map, "fx.nested.leaf", "user");
+    assert_eq!(user.status, ReadingStatus::NotDecided, "{user:?}");
+    assert_eq!(
+        user.note.as_deref(),
+        Some(format!("managed not placed: {TIE}").as_str())
+    );
+    let sibling = Rig::new();
+    sibling.write(
+        &sibling.system.join("etc/claude-code/managed-settings.json"),
+        r#"{"fx": {"other": 1}}"#,
+    );
+    sibling.write(
+        &sibling.user_file(),
+        r#"{"fx": {"nested": {"leaf": "user-leaf"}}}"#,
+    );
+    let map = fixture_map_with_unplaced_managed(&sibling);
+    let user = reading(&map, "fx.nested.leaf", "user");
+    assert_eq!(user.status, ReadingStatus::InEffect, "{user:?}");
 }
