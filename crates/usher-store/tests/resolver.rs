@@ -69,6 +69,7 @@ fn a_state_directory_owned_by_another_user_is_refused_naming_both_uids() {
 /// Run by the test below as a child process with `HOME` pointed elsewhere: it prints the
 /// account home it resolves and does nothing otherwise.
 #[test]
+#[ignore = "run only by the_account_home_does_not_follow_home, as a child process"]
 fn child_reports_the_account_home() {
     if std::env::var_os("USHER_RESOLVER_CHILD").is_some() {
         println!(
@@ -86,7 +87,12 @@ fn the_account_home_does_not_follow_home() {
     let elsewhere = scratch.root().join("not-the-account-home");
     fs::create_dir_all(&elsewhere).expect("dirs");
     let out = std::process::Command::new(std::env::current_exe().expect("this test binary"))
-        .args(["--exact", "child_reports_the_account_home", "--nocapture"])
+        .args([
+            "--ignored",
+            "--exact",
+            "child_reports_the_account_home",
+            "--nocapture",
+        ])
         .env("USHER_RESOLVER_CHILD", "1")
         .env("HOME", &elsewhere)
         .output()
