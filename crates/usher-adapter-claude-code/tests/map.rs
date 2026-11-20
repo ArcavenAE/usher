@@ -182,8 +182,12 @@ impl Rig {
     }
 
     fn context_at(&self, version: Option<&str>, set: &[&str]) -> LaunchContext {
+        self.context_in(&self.repo, version, set)
+    }
+
+    fn context_in(&self, launch_dir: &Path, version: Option<&str>, set: &[&str]) -> LaunchContext {
         let home = self.home();
-        let key = environment_key("host", "alex", "claude-code", &self.repo, &[])
+        let key = environment_key("host", "alex", "claude-code", launch_dir, &[])
             .expect("an absolute directory");
         LaunchContext {
             key,
@@ -1370,4 +1374,67 @@ fn each_entry_of_a_sensitive_list_is_in_effect_with_no_value() {
         assert_eq!(row.note.as_deref(), Some("value not read (sensitive)"));
     }
     assert!(!format!("{map:?}").contains("canary"));
+}
+
+// ---- lists under a layer that cannot be read -------------------------------------------
+
+/// Lists concatenate, so an entry that was read applies whatever a broken layer holds: a
+/// user list key under a project file that does not parse stays in effect.
+#[test]
+fn a_list_key_under_a_broken_file_keeps_its_entries_in_effect() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.user_file(),
+        r#"{"permissions": {"allow": ["Bash(ls)"]}}"#,
+    );
+    rig.write(&rig.project_file(), "{ not json");
+    let map = rig.seed_map(&[]);
+    let row = reading(&map, "permissions.allow", "user");
+    assert_eq!(row.status, ReadingStatus::InEffect, "{row:?}");
+    assert_eq!(row.value, text("Bash(ls)"));
+}
+
+// ---- two local files -------------------------------------------------------------------
+
+/// Started in a subdirectory, the repository root's local file and the starting
+/// directory's both belong to the local layer. Where both set a scalar the root's value
+/// applies and the other reads shadowed with the root's file named; list entries from both
+/// apply.
+#[test]
+fn two_local_files_decide_a_scalar_by_the_root_and_keep_both_lists() {
+    let rig = Rig::new();
+    let start = rig.repo.join("pkg");
+    fs::create_dir_all(&start).expect("start dir");
+    let root_file = rig.write(
+        &rig.local_file(),
+        r#"{"model": "root-model", "permissions": {"allow": ["Bash(root)"]}}"#,
+    );
+    let start_file = rig.write(
+        &start.join(".claude/settings.local.json"),
+        r#"{"model": "start-model", "permissions": {"allow": ["Bash(start)"]}}"#,
+    );
+    let adapter = rig.adapter(KnowledgeFile::embedded().expect("embedded"));
+    let context = rig.context_in(&start, Some(VERSION), &[]);
+    let listing = rig.listing(&adapter, &context);
+    let map = adapter.map_settings(&listing, &context).expect("a map");
+    let models = readings(&map, "model");
+    assert_eq!(models.len(), 2, "{models:?}");
+    let root = models
+        .iter()
+        .find(|r| r.source_path == root_file)
+        .expect("a row for the root file");
+    let started = models
+        .iter()
+        .find(|r| r.source_path == start_file)
+        .expect("a row for the starting directory file");
+    assert_eq!(root.status, ReadingStatus::InEffect, "{root:?}");
+    assert_eq!(root.value, text("root-model"));
+    assert_eq!(started.status, ReadingStatus::Shadowed, "{started:?}");
+    assert_eq!(
+        started.note.as_deref(),
+        Some(format!("shadowed by local ({})", root_file.display()).as_str())
+    );
+    let allow = readings(&map, "permissions.allow");
+    assert_eq!(allow.len(), 2, "{allow:?}");
+    assert!(allow.iter().all(|r| r.status == ReadingStatus::InEffect));
 }
