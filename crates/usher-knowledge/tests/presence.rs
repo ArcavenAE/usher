@@ -5,7 +5,7 @@
 use usher_knowledge::{Class, KnowledgeFile, ReferenceKind, SourceLayer, VersionRule};
 
 const FILE: &str = r#"
-schema_version = 3
+schema_version = 4
 sequence = 9
 
 [[item]]
@@ -65,7 +65,7 @@ fn with_link(link: &str) -> String {
 
 #[test]
 fn a_source_says_whether_its_layer_is_always_present() {
-    let file = KnowledgeFile::parse(FILE).expect("a valid schema 3 file");
+    let file = KnowledgeFile::parse(FILE).expect("a valid schema 4 file");
     let source = file.items()[0].source().expect("a source fact");
     assert!(source.always_present());
 
@@ -89,7 +89,7 @@ fn always_present_must_be_a_boolean() {
 
 #[test]
 fn a_paths_item_carries_the_launcher_rule_and_layout_for_the_version() {
-    let file = KnowledgeFile::parse(FILE).expect("a valid schema 3 file");
+    let file = KnowledgeFile::parse(FILE).expect("a valid schema 4 file");
     let item = &file.items()[1];
     assert_eq!(item.class(), Class::Paths);
     let from = item

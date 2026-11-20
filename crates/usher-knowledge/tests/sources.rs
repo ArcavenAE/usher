@@ -1,10 +1,10 @@
-//! Story 1.5, PR A: the `sources` knowledge class (AD-12, AD-6), schema 3, and the
+//! Story 1.5, PR A: the `sources` knowledge class (AD-12, AD-6), schema 4, and the
 //! Claude Code seed entries. Runs against the public API only.
 
 use usher_knowledge::{Class, KnowledgeFile, Layer, ReadRule, SourceLayer, Version};
 
 const FILE: &str = r#"
-schema_version = 3
+schema_version = 4
 sequence = 9
 
 [[item]]
@@ -49,8 +49,8 @@ fn with_source(source: &str) -> String {
 
 #[test]
 fn a_sources_item_parses_with_path_layer_read_rule_and_rank() {
-    let file = KnowledgeFile::parse(FILE).expect("a valid schema 3 file");
-    assert_eq!(file.version().schema_version(), 3);
+    let file = KnowledgeFile::parse(FILE).expect("a valid schema 4 file");
+    assert_eq!(file.version().schema_version(), 4);
     let item = &file.items()[0];
     assert_eq!(item.class(), Class::Sources);
     assert_eq!(item.layer(), Layer::Slow);
@@ -94,13 +94,13 @@ fn every_layer_and_read_rule_name_is_accepted() {
 
 #[test]
 fn schema_one_is_refused_and_schema_three_is_read() {
-    let one = FILE.replace("schema_version = 3", "schema_version = 1");
-    rejects(&one, &["schema 1 is not supported", "reads schema 3"]);
+    let one = FILE.replace("schema_version = 4", "schema_version = 1");
+    rejects(&one, &["schema 1 is not supported", "reads schema 4"]);
     let two_without_sources = r#"
-schema_version = 3
+schema_version = 4
 sequence = 1
 "#;
-    KnowledgeFile::parse(two_without_sources).expect("schema 3 with no items is valid");
+    KnowledgeFile::parse(two_without_sources).expect("schema 4 with no items is valid");
 }
 
 #[test]
@@ -247,7 +247,7 @@ variable = { name = "DEMO_CONFIG_DIR", binds = "${CONFIG_DIR}", default = "${HOM
 #[test]
 fn the_embedded_file_is_schema_three_and_lists_every_claude_code_source() {
     let file = KnowledgeFile::embedded().expect("the embedded file passes the check");
-    assert_eq!(file.version().schema_version(), 3);
+    assert_eq!(file.version().schema_version(), 4);
     assert!(
         file.version().sequence() >= 3,
         "the new items raise the sequence"
