@@ -610,3 +610,27 @@ fn a_version_check_descriptor_never_reaches_the_transport_under_the_one_1_15_pol
     assert_four_fields(&err);
     assert!(transport.sent().is_empty());
 }
+
+#[test]
+fn a_percent_sign_or_dot_segment_in_a_path_value_is_refused_naming_the_field_and_the_check() {
+    assert_a_valid_call_goes_through();
+    for value in ["a%2Fb", "%2e%2e", "..", ".", "50%"] {
+        let transport = RecordingTransport::new().answering_ok("body");
+        let err = port(&transport)
+            .call(Request::new(Egress::KnowledgeUpdate).with("file", value))
+            .expect_err("a percent sign or a dot segment must fail");
+        assert!(
+            err.to_string().contains("file"),
+            "{value:?}: the error names the field: {err}"
+        );
+        assert_eq!(
+            err.check(),
+            "a path value holds no `/`, `?`, `#`, `%`, whitespace or control character, and is not `.`, `..` or empty",
+            "{value:?}"
+        );
+        assert!(
+            transport.sent().is_empty(),
+            "value {value:?} reached the transport"
+        );
+    }
+}
