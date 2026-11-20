@@ -223,22 +223,34 @@ fn a_source_that_uses_the_config_dir_token_needs_a_binder_for_the_same_versions(
 /// the names are sorted, and a name that two ranges share appears once.
 #[test]
 fn launch_variables_lists_every_range_sorted_and_deduplicated() {
+    // Every variable the key is expected to hold binds a token; one variable that binds
+    // nothing sits beside them and stays out. The flag binds the other token, since two
+    // binders of one token may not overlap in versions.
     let flag = BINDER
         .replace("demo.config-dir-variable", "demo.flag")
-        .replace(VARIABLE, r#"variable = { name = "DEMO_A_FLAG" }"#);
+        .replace(
+            VARIABLE,
+            r#"variable = { name = "DEMO_A_FLAG", binds = "${GLOBAL_STATE_DIR}", default = "${HOME}" }"#,
+        );
+    let plain = BINDER
+        .replace("demo.config-dir-variable", "demo.plain")
+        .replace(VARIABLE, r#"variable = { name = "DEMO_B_PLAIN" }"#);
     let later = BINDER
         .replace("demo.config-dir-variable", "demo.later")
         .replace(">=1.0.0, <2.0.0", ">=2.0.0, <3.0.0");
     let other = BINDER
         .replace("demo.config-dir-variable", "other.config")
         .replace("harness = \"demo\"", "harness = \"other\"")
-        .replace(VARIABLE, r#"variable = { name = "OTHER_DIR" }"#);
-    let parsed =
-        KnowledgeFile::parse(&file(&[BINDER, &flag, &later, &other, SOURCE])).expect("valid");
+        .replace(
+            VARIABLE,
+            r#"variable = { name = "OTHER_DIR", binds = "${CONFIG_DIR}", default = "${HOME}/.other" }"#,
+        );
+    let parsed = KnowledgeFile::parse(&file(&[BINDER, &flag, &plain, &later, &other, SOURCE]))
+        .expect("valid");
     assert_eq!(
         parsed.launch_variables("demo"),
         ["DEMO_A_FLAG", "DEMO_CONFIG_DIR"],
-        "both ranges name DEMO_CONFIG_DIR, and it is listed once"
+        "both ranges name DEMO_CONFIG_DIR and it is listed once; DEMO_B_PLAIN binds nothing"
     );
     assert_eq!(parsed.launch_variables("other"), ["OTHER_DIR"]);
     assert!(parsed.launch_variables("nothing").is_empty());

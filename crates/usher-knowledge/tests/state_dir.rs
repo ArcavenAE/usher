@@ -306,6 +306,18 @@ fn a_variable_with_binds_is_keyed() {
     assert!(only_plain.launch_variables("demo").is_empty());
 }
 
+/// The key is a version-free union across ranges, deduplicated, of the variables that
+/// bind a token: a variable bound over two ranges is listed once, and one that binds
+/// nothing is absent.
+#[test]
+fn a_variable_bound_over_two_ranges_is_keyed_once_and_an_unbound_one_not_at_all() {
+    let later = CONFIG
+        .replace("demo.config-dir", "demo.config-dir-later")
+        .replace(">=1.0.0, <2.0.0", ">=2.0.0, <3.0.0");
+    let parsed = KnowledgeFile::parse(&file(&[CONFIG, &later, STATE, PLAIN])).expect("valid");
+    assert_eq!(parsed.launch_variables("demo"), ["DEMO_HOME"]);
+}
+
 #[test]
 fn the_embedded_key_names_the_config_variable_once() {
     let seed = KnowledgeFile::embedded().expect("the embedded file");
