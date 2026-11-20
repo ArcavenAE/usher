@@ -265,9 +265,15 @@ pub struct Item {
     reference: Reference,
     last_verified: Date,
     source: Option<SourceFact>,
+    keys: Vec<String>,
 }
 
 impl Item {
+    /// The setting names a `keys` item lists, empty for every other class.
+    pub fn keys(&self) -> &[String] {
+        &self.keys
+    }
+
     /// The settings-source fact, for an item of class `sources`.
     pub fn source(&self) -> Option<&SourceFact> {
         self.source.as_ref()
@@ -619,6 +625,7 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
         reference: parse_reference(table, id)?,
         last_verified: parse_date(table, id)?,
         source,
+        keys: Vec::new(),
     })
 }
 
