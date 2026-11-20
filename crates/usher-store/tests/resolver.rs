@@ -6,7 +6,10 @@ use std::fs;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-use usher_store::{Platform, Store, account_home, account_home_of, ensure_owned, state_dir_under};
+use usher_store::{
+    Platform, Store, account_home, account_home_of, ensure_owned, require_absolute_home,
+    state_dir_under,
+};
 use usher_testkit::ScratchHome;
 
 /// A uid that the account database of this host maps to no account, found by asking it:
@@ -148,4 +151,26 @@ fn the_store_open_refuses_a_directory_owned_by_another_uid() {
         "{}",
         err.status()
     );
+}
+
+/// A home the account database gives as a relative path would put the store under the
+/// launch directory, so it is refused naming the uid and the path.
+#[test]
+fn a_relative_account_home_is_refused_naming_the_uid_and_the_path() {
+    assert_eq!(
+        require_absolute_home(501, Path::new("/home/alex")).expect("an absolute home"),
+        PathBuf::from("/home/alex")
+    );
+    for relative in ["unresolved", "./home", ""] {
+        let err = require_absolute_home(501, Path::new(relative)).expect_err(relative);
+        assert_eq!(err.step(), "resolve the account home");
+        assert!(err.status().contains("501"), "{}", err.status());
+        assert!(err.status().contains(relative), "{}", err.status());
+        assert!(
+            err.status().contains("not an absolute path"),
+            "{}",
+            err.status()
+        );
+        assert!(!err.next_action().is_empty());
+    }
 }

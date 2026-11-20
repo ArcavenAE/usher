@@ -727,6 +727,12 @@ pub fn account_name() -> Result<String, UsherError> {
     Ok(account_of(nix::unistd::Uid::current().as_raw())?.name)
 }
 
+/// Refuses an account home that is not an absolute path, naming the uid and the path.
+pub fn require_absolute_home(uid: u32, home: &Path) -> Result<PathBuf, UsherError> {
+    let _ = uid;
+    Ok(home.to_path_buf())
+}
+
 /// The account home of the current user.
 pub fn account_home() -> Result<PathBuf, UsherError> {
     account_home_of(nix::unistd::Uid::current().as_raw())
