@@ -21,7 +21,7 @@ const NOT_STATED: &str =
 
 /// One item of each read rule, over files the tests write under the scratch home.
 const FIXTURE: &str = r#"
-schema_version = 4
+schema_version = 5
 sequence = 20
 
 [[item]]
