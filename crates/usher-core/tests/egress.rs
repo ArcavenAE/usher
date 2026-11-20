@@ -1338,3 +1338,13 @@ fn a_port_or_userinfo_in_a_redirect_host_reads_as_not_a_valid_name() {
         assert!(!text.contains(host), "{host}: the host is echoed: {text}");
     }
 }
+
+#[test]
+fn a_valid_host_name_of_253_characters_is_echoed() {
+    let host = format!("{}.invalid", "a".repeat(253 - ".invalid".len()));
+    assert_eq!(host.len(), 253);
+    let err = redirect_error(&format!("https://{host}/x"));
+    let text = err.to_string();
+    assert!(text.contains(&host), "the 253-character host is not echoed");
+    assert!(!text.contains("not a valid name"), "{text}");
+}
