@@ -686,7 +686,26 @@ fn the_seed_gives_every_key_the_scope_the_settings_reference_states() {
             seeded(key).scopes()
         );
     }
-    assert_eq!(any.len() + 6 + 3, SEEDED_KEYS.len());
+    let mut covered: Vec<&str> = any
+        .iter()
+        .copied()
+        .chain([
+            "autoMode.environment",
+            "autoMode.allow",
+            "autoMode.soft_deny",
+            "autoMode.hard_deny",
+            "autoMode.classifyAllShell",
+            "modelPicker",
+            "policyHelper",
+            "wslInheritsWindowsSettings",
+            "managedSourcesBehavior",
+        ])
+        .collect();
+    covered.sort_unstable();
+    assert_eq!(
+        covered, SEEDED_KEYS,
+        "the table covers exactly the seeded keys"
+    );
 }
 
 #[test]
