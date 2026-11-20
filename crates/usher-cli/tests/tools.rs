@@ -3,7 +3,7 @@
 
 use std::{
     fs,
-    os::unix::fs::symlink,
+    os::unix::fs::{PermissionsExt, symlink},
     path::{Path, PathBuf},
 };
 
@@ -72,14 +72,30 @@ impl Rig {
         )
     }
 
+    fn receipt_with_tap(&self, formula: &str, version: &str, tap: &str) -> PathBuf {
+        self.receipt(
+            formula,
+            version,
+            &format!(r#"{{"source":{{"tap":"{tap}"}}}}"#),
+        )
+    }
+
+    /// The `opt` link brew keeps for linked and keg-only formulae alike.
     fn link(&self, formula: &str, version: &str) {
+        let dir = self.brew().prefix.join("opt");
+        fs::create_dir_all(&dir).expect("opt dir");
+        symlink(format!("../Cellar/{formula}/{version}"), dir.join(formula)).expect("opt link");
+    }
+
+    /// An entry in `var/homebrew/linked`, which the reader does not use.
+    fn linked_entry(&self, formula: &str, version: &str) {
         let dir = self.brew().prefix.join("var/homebrew/linked");
         fs::create_dir_all(&dir).expect("linked dir");
         symlink(
             format!("../../../Cellar/{formula}/{version}"),
             dir.join(formula),
         )
-        .expect("link");
+        .expect("linked entry");
     }
 
     fn tap_formula(&self, tap: &str, sharded: bool, formula: &str) {
@@ -100,6 +116,20 @@ impl Rig {
             "class X < Formula\nend\n",
         )
         .expect("formula");
+    }
+
+    /// An install directory with the backend file mise writes, and one version.
+    fn mise_tool(&self, dir: &str, short: &str, full: &str, version: &str) {
+        self.mise_version(dir, version);
+        fs::write(
+            self.paths
+                .mise_data
+                .join("installs")
+                .join(dir)
+                .join(".mise.backend.toml"),
+            format!("short = \"{short}\"\nfull = \"{full}\"\n"),
+        )
+        .expect("backend file");
     }
 
     fn mise_version(&self, dir: &str, version: &str) {
@@ -132,12 +162,20 @@ fn only(mut rows: Vec<ToolRow>) -> ToolRow {
 
 // ---- brew ----
 
+fn brew_spec(name: &'static str, package: &'static str) -> ToolSpec {
+    spec(name, Installer::Brew, package)
+}
+
+fn mise_spec(name: &'static str, package: &'static str) -> ToolSpec {
+    spec(name, Installer::Mise, package)
+}
+
 #[test]
 fn an_installed_formula_reads_its_version_from_the_cellar_and_its_tap_from_the_receipt() {
     let rig = Rig::new();
     rig.good_receipt("jq", "1.7.1");
     rig.link("jq", "1.7.1");
-    let row = only(read_brew(&spec("jq", Installer::Brew, "jq"), &rig.paths));
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
     assert_eq!(
         row,
         ToolRow {
@@ -156,11 +194,48 @@ fn an_installed_formula_reads_its_version_from_the_cellar_and_its_tap_from_the_r
 #[test]
 fn a_formula_with_no_cellar_directory_is_missing_with_the_install_command() {
     let rig = Rig::new();
-    let row = only(read_brew(&spec("jq", Installer::Brew, "jq"), &rig.paths));
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
     assert_eq!(row.state, InstallState::Missing);
     assert_eq!(row.source, "brew");
-    assert_eq!(row.installed, Reading::Unknown("not installed".to_string()));
+    assert_eq!(row.installed, Reading::None);
     assert_eq!(row.verdict, Verdict::Unknown(NOT_RUN.to_string()));
+    assert_eq!(
+        row.hint,
+        Some(Hint {
+            kind: HintKind::Install,
+            command: "brew install jq".to_string(),
+            source: "brew".to_string(),
+        })
+    );
+}
+
+#[test]
+fn a_missing_tap_formula_prints_the_tap_qualified_install_command() {
+    let rig = Rig::new();
+    let row = only(read_brew(
+        &brew_spec("marvel", "arcavenae/tap/marvel"),
+        &rig.paths,
+    ));
+    assert_eq!(row.state, InstallState::Missing);
+    assert_eq!(
+        row.hint,
+        Some(Hint {
+            kind: HintKind::Install,
+            command: "brew install arcavenae/tap/marvel".to_string(),
+            source: "brew".to_string(),
+        })
+    );
+}
+
+#[test]
+fn with_brew_not_found_every_brew_entry_is_a_missing_row_with_the_reason() {
+    let mut rig = Rig::new();
+    rig.paths.brew = None;
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
+    assert_eq!(row.state, InstallState::Missing);
+    assert_eq!(row.source, "brew");
+    assert_eq!(row.installed, Reading::None);
+    assert_eq!(row.verdict, Verdict::Unknown("brew not found".to_string()));
     assert_eq!(
         row.hint,
         Some(Hint {
@@ -176,11 +251,12 @@ fn a_receipt_that_is_not_json_is_an_error_row_naming_the_file_never_current() {
     let rig = Rig::new();
     let path = rig.receipt("jq", "1.7.1", "{ not json");
     rig.link("jq", "1.7.1");
-    let row = only(read_brew(&spec("jq", Installer::Brew, "jq"), &rig.paths));
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
     assert_eq!(row.verdict, Verdict::Error);
-    let error = row.error.expect("an error row says why");
-    assert!(error.contains(&path.display().to_string()), "{error}");
-    assert!(error.contains("not valid JSON"), "{error}");
+    assert_eq!(
+        row.error,
+        Some(format!("{}: not valid JSON", path.display()))
+    );
     assert_ne!(row.verdict, Verdict::Current);
 }
 
@@ -189,49 +265,123 @@ fn a_receipt_without_a_source_tap_is_an_error_row_that_does_not_guess_a_source()
     let rig = Rig::new();
     let path = rig.receipt("jq", "1.7.1", r#"{"source":{"path":"/x"}}"#);
     rig.link("jq", "1.7.1");
-    let row = only(read_brew(&spec("jq", Installer::Brew, "jq"), &rig.paths));
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
     assert_eq!(row.verdict, Verdict::Error);
-    let error = row.error.expect("an error row says why");
-    assert!(error.contains(&path.display().to_string()), "{error}");
-    assert!(error.contains("source.tap is missing"), "{error}");
+    assert_eq!(
+        row.error,
+        Some(format!("{}: source.tap is missing", path.display()))
+    );
     assert_eq!(row.source, "unknown source");
 }
 
 #[test]
 fn a_receipt_whose_source_tap_is_not_a_string_is_an_error_row() {
     let rig = Rig::new();
-    rig.receipt("jq", "1.7.1", r#"{"source":{"tap":null}}"#);
+    let path = rig.receipt("jq", "1.7.1", r#"{"source":{"tap":null}}"#);
     rig.link("jq", "1.7.1");
-    let row = only(read_brew(&spec("jq", Installer::Brew, "jq"), &rig.paths));
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
     assert_eq!(row.verdict, Verdict::Error);
-    let error = row.error.expect("an error row says why");
-    assert!(error.contains("source.tap is not a string"), "{error}");
+    assert_eq!(
+        row.error,
+        Some(format!("{}: source.tap is not a string", path.display()))
+    );
 }
 
 #[test]
-fn with_two_versions_installed_the_linked_one_is_read() {
+fn a_cellar_version_with_no_receipt_is_an_installed_error_row_naming_the_missing_file() {
+    let rig = Rig::new();
+    let dir = rig.cellar("jq", "1.7.1");
+    rig.link("jq", "1.7.1");
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
+    assert_eq!(row.state, InstallState::Installed);
+    assert_eq!(row.verdict, Verdict::Error);
+    assert_eq!(
+        row.error,
+        Some(format!(
+            "{}: missing",
+            dir.join("INSTALL_RECEIPT.json").display()
+        ))
+    );
+}
+
+#[test]
+fn an_unreadable_receipt_is_an_error_row_carrying_the_io_error() {
+    let rig = Rig::new();
+    let path = rig.good_receipt("jq", "1.7.1");
+    rig.link("jq", "1.7.1");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).expect("chmod");
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
+    assert_eq!(row.verdict, Verdict::Error);
+    let error = row.error.expect("an error row says why");
+    assert!(
+        error.starts_with(&format!("{}: ", path.display())),
+        "{error}"
+    );
+    assert!(error.contains("Permission denied"), "{error}");
+}
+
+#[test]
+fn with_two_versions_installed_the_opt_link_names_the_one_in_effect_and_the_others_follow() {
     let rig = Rig::new();
     rig.good_receipt("jq", "1.7.0");
     rig.good_receipt("jq", "1.7.1");
-    rig.link("jq", "1.7.0");
-    let row = only(read_brew(&spec("jq", Installer::Brew, "jq"), &rig.paths));
-    assert_eq!(row.installed, Reading::Known("1.7.0".to_string()));
+    rig.link("jq", "1.7.1");
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
+    assert_eq!(row.installed, Reading::Known("1.7.1, 1.7.0".to_string()));
     assert_eq!(row.verdict, Verdict::Unknown(NOT_RUN.to_string()));
 }
 
 #[test]
-fn with_two_versions_installed_and_none_linked_the_row_is_an_error_naming_both() {
+fn a_keg_only_formula_with_an_opt_link_and_no_linked_entry_reads_its_version() {
+    let rig = Rig::new();
+    rig.good_receipt("openssl@3", "3.6.5");
+    rig.link("openssl@3", "3.6.5");
+    assert!(!rig.brew().prefix.join("var/homebrew/linked").exists());
+    let row = only(read_brew(&brew_spec("openssl@3", "openssl@3"), &rig.paths));
+    assert_eq!(row.installed, Reading::Known("3.6.5".to_string()));
+    assert_ne!(row.verdict, Verdict::Error);
+}
+
+#[test]
+fn one_installed_version_and_no_opt_link_reads_that_version() {
+    let rig = Rig::new();
+    rig.good_receipt("jq", "1.7.1");
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
+    assert_eq!(row.installed, Reading::Known("1.7.1".to_string()));
+    assert_ne!(row.verdict, Verdict::Error);
+}
+
+#[test]
+fn several_versions_and_no_opt_link_is_an_error_even_when_a_linked_entry_exists() {
     let rig = Rig::new();
     rig.good_receipt("jq", "1.7.0");
     rig.good_receipt("jq", "1.7.1");
-    let row = only(read_brew(&spec("jq", Installer::Brew, "jq"), &rig.paths));
+    rig.linked_entry("jq", "1.7.0");
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
     assert_eq!(row.verdict, Verdict::Error);
-    let error = row.error.expect("an error row says why");
-    assert!(
-        error.contains("1.7.0") && error.contains("1.7.1"),
-        "{error}"
+    assert_eq!(
+        row.error,
+        Some(format!(
+            "{}: does not name an installed version",
+            rig.brew().prefix.join("opt/jq").display()
+        ))
     );
-    assert!(error.contains("none is linked"), "{error}");
+}
+
+#[test]
+fn an_opt_link_whose_target_is_not_an_installed_version_is_an_error_row() {
+    let rig = Rig::new();
+    rig.good_receipt("jq", "1.7.1");
+    rig.link("jq", "9.9.9");
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
+    assert_eq!(row.verdict, Verdict::Error);
+    assert_eq!(
+        row.error,
+        Some(format!(
+            "{}: does not name an installed version",
+            rig.brew().prefix.join("opt/jq").display()
+        ))
+    );
 }
 
 #[test]
@@ -241,7 +391,7 @@ fn a_formula_in_two_taps_is_an_error_row_naming_both_taps() {
     rig.link("jq", "1.7.1");
     rig.tap_formula("acme/tools", false, "jq");
     rig.tap_formula("other/extras", true, "jq");
-    let row = only(read_brew(&spec("jq", Installer::Brew, "jq"), &rig.paths));
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
     assert_eq!(row.verdict, Verdict::Error);
     let error = row.error.expect("an error row says why");
     assert!(
@@ -256,8 +406,37 @@ fn a_formula_in_one_tap_is_not_an_error() {
     rig.good_receipt("jq", "1.7.1");
     rig.link("jq", "1.7.1");
     rig.tap_formula("acme/tools", false, "jq");
-    let row = only(read_brew(&spec("jq", Installer::Brew, "jq"), &rig.paths));
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
     assert_eq!(row.state, InstallState::Installed);
+    assert_ne!(row.verdict, Verdict::Error);
+}
+
+#[test]
+fn a_tap_qualified_package_reads_the_cellar_directory_after_the_last_slash() {
+    let rig = Rig::new();
+    rig.receipt_with_tap("marvel", "0.9.0", "arcavenae/tap");
+    rig.link("marvel", "0.9.0");
+    let row = only(read_brew(
+        &brew_spec("marvel", "arcavenae/tap/marvel"),
+        &rig.paths,
+    ));
+    assert_eq!(row.state, InstallState::Installed);
+    assert_eq!(row.source, "brew arcavenae/tap");
+    assert_eq!(row.installed, Reading::Known("0.9.0".to_string()));
+    assert_eq!(row.verdict, Verdict::Unknown(NOT_RUN.to_string()));
+}
+
+#[test]
+fn a_receipt_naming_another_tap_is_an_installed_row_with_that_tap_as_its_source() {
+    let rig = Rig::new();
+    rig.receipt_with_tap("marvel", "0.9.0", "other/tap");
+    rig.link("marvel", "0.9.0");
+    let row = only(read_brew(
+        &brew_spec("marvel", "arcavenae/tap/marvel"),
+        &rig.paths,
+    ));
+    assert_eq!(row.state, InstallState::Installed);
+    assert_eq!(row.source, "brew other/tap");
     assert_ne!(row.verdict, Verdict::Error);
 }
 
@@ -266,8 +445,8 @@ fn a_formula_in_one_tap_is_not_an_error() {
 #[test]
 fn a_mise_tool_reads_its_versions_from_the_installs_directory_names() {
     let rig = Rig::new();
-    rig.mise_version("go", "1.23.0");
-    let row = only(read_mise(&spec("go", Installer::Mise, "go"), &rig.paths));
+    rig.mise_tool("go", "go", "core:go", "1.23.0");
+    let row = only(read_mise(&mise_spec("go", "go"), &rig.paths));
     assert_eq!(
         row,
         ToolRow {
@@ -286,39 +465,118 @@ fn a_mise_tool_reads_its_versions_from_the_installs_directory_names() {
 #[test]
 fn several_mise_versions_print_sorted_and_joined() {
     let rig = Rig::new();
-    rig.mise_version("go", "1.23.0");
+    rig.mise_tool("go", "go", "core:go", "1.23.0");
     rig.mise_version("go", "1.22.0");
-    let row = only(read_mise(&spec("go", Installer::Mise, "go"), &rig.paths));
+    let row = only(read_mise(&mise_spec("go", "go"), &rig.paths));
     assert_eq!(row.installed, Reading::Known("1.22.0, 1.23.0".to_string()));
 }
 
 #[test]
 fn a_symlink_in_the_installs_directory_is_not_a_version() {
     let rig = Rig::new();
-    rig.mise_version("go", "1.23.0");
+    rig.mise_tool("go", "go", "core:go", "1.23.0");
     symlink("1.23.0", rig.paths.mise_data.join("installs/go/latest")).expect("alias");
-    let row = only(read_mise(&spec("go", Installer::Mise, "go"), &rig.paths));
+    let row = only(read_mise(&mise_spec("go", "go"), &rig.paths));
     assert_eq!(row.installed, Reading::Known("1.23.0".to_string()));
 }
 
 #[test]
-fn a_backend_package_reads_its_directory_and_names_its_backend() {
+fn a_dot_entry_in_the_installs_directory_is_not_a_version() {
     let rig = Rig::new();
-    rig.mise_version("github-acme-tool", "2.0.1");
+    rig.mise_tool("go", "go", "core:go", "1.23.0");
+    rig.mise_version("go", ".partial");
+    let row = only(read_mise(&mise_spec("go", "go"), &rig.paths));
+    assert_eq!(row.installed, Reading::Known("1.23.0".to_string()));
+}
+
+#[test]
+fn a_backend_package_is_matched_by_the_short_name_in_its_backend_file_not_by_its_directory_name() {
+    let rig = Rig::new();
+    rig.mise_tool(
+        "github-arcaven-ae-marvel",
+        "github:ArcavenAE/marvel",
+        "github:ArcavenAE/marvel",
+        "2.0.1",
+    );
     let row = only(read_mise(
-        &spec("tool", Installer::Mise, "github:acme/tool"),
+        &mise_spec("marvel", "github:ArcavenAE/marvel"),
         &rig.paths,
     ));
+    assert_eq!(row.state, InstallState::Installed);
     assert_eq!(row.source, "mise github");
     assert_eq!(row.installed, Reading::Known("2.0.1".to_string()));
 }
 
 #[test]
+fn the_source_word_is_the_text_of_full_before_its_first_colon() {
+    let rig = Rig::new();
+    rig.mise_tool("codex", "codex", "aqua:openai/codex", "0.160.0");
+    let row = only(read_mise(&mise_spec("codex", "codex"), &rig.paths));
+    assert_eq!(row.source, "mise aqua");
+}
+
+#[test]
+fn a_full_with_no_colon_reads_mise_core() {
+    let rig = Rig::new();
+    rig.mise_tool("tool", "tool", "tool", "1.0.0");
+    let row = only(read_mise(&mise_spec("tool", "tool"), &rig.paths));
+    assert_eq!(row.source, "mise core");
+}
+
+#[test]
+fn a_bad_backend_file_is_an_installed_error_row_with_its_exact_reason() {
+    let cases: [(&str, Option<&str>); 6] = [
+        ("missing", None),
+        ("not valid TOML", Some("short = = =")),
+        ("short is missing", Some("full = \"core:go\"\n")),
+        (
+            "short is not a string",
+            Some("short = 3\nfull = \"core:go\"\n"),
+        ),
+        ("full is missing", Some("short = \"go\"\n")),
+        ("full is not a string", Some("short = \"go\"\nfull = 3\n")),
+    ];
+    for (reason, text) in cases {
+        let rig = Rig::new();
+        rig.mise_version("go", "1.23.0");
+        let file = rig.paths.mise_data.join("installs/go/.mise.backend.toml");
+        if let Some(text) = text {
+            fs::write(&file, text).expect("backend file");
+        }
+        let row = only(read_mise(&mise_spec("go", "go"), &rig.paths));
+        assert_eq!(row.state, InstallState::Installed, "{reason}");
+        assert_eq!(row.verdict, Verdict::Error, "{reason}");
+        assert_eq!(
+            row.error,
+            Some(format!("{}: {reason}", file.display())),
+            "{reason}"
+        );
+    }
+}
+
+#[test]
+fn an_unreadable_backend_file_is_an_error_row_carrying_the_io_error() {
+    let rig = Rig::new();
+    rig.mise_tool("go", "go", "core:go", "1.23.0");
+    let file = rig.paths.mise_data.join("installs/go/.mise.backend.toml");
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).expect("chmod");
+    let row = only(read_mise(&mise_spec("go", "go"), &rig.paths));
+    assert_eq!(row.verdict, Verdict::Error);
+    let error = row.error.expect("an error row says why");
+    assert!(
+        error.starts_with(&format!("{}: ", file.display())),
+        "{error}"
+    );
+    assert!(error.contains("Permission denied"), "{error}");
+}
+
+#[test]
 fn a_mise_tool_with_no_installs_directory_is_missing_with_the_install_command() {
     let rig = Rig::new();
-    let row = only(read_mise(&spec("go", Installer::Mise, "go"), &rig.paths));
+    let row = only(read_mise(&mise_spec("go", "go"), &rig.paths));
     assert_eq!(row.state, InstallState::Missing);
     assert_eq!(row.source, "mise");
+    assert_eq!(row.installed, Reading::None);
     assert_eq!(
         row.hint,
         Some(Hint {
@@ -332,20 +590,164 @@ fn a_mise_tool_with_no_installs_directory_is_missing_with_the_install_command() 
 #[test]
 fn read_tools_asks_the_owning_installer_and_keeps_the_order_given() {
     let rig = Rig::new();
-    rig.mise_version("go", "1.23.0");
+    rig.mise_tool("go", "go", "core:go", "1.23.0");
     rig.good_receipt("jq", "1.7.1");
     rig.link("jq", "1.7.1");
-    let rows = read_tools(
-        &[
-            spec("go", Installer::Mise, "go"),
-            spec("jq", Installer::Brew, "jq"),
-        ],
-        &rig.paths,
-    );
+    let rows = read_tools(&[mise_spec("go", "go"), brew_spec("jq", "jq")], &rig.paths);
     let names: Vec<&str> = rows.iter().map(|row| row.name.as_str()).collect();
     assert_eq!(names, ["go", "jq"]);
     assert_eq!(rows[0].source, "mise core");
     assert_eq!(rows[1].source, "brew homebrew/core");
+}
+
+// ---- one name under two installers ----
+
+fn marvel_specs() -> [ToolSpec; 2] {
+    [
+        brew_spec("marvel", "arcavenae/tap/marvel"),
+        mise_spec("marvel", "github:ArcavenAE/marvel"),
+    ]
+}
+
+fn install_marvel_with_brew(rig: &Rig) {
+    rig.receipt_with_tap("marvel", "0.9.0", "arcavenae/tap");
+    rig.link("marvel", "0.9.0");
+}
+
+fn install_marvel_with_mise(rig: &Rig) {
+    rig.mise_tool(
+        "github-arcaven-ae-marvel",
+        "github:ArcavenAE/marvel",
+        "github:ArcavenAE/marvel",
+        "2.0.1",
+    );
+}
+
+#[test]
+fn a_name_installed_by_both_installers_gets_one_row_for_each() {
+    let rig = Rig::new();
+    install_marvel_with_brew(&rig);
+    install_marvel_with_mise(&rig);
+    let rows = read_tools(&marvel_specs(), &rig.paths);
+    let sources: Vec<&str> = rows.iter().map(|row| row.source.as_str()).collect();
+    assert_eq!(sources, ["brew arcavenae/tap", "mise github"], "{rows:?}");
+    assert!(rows.iter().all(|row| row.name == "marvel"));
+}
+
+#[test]
+fn a_name_installed_by_mise_only_prints_the_mise_row_and_no_brew_row() {
+    let rig = Rig::new();
+    install_marvel_with_mise(&rig);
+    let row = only(read_tools(&marvel_specs(), &rig.paths));
+    assert_eq!(row.source, "mise github");
+    assert_eq!(row.state, InstallState::Installed);
+    assert_eq!(row.hint, None);
+}
+
+#[test]
+fn a_name_installed_by_brew_only_prints_the_brew_row_and_no_mise_row() {
+    let rig = Rig::new();
+    install_marvel_with_brew(&rig);
+    let row = only(read_tools(&marvel_specs(), &rig.paths));
+    assert_eq!(row.source, "brew arcavenae/tap");
+    assert_eq!(row.state, InstallState::Installed);
+}
+
+#[test]
+fn a_name_installed_by_neither_prints_one_missing_row_with_the_first_entrys_install_line() {
+    let rig = Rig::new();
+    let row = only(read_tools(&marvel_specs(), &rig.paths));
+    assert_eq!(row.state, InstallState::Missing);
+    assert_eq!(row.source, "brew");
+    assert_eq!(
+        row.hint,
+        Some(Hint {
+            kind: HintKind::Install,
+            command: "brew install arcavenae/tap/marvel".to_string(),
+            source: "brew".to_string(),
+        })
+    );
+}
+
+#[test]
+fn a_brew_error_and_an_installed_mise_entry_print_both_rows() {
+    let rig = Rig::new();
+    rig.receipt("marvel", "0.9.0", "{ not json");
+    rig.link("marvel", "0.9.0");
+    install_marvel_with_mise(&rig);
+    let rows = read_tools(&marvel_specs(), &rig.paths);
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    assert_eq!(rows[0].verdict, Verdict::Error);
+    assert_eq!(rows[1].source, "mise github");
+}
+
+#[test]
+fn a_name_whose_only_readings_are_errors_prints_those_rows_and_no_missing_row() {
+    let rig = Rig::new();
+    rig.receipt("marvel", "0.9.0", "{ not json");
+    rig.link("marvel", "0.9.0");
+    let row = only(read_tools(&marvel_specs(), &rig.paths));
+    assert_eq!(row.verdict, Verdict::Error);
+    assert_ne!(row.state, InstallState::Missing);
+}
+
+// ---- a tool with no recorded installer ----
+
+const NO_INSTALLER_NAMES: [&str; 5] = ["director", "aq", "ax", "akey", "tmux-cmc"];
+
+fn no_installer_row(name: &str) -> ToolRow {
+    ToolRow {
+        name: name.to_string(),
+        state: InstallState::NoInstaller,
+        source: "unknown source".to_string(),
+        installed: Reading::Unknown("no installer recorded".to_string()),
+        current: not_run(),
+        verdict: Verdict::Unknown("no installer recorded".to_string()),
+        error: None,
+        hint: None,
+    }
+}
+
+fn none_spec(name: &'static str) -> ToolSpec {
+    ToolSpec {
+        name,
+        install: None,
+    }
+}
+
+#[test]
+fn each_tool_with_no_recorded_installer_reads_exactly_the_ruled_row_with_no_command_lines() {
+    let rig = Rig::new();
+    let specs: Vec<ToolSpec> = NO_INSTALLER_NAMES.iter().map(|n| none_spec(n)).collect();
+    let rows = read_tools(&specs, &rig.paths);
+    let expected: Vec<ToolRow> = NO_INSTALLER_NAMES
+        .iter()
+        .map(|name| no_installer_row(name))
+        .collect();
+    assert_eq!(rows, expected);
+    let text = render_rows(&rows);
+    assert!(
+        !text.contains("    install:") && !text.contains("    update:"),
+        "{text}"
+    );
+}
+
+#[test]
+fn an_executable_with_the_tools_name_changes_nothing_because_nothing_is_looked_up() {
+    let rig = Rig::new();
+    for dir in [
+        rig.scratch.home().join(".director/bin"),
+        rig.scratch.home().join("bin"),
+    ] {
+        fs::create_dir_all(&dir).expect("bin dir");
+        let exe = dir.join("director");
+        fs::write(&exe, "#!/bin/sh\n").expect("exe");
+        fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).expect("chmod");
+    }
+    let guard = InstallerGuard::snapshot(&rig.paths).expect("a snapshot");
+    let row = only(read_tools(&[none_spec("director")], &rig.paths));
+    assert_eq!(row, no_installer_row("director"));
+    guard.verify().expect("nothing new under installer state");
 }
 
 // ---- the verb ----
@@ -367,7 +769,7 @@ fn args(list: &[&str]) -> Vec<String> {
 #[test]
 fn the_verb_prints_the_rows_for_the_tools_it_is_given() {
     let rig = Rig::new();
-    rig.mise_version("go", "1.23.0");
+    rig.mise_tool("go", "go", "core:go", "1.23.0");
     let context = context(&rig);
     let out = run_tools(&args(&["tools"]), &context).expect("rows");
     let expected = render_rows(&read_tools(&context.specs, &context.paths));
@@ -489,7 +891,7 @@ fn the_new_code_holds_no_process_call_form() {
 #[test]
 fn running_the_verb_leaves_installer_state_and_a_watched_harness_home_unchanged() {
     let rig = Rig::new();
-    rig.mise_version("go", "1.23.0");
+    rig.mise_tool("go", "go", "core:go", "1.23.0");
     rig.good_receipt("jq", "1.7.1");
     rig.link("jq", "1.7.1");
     let harness_home = rig.scratch.claude_config_dir().to_path_buf();
