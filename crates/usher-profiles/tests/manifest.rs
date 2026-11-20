@@ -401,9 +401,16 @@ fn a_quoted_segment_is_a_json_string_and_is_quoted_only_when_it_has_to_be() {
     assert_eq!(must_parse(&note_with_key(good)).notes()[0].key(), good);
     let spaced = "claude-code:env.\"my var\"";
     assert_eq!(must_parse(&note_with_key(spaced)).notes()[0].key(), spaced);
+    // A JSON escape inside a quoted segment: the decoded segment holds a quote.
+    let escaped = "claude-code:a.\"b\\\"c\"";
+    assert_eq!(
+        must_parse(&note_with_key(escaped)).notes()[0].key(),
+        escaped
+    );
 
     // (key, the segment the error must name)
     let bad = [
+        ("claude-code:a.b\"c", "b\"c"),
         ("claude-code:a.\"b\"", "\"b\""),
         ("claude-code:a.\"b", "\"b"),
         ("claude-code:a.\"\"", "\"\""),
