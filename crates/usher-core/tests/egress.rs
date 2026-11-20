@@ -701,3 +701,61 @@ fn a_redirect_with_no_location_on_a_descriptor_that_lists_a_host_is_refused_with
     assert_four_fields(&err);
     assert_eq!(transport.sent().len(), 1, "the port sent a second request");
 }
+
+const POSTING: Descriptor = Descriptor {
+    method: Method::Post,
+    host: FILES_HOST,
+    path: "/report",
+    purpose: "a test POST that lists a redirect host",
+    class: Class::PersonStarted,
+    fields: &[
+        UA,
+        Field {
+            name: "b1",
+            place: Place::Body,
+            meaning: "a body field",
+        },
+    ],
+    redirect_hosts: &[ASSETS_HOST],
+};
+
+const EXTRA_HEADER: Descriptor = Descriptor {
+    method: Method::Get,
+    host: FILES_HOST,
+    path: "/{file}",
+    purpose: "a test GET with a listed header beyond the user agent",
+    class: Class::PersonStarted,
+    fields: &[
+        UA,
+        Field {
+            name: "x-note",
+            place: Place::Header,
+            meaning: "an extra listed header",
+        },
+        Field {
+            name: "file",
+            place: Place::Path,
+            meaning: "which file",
+        },
+    ],
+    redirect_hosts: &[ASSETS_HOST],
+};
+
+#[test]
+fn a_redirect_on_a_non_get_call_is_refused_naming_the_status_with_one_send() {
+    for status in [301_u16, 307, 308] {
+        let transport = RecordingTransport::new()
+            .answering(Ok(Response {
+                status,
+                location: Some(format!("https://{ASSETS_HOST}/moved")),
+                body: Vec::new(),
+            }))
+            .answering_ok("never reached");
+        let err = port(&transport)
+            .call_described(&POSTING, described_request().with("b1", "one"))
+            .expect_err("a redirect on a POST must fail");
+        assert_four_fields(&err);
+        assert!(err.to_string().contains(&status.to_string()), "{err}");
+        assert_eq!(transport.sent().len(), 1, "{status}: the port followed");
+    }
+}
