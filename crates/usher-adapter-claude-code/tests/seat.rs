@@ -305,7 +305,7 @@ fn an_env_item_reports_which_listed_variables_are_set_in_listed_order() {
     );
     let one = rig.fixture(&rig.context(&rig.repo, &["FLEET_TOKEN", "UNLISTED_VARIABLE"]));
     let l = line(&one, "claude-code.fx-env");
-    assert_eq!(l.present, Some(true));
+    assert_eq!(l.present, None, "an environment read has no file");
     assert_eq!(
         l.members,
         [
@@ -428,7 +428,7 @@ fn the_seed_reads_the_auth_route_by_variable_presence_and_the_login_key_by_membe
     );
     let listing = rig.seed(&rig.context(&rig.repo, &["ANTHROPIC_API_KEY"]));
     let env = line(&listing, "claude-code.seat-auth-env");
-    assert_eq!(env.present, Some(true));
+    assert_eq!(env.present, None);
     assert!(
         env.members
             .contains(&("ANTHROPIC_API_KEY".to_string(), true))

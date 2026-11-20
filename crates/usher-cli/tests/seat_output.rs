@@ -267,8 +267,15 @@ fn an_env_item_prints_each_variable_present_or_absent_and_never_a_value() {
     );
     let rows = rig.rows();
     let stored = row(&rows, "claude-code.fx-env");
-    assert_eq!(stored.present, Some(true));
-    assert_eq!(stored.names, vec![seg(&["FLEET_TOKEN"])]);
+    assert_eq!(stored.present, None);
+    assert!(stored.names.is_empty());
+    assert_eq!(
+        stored.members,
+        [
+            ("FLEET_API_KEY".to_string(), false),
+            ("FLEET_TOKEN".to_string(), true)
+        ]
+    );
     assert!(!out.contains("sk-live-secret") && !format!("{rows:?}").contains("sk-live-secret"));
 }
 
@@ -290,7 +297,8 @@ fn a_keys_present_item_prints_membership_and_stores_nothing_under_the_key() {
     let rows = rig.rows();
     let stored = row(&rows, "claude-code.fx-keys");
     assert_eq!(stored.present, Some(true));
-    assert_eq!(stored.names, vec![seg(&["oauthAccount"])]);
+    assert!(stored.names.is_empty());
+    assert_eq!(stored.members, [("oauthAccount".to_string(), true)]);
     let all = format!("{out}{rows:?}");
     for leaked in ["emailAddress", "alex@example.test"] {
         assert!(!all.contains(leaked), "{leaked}");
@@ -309,7 +317,10 @@ fn a_keys_present_item_over_a_missing_file_prints_absent_for_the_whole_line() {
             path.display()
         )
     );
-    assert_eq!(row(&rig.rows(), "claude-code.fx-keys").present, Some(false));
+    let rows = rig.rows();
+    let stored = row(&rows, "claude-code.fx-keys");
+    assert_eq!(stored.present, Some(false));
+    assert_eq!(stored.members, [("oauthAccount".to_string(), false)]);
 }
 
 #[test]
