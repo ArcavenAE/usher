@@ -147,6 +147,7 @@ impl Rig {
         let context = LaunchContext {
             key,
             config_dir: home.join(".claude"),
+            global_state_dir: home.clone(),
             home,
             repo: None,
             user: "alex".to_string(),

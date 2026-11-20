@@ -19,6 +19,9 @@ pub struct LaunchContext {
     /// The harness config directory, for `${CONFIG_DIR}`, already resolved from
     /// the harness's relocation variable.
     pub config_dir: PathBuf,
+    /// The directory that holds the harness's global state file, for
+    /// `${GLOBAL_STATE_DIR}`, already resolved from the harness's relocation variable.
+    pub global_state_dir: PathBuf,
     /// The repository root, for `${REPO}`, when the directory is in one.
     pub repo: Option<PathBuf>,
     /// The OS user's name, for `${USER}`.

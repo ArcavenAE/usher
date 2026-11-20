@@ -41,6 +41,7 @@ impl Rig {
         LaunchContext {
             key,
             config_dir: home.join(".claude"),
+            global_state_dir: home.clone(),
             home,
             repo: with_repo.then(|| self.repo.clone()),
             user: "alex".to_string(),
