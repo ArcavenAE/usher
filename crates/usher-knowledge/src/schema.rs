@@ -1487,7 +1487,7 @@ fn check_anchors(items: &[Item]) -> Result<(), UsherError> {
         }
         let same_versions: Vec<_> = named
             .iter()
-            .filter(|(other, _)| other.versions == item.versions)
+            .filter(|(other, _)| other.versions.same_versions(&item.versions))
             .collect();
         if same_versions.is_empty() {
             return Err(fail(
