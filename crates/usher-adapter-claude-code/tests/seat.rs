@@ -306,7 +306,8 @@ fn a_names_item_over_a_file_that_does_not_parse_lists_no_names_and_no_content() 
     );
     let listing = rig.fixture(&rig.context(&rig.repo, &[]));
     let l = line(&listing, "claude-code.fx-servers");
-    assert_eq!(l.present, Some(true));
+    assert_eq!(l.present, None, "the file could not be read as JSON");
+    assert!(l.note.is_some());
     assert!(l.names.is_empty());
     assert!(!format!("{listing:?}").contains("oops-secret"));
 }
