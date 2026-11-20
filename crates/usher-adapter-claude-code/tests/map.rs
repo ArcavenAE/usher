@@ -1013,3 +1013,54 @@ fn keys_come_back_sorted_by_path_segment_by_segment() {
         .collect();
     assert_eq!(order, ["a.z", "a-b", "b"], "{:?}", map.readings);
 }
+
+// ---- the managed layer -----------------------------------------------------------------
+
+/// Managed is the top of the stack: a plain scalar set in managed and in local is decided
+/// by managed, and local is shadowed with managed named.
+#[test]
+fn a_managed_scalar_wins_over_local_and_the_local_row_names_it() {
+    let rig = Rig::new();
+    let managed = rig.write(
+        &rig.system.join("etc/claude-code/managed-settings.json"),
+        r#"{"fx": {"plain": "managed-value"}}"#,
+    );
+    rig.write(&rig.local_file(), r#"{"fx": {"plain": "local-value"}}"#);
+    let map = rig.fixture_map();
+    let top = reading(&map, "fx.plain", "managed");
+    assert_eq!(top.status, ReadingStatus::InEffect, "{top:?}");
+    assert_eq!(top.value, text("managed-value"));
+    assert_eq!(top.source_path, managed);
+    let local = reading(&map, "fx.plain", "local");
+    assert_eq!(local.status, ReadingStatus::Shadowed, "{local:?}");
+    assert_eq!(
+        local.note.as_deref(),
+        Some(format!("shadowed by managed ({})", managed.display()).as_str())
+    );
+}
+
+/// A list key set in managed and in user keeps both entries, each in effect.
+#[test]
+fn a_list_key_set_in_managed_and_user_keeps_both_entries() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.system.join("etc/claude-code/managed-settings.json"),
+        r#"{"permissions": {"allow": ["Bash(managed)"]}}"#,
+    );
+    rig.write(
+        &rig.user_file(),
+        r#"{"permissions": {"allow": ["Bash(user)"]}}"#,
+    );
+    let map = rig.seed_map(&[]);
+    let rows = readings(&map, "permissions.allow");
+    let shape: Vec<(&str, ReadingStatus)> =
+        rows.iter().map(|r| (r.layer.as_str(), r.status)).collect();
+    assert_eq!(
+        shape,
+        [
+            ("managed", ReadingStatus::InEffect),
+            ("user", ReadingStatus::InEffect)
+        ],
+        "{rows:?}"
+    );
+}
