@@ -98,7 +98,17 @@ const METHODS: [&str; 2] = ["rebuilt", "harness-reported"];
 /// Version 3: the verb that made each run, which existing rows read as `inventory`, and the
 /// setting readings of a map run, one insert-only row each. The verb column is added before
 /// the table and its triggers, so a failure in a later step is one only a transaction undoes.
-const MAP_SCHEMA: &str = "
+fn map_schema() -> String {
+    let list = |items: &[&str]| {
+        items
+            .iter()
+            .map(|item| format!("'{item}'"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let (statuses, methods) = (list(&STATUSES), list(&METHODS));
+    format!(
+        "
 ALTER TABLE inventory_run ADD COLUMN verb TEXT NOT NULL DEFAULT 'inventory' CHECK (verb IN ('inventory', 'map'));
 CREATE TABLE map_setting (
     run_id INTEGER NOT NULL REFERENCES inventory_run(id),
@@ -107,8 +117,8 @@ CREATE TABLE map_setting (
     key TEXT NOT NULL CHECK (key <> ''),
     layer TEXT NOT NULL CHECK (layer <> ''),
     source_path TEXT NOT NULL,
-    method TEXT NOT NULL CHECK (method IN ('rebuilt', 'harness-reported')),
-    status TEXT NOT NULL CHECK (status IN ('in_effect', 'shadowed', 'unread', 'not_decided', 'overridden_by_environment', 'value_not_read', 'not_checked', 'unknown')),
+    method TEXT NOT NULL CHECK (method IN ({methods})),
+    status TEXT NOT NULL CHECK (status IN ({statuses})),
     entry_index INTEGER CHECK (entry_index IS NULL OR entry_index >= 0),
     value_text TEXT,
     note TEXT,
@@ -118,7 +128,9 @@ CREATE TRIGGER map_setting_no_update BEFORE UPDATE ON map_setting
 BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
 CREATE TRIGGER map_setting_no_delete BEFORE DELETE ON map_setting
 BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
-";
+"
+    )
+}
 
 /// The settings a connection to the store runs with.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -645,8 +657,9 @@ fn create_schema(conn: &Connection, db_path: &Path) -> Result<(), UsherError> {
         if rows > 0 {
             return Ok(false);
         }
+        let map = map_schema();
         conn.execute_batch(&format!(
-            "{SCHEMA}{SEAT_SCHEMA}{MAP_SCHEMA}PRAGMA user_version = {USER_VERSION};"
+            "{SCHEMA}{SEAT_SCHEMA}{map}PRAGMA user_version = {USER_VERSION};"
         ))?;
         Ok(true)
     })();
@@ -683,7 +696,7 @@ fn migrate_to_current(conn: &Connection) -> Result<(), UsherError> {
             pending.push_str(SEAT_SCHEMA);
         }
         if now == 1 || now == 2 {
-            pending.push_str(MAP_SCHEMA);
+            pending.push_str(&map_schema());
             pending.push_str(&format!("PRAGMA user_version = {USER_VERSION};"));
             conn.execute_batch(&pending)?;
         }
