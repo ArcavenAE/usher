@@ -2,7 +2,7 @@
 //! names when they have no file) and `version_from` on `paths` items (how the harness
 //! version is read from disk, never by running the harness). Public API only.
 
-use usher_knowledge::{Class, KnowledgeFile, SourceLayer, VersionRule};
+use usher_knowledge::{Class, KnowledgeFile, ReferenceKind, SourceLayer, VersionRule};
 
 const FILE: &str = r#"
 schema_version = 3
@@ -166,6 +166,12 @@ fn version_is_a_placeholder_held_once_as_the_last_component_of_the_layout() {
 }
 
 #[test]
+fn an_unknown_token_in_the_layout_is_refused_naming_it() {
+    let text = with_link(&LINK.replace("${HOME}/.local/share/demo", "${ELSEWHERE}/demo"));
+    rejects(&text, &["demo.launcher", "${ELSEWHERE}"]);
+}
+
+#[test]
 fn version_outside_the_layout_is_refused() {
     rejects(
         &with_link(&LINK.replace("${HOME}/.local/bin/demo", "${HOME}/${VERSION}/demo")),
@@ -236,6 +242,7 @@ fn the_embedded_seed_reads_the_claude_code_version_from_the_native_launcher_link
         from.layout(),
         "${HOME}/.local/share/claude/versions/${VERSION}"
     );
+    assert_eq!(item.reference().kind(), ReferenceKind::VendorDocs);
     assert_eq!(
         item.reference().locator(),
         "https://code.claude.com/docs/en/setup"
