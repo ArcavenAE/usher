@@ -998,3 +998,66 @@ fn the_policy_trait_has_a_private_supertrait() {
     );
     assert!(source.contains("mod sealed {"), "the sealing module exists");
 }
+
+// ---- header values ----
+
+fn header_call(value: &str) -> (Result<Response, UsherError>, RecordingTransport) {
+    let transport = RecordingTransport::new().answering_ok("body");
+    let result = port(&transport).call_described(
+        &EXTRA_HEADER,
+        described_request()
+            .with("file", "k.toml")
+            .with("x-note", value),
+    );
+    (result, transport)
+}
+
+#[test]
+fn a_header_value_of_printable_ascii_is_sent() {
+    let (result, transport) = header_call("a printable value ~");
+    result.expect("a printable value goes out");
+    assert_eq!(
+        transport.sent()[0].headers()[1],
+        ("x-note".to_string(), "a printable value ~".to_string())
+    );
+}
+
+#[test]
+fn a_header_value_with_a_control_or_non_ascii_byte_or_edge_space_is_refused_without_echo() {
+    let (control, _) = header_call("a printable value");
+    control.expect("the control call goes through");
+    for value in [
+        "secret\r\nvalue",
+        "secret\tvalue",
+        "secretcaf\u{e9}",
+        "secret\u{7f}",
+        " secret",
+        "secret ",
+        "secret\u{0}",
+    ] {
+        let (result, transport) = header_call(value);
+        let err = result.expect_err("an unprintable header value must fail");
+        assert!(
+            err.step().starts_with("send "),
+            "{value:?}: step is {}",
+            err.step()
+        );
+        assert_eq!(err.check(), "a header value holds only printable ASCII");
+        assert_eq!(
+            err.status(),
+            "header x-note holds a character that is not printable ASCII"
+        );
+        assert_eq!(
+            err.next_action(),
+            "send a header value of printable ASCII only"
+        );
+        assert!(
+            !err.to_string().contains("secret"),
+            "{value:?}: the error echoes the value: {err}"
+        );
+        assert!(
+            transport.sent().is_empty(),
+            "{value:?} reached the transport"
+        );
+    }
+}
