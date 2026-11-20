@@ -182,10 +182,14 @@ impl SourceLister for ClaudeCodeAdapter {
                     {
                         let layer = layer_name(candidate.fact.layer());
                         match absent.iter_mut().find(|a| a.layer == layer) {
-                            Some(entry) => entry.paths.push(candidate.path.clone()),
+                            Some(entry) => {
+                                entry.paths.push(candidate.path.clone());
+                                entry.item_ids.push(candidate.item.id().to_string());
+                            }
                             None => absent.push(AbsentLayer {
                                 layer: layer.to_string(),
                                 paths: vec![candidate.path.clone()],
+                                item_ids: vec![candidate.item.id().to_string()],
                             }),
                         }
                     }

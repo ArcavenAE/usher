@@ -99,6 +99,8 @@ pub struct AbsentLayer {
     pub layer: String,
     /// The paths checked.
     pub paths: Vec<PathBuf>,
+    /// The id of the knowledge item behind each path, in the same order.
+    pub item_ids: Vec<String>,
 }
 
 /// A layer knowledge says always exists whose path could not be resolved, so it was
