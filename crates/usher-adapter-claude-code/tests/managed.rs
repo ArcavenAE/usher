@@ -536,3 +536,30 @@ fn a_tie_of_an_unreadable_source_and_an_empty_one_is_not_a_rank_tie() {
         }
     );
 }
+
+/// A layer with two always-present sources lists both paths, each with the id of the item
+/// that states it and in knowledge order, so an id cannot drift from its path.
+#[test]
+fn two_absent_sources_in_one_layer_keep_each_id_with_its_own_path() {
+    let rig = Rig::new();
+    let second = "second/user-settings.json";
+    let knowledge = fixture_with(&user_item("demo.second-user", &format!("/{second}"), None));
+    let listing = rig.list_with(&knowledge);
+    let user = listing
+        .absent_layers
+        .iter()
+        .find(|a| a.layer == "user")
+        .unwrap_or_else(|| panic!("the user layer is named: {listing:?}"));
+    let pairs: Vec<(&Path, &str)> = user
+        .checked
+        .iter()
+        .map(|c| (c.path.as_path(), c.item_id.as_str()))
+        .collect();
+    assert_eq!(
+        pairs,
+        [
+            (rig.system.join(EVERY_USER).as_path(), "demo.every-user"),
+            (rig.system.join(second).as_path(), "demo.second-user"),
+        ]
+    );
+}
