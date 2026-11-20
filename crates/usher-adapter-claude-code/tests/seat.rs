@@ -275,7 +275,7 @@ fn a_wildcard_never_descends_into_a_credential_key() {
     let rig = Rig::new();
     rig.write(
         &rig.home().join(".wide.json"),
-        r#"{"servers":{"ok":{"env":{"FINE":"v1"}},"oauthAccount":{"env":{"SECRET_NAME":"v2"},"emailAddress":"e@x.test"}}}"#,
+        r#"{"servers":{"ok":{"env":{"FINE":"v1"}},"oauthAccount":{"env":{"SECRET_NAME":"cvs-one"},"emailAddress":"e@x.test"}}}"#,
     );
     let listing = rig.fixture(&rig.context(&rig.repo, &[]));
     let l = line(&listing, "claude-code.fx-wide");
@@ -291,7 +291,7 @@ fn a_wildcard_never_descends_into_a_credential_key() {
         );
     }
     let text = format!("{listing:?}");
-    for leaked in ["SECRET_NAME", "emailAddress", "e@x.test", "v2"] {
+    for leaked in ["SECRET_NAME", "emailAddress", "e@x.test", "cvs-one"] {
         assert!(!text.contains(leaked), "{leaked} appears nowhere");
     }
 }
@@ -470,7 +470,7 @@ fn a_wildcard_lists_a_credential_childs_own_name_and_reads_nothing_under_it() {
     let rig = Rig::new();
     rig.write(
         &rig.home().join(".deep.json"),
-        r#"{"servers":{"oauthAccount":{"env":{"K":"v"}},"ok":{"env":{"K":"v2"}}}}"#,
+        r#"{"servers":{"oauthAccount":{"env":{"K":"cvs-two"}},"ok":{"env":{"K":"v2"}}}}"#,
     );
     let listing = rig.fixture(&rig.context(&rig.repo, &[]));
     let l = line(&listing, "claude-code.fx-deep");
@@ -491,7 +491,7 @@ fn a_wildcard_lists_a_credential_childs_own_name_and_reads_nothing_under_it() {
         "no env and no K under the credential child: {:?}",
         l.names
     );
-    assert!(!format!("{listing:?}").contains("\"v\""), "no value");
+    assert!(!format!("{listing:?}").contains("cvs-two"), "no value");
 }
 
 #[test]
@@ -604,7 +604,7 @@ fn a_second_level_wildcard_over_a_credential_child_reads_nothing_under_it() {
     let rig = Rig::new();
     rig.write(
         &rig.home().join(".deep.json"),
-        r#"{"servers":{"grp":{"oauthAccount":{"env":{"SECRET_K":"sv"}},"ok":{"env":{"FINE_K":"fv"}}}}}"#,
+        r#"{"servers":{"grp":{"oauthAccount":{"env":{"SECRET_K":"cvs-three"}},"ok":{"env":{"FINE_K":"fv"}}}}}"#,
     );
     let listing = rig.fixture(&rig.context(&rig.repo, &[]));
     let l = line(&listing, "claude-code.fx-deep");
@@ -628,7 +628,7 @@ fn a_second_level_wildcard_over_a_credential_child_reads_nothing_under_it() {
     );
     let text = format!("{listing:?}");
     assert!(
-        !text.contains("SECRET_K") && !text.contains("\"sv\""),
+        !text.contains("SECRET_K") && !text.contains("cvs-three"),
         "{text}"
     );
 }
