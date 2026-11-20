@@ -419,3 +419,29 @@ fn a_call_form_in_a_block_comment_fails_the_scan() {
     // Control: a block comment that writes no needle is clean.
     assert!(find_launch_bypasses("/* nothing to see here */").is_empty());
 }
+
+// F147: the exemption names src/run.rs by its path inside the crate, not any
+// file called run.rs.
+#[test]
+fn a_run_rs_anywhere_but_src_run_rs_is_not_the_spawn_site() {
+    let scratch = ScratchHome::new().expect("scratch home");
+    // Control: the one file at src/run.rs passes.
+    let exempt = tree_with(&scratch, "exempt", &[("run.rs", SPAWN_SITE)]);
+    assert!(
+        find_bypasses_in_tree(&exempt)
+            .expect("the tree reads")
+            .is_empty()
+    );
+
+    for (name, file) in [
+        ("under-probes", "probes/run.rs"),
+        ("deeper", "probes/nested/run.rs"),
+        ("beside", "other/run.rs"),
+        ("prefixed", "probes_run.rs"),
+    ] {
+        let tree = tree_with(&scratch, name, &[(file, SPAWN_SITE)]);
+        let found = find_bypasses_in_tree(&tree).expect("the tree reads");
+        assert!(!found.is_empty(), "{file} was taken for the spawn site");
+        assert!(found.iter().all(|(path, _)| path.ends_with(file)));
+    }
+}
