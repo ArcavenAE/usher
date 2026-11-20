@@ -200,7 +200,10 @@ fn reading<'a>(map: &'a SettingsMap, key: &str, layer: &str) -> &'a SettingReadi
 }
 
 fn value_has(reading: &SettingReading, text: &str) -> bool {
-    reading.value.as_deref().is_some_and(|v| v.contains(text))
+    reading
+        .value
+        .as_ref()
+        .is_some_and(|v| v.to_string().contains(text))
 }
 
 fn note_has(reading: &SettingReading, text: &str) -> bool {
@@ -337,7 +340,11 @@ fn a_permission_rule_is_shown_verbatim() {
     );
     let map = rig.seed_map(&[]);
     let row = reading(&map, "permissions.deny", "user");
-    assert_eq!(row.value.as_deref(), Some(rule), "{row:?}");
+    assert_eq!(
+        row.value,
+        Some(serde_json::Value::String(rule.to_string())),
+        "{row:?}"
+    );
 }
 
 fn serde_json_string(text: &str) -> String {

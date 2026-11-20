@@ -75,8 +75,8 @@ pub struct SettingReading {
     pub status: ReadingStatus,
     /// The entry's position in its layer's array, for a list key.
     pub entry_index: Option<u32>,
-    /// The value as text, only for a readable key that is not sensitive.
-    pub value: Option<String>,
+    /// The value as typed JSON, only for a readable key that is not sensitive.
+    pub value: Option<serde_json::Value>,
     /// The reason or the cross-reference the status rests on.
     pub note: Option<String>,
 }
@@ -90,6 +90,24 @@ pub struct SkippedLayer {
     pub reason: String,
 }
 
+/// Something the map does not observe, which the reader names so the output can say so.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum NotObserved {
+    /// Command-line settings and flags at launch.
+    CommandLine,
+    /// The values of the settings `env` object.
+    EnvValues,
+    /// Managed values held server-side, which may differ from the cache.
+    ServerManagedValues,
+    /// An organization default model that can win over the user, project and local layers.
+    OrganizationDefaultModel,
+    /// The harness's built-in auto mode classifier rules.
+    BuiltInClassifierRules,
+    /// A layer that is not in the settings stack, by name.
+    LayerMissingFromStack(String),
+}
+
 /// Everything one adapter decided for one environment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsMap {
@@ -101,6 +119,8 @@ pub struct SettingsMap {
     pub readings: Vec<SettingReading>,
     /// Layers that took no part in deciding values.
     pub skipped_layers: Vec<SkippedLayer>,
+    /// What the map does not observe, for the items that apply to this environment.
+    pub not_observed: Vec<NotObserved>,
 }
 
 /// The port an adapter implements to map its settings.

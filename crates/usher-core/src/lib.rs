@@ -17,7 +17,8 @@ pub use listing::{
     SourceLister, SourceListing, SourceStatus, SystemRoot,
 };
 pub use map::{
-    ReadingMethod, ReadingStatus, SettingReading, SettingsMap, SettingsMapper, SkippedLayer,
+    NotObserved, ReadingMethod, ReadingStatus, SettingReading, SettingsMap, SettingsMapper,
+    SkippedLayer,
 };
 
 /// The one error type every usher surface reports through.

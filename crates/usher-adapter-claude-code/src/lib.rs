@@ -116,6 +116,7 @@ impl SettingsMapper for ClaudeCodeAdapter {
             harness_version: listing.harness_version.clone(),
             readings: Vec::new(),
             skipped_layers: Vec::new(),
+            not_observed: Vec::new(),
         })
     }
 }
