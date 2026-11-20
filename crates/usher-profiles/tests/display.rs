@@ -238,3 +238,56 @@ fn a_refusal_holds_no_raw_bidi_control_in_any_field() {
         err.status()
     );
 }
+
+// F149: four sites echo text the person wrote, and each shows it escaped.
+#[test]
+fn a_refusal_shows_an_escape_in_the_profile_path_in_the_step() {
+    let origin = "team\u{1b}[31m/setup";
+    Manifest::parse(VALID, origin).expect("control: a valid manifest parses under this path");
+    let err = Manifest::parse(&VALID.replace("team-setup", "Bad Name"), origin)
+        .expect_err("this manifest must be refused");
+    assert_no_raw_escape(&err);
+    assert!(
+        err.step().contains("team\\u001B[31m/setup"),
+        "step: {}",
+        err.step()
+    );
+}
+
+#[test]
+fn a_refusal_shows_an_escape_in_the_profile_name_as_text() {
+    let err = refusal(&VALID.replace("team-setup", "a\\u001Bb"));
+    assert_no_raw_escape(&err);
+    assert!(
+        err.check().contains("a\\u001Bb") || err.status().contains("a\\u001Bb"),
+        "{} / {}",
+        err.check(),
+        err.status()
+    );
+}
+
+#[test]
+fn a_refusal_shows_an_escape_in_the_profile_version_as_text() {
+    let err = refusal(&VALID.replace("2026.11", "v\\u001B[31m"));
+    assert_no_raw_escape(&err);
+    assert!(
+        err.check().contains("v\\u001B[31m") || err.status().contains("v\\u001B[31m"),
+        "{} / {}",
+        err.check(),
+        err.status()
+    );
+}
+
+#[test]
+fn a_refusal_shows_an_escape_in_a_note_keys_harness_prefix_as_text() {
+    let err = refusal(&format!(
+        "{VALID}\n[notes]\n\"co\\u001Bdex:model\" = \"why\"\n"
+    ));
+    assert_no_raw_escape(&err);
+    assert!(
+        err.check().contains("co\\u001Bdex") || err.status().contains("co\\u001Bdex"),
+        "{} / {}",
+        err.check(),
+        err.status()
+    );
+}
