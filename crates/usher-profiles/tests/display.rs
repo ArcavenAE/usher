@@ -134,3 +134,30 @@ fn a_refusal_shows_an_escape_in_a_note_segment_as_text() {
         err.status()
     );
 }
+
+#[test]
+fn a_refusal_shows_an_escape_in_an_unknown_key_as_text() {
+    // Control: the same keys without the escape are refused too, by name.
+    let plain = refusal(&format!(
+        "{VALID}\n[tools]\nnode = \">=1.0.0\"\n\n[extras]\nx = 1\n"
+    ));
+    assert!(plain.check().contains("extras"), "{}", plain.check());
+
+    let top = refusal(&format!("\"a\\u001Bb\" = 1\n{VALID}"));
+    assert_no_raw_escape(&top);
+    assert!(
+        top.check().contains("a\\u001Bb") || top.status().contains("a\\u001Bb"),
+        "{} / {}",
+        top.check(),
+        top.status()
+    );
+
+    let under_harness = refusal(&format!("{VALID}\"a\\u001Bb\" = 1\n"));
+    assert_no_raw_escape(&under_harness);
+    assert!(
+        under_harness.check().contains("a\\u001Bb") || under_harness.status().contains("a\\u001Bb"),
+        "{} / {}",
+        under_harness.check(),
+        under_harness.status()
+    );
+}
