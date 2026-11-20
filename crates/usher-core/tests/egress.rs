@@ -293,6 +293,7 @@ fn a_non_success_status_is_an_error_that_names_the_status() {
         .call(knowledge_request())
         .expect_err("a 404 must fail");
     assert_four_fields(&err);
+    assert_eq!(err.step(), "send knowledge-update");
     assert!(err.to_string().contains("404"), "{err}");
 }
 
