@@ -75,3 +75,9 @@
 - source_spec: `_bmad-output/planning-artifacts/epics.md`
   summary: the settings reference says that for conversations the VS Code extension starts, Claude Code reads only user, managed and `--settings` values. That launch context is not mapped yet, so the map's layers for it are not stated.
   evidence: the settings reference entry for `permissions.defaultMode`; story 1.9 maps the launch directories and is where the extension's launch context belongs.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the map reader names two not-observed items from names written in the reader: the organization default model, keyed to the listed key `model`, and the built-in classifier rules, keyed to the `autoMode.` key prefix. A knowledge field on the settings key would move both names out of code.
+  evidence: the reader reads no such field today, and the knowledge schema has none; a knowledge field, which would be a schema change, would let the two checks move to it, and the red that pins each item stays as it is.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the harness can raise a settings error for a whole file when one value fails its schema; the reader does not run the schema, so the other keys in that file keep their rows and the file reads as readable.
+  evidence: the vendor's settings page says a value the schema rejects can raise a settings error for the file; a later story that models it needs a probe that shows which values are rejected, and a status for a file the harness refuses.
