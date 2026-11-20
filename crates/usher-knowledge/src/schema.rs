@@ -230,7 +230,24 @@ pub struct SourceFact {
     always_present: bool,
 }
 
+/// An operating system a source is read on. WSL counts as Linux.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Platform {
+    /// macOS.
+    Macos,
+    /// Linux, WSL included.
+    Linux,
+    /// Windows.
+    Windows,
+}
+
 impl SourceFact {
+    /// The platforms the source is read on; `None` means every platform.
+    pub fn platforms(&self) -> Option<&[Platform]> {
+        None
+    }
+
     /// Whether the layer always exists on a platform, so its absence is named.
     pub fn always_present(&self) -> bool {
         self.always_present
