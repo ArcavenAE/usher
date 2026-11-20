@@ -1793,3 +1793,26 @@ fn the_three_causes_give_the_three_reasons_and_quote_nothing() {
     }
     assert!(!format!("{map:?}").contains("canary"), "{map:?}");
 }
+
+/// Rank plays no part in the note: a broken layer below the layer that sets the list still
+/// means more entries may apply. The user file is below project in the seed's stack, and a
+/// project entry carries the note.
+#[test]
+fn a_broken_layer_below_the_one_that_sets_a_list_still_adds_the_note() {
+    let rig = Rig::new();
+    let broken = rig.write(&rig.user_file(), "{ not json");
+    rig.write(
+        &rig.project_file(),
+        r#"{"permissions": {"deny": ["Read(x)"]}}"#,
+    );
+    let map = rig.seed_map(&[]);
+    let row = reading(&map, "permissions.deny", "project");
+    assert_eq!(row.status, ReadingStatus::InEffect, "{row:?}");
+    assert_eq!(
+        row.note.as_deref(),
+        Some("user file could not be read; more entries may apply")
+    );
+    let files = files_not_read(&map);
+    assert_eq!(files.len(), 1, "{files:?}");
+    assert_eq!((files[0].0.as_str(), &files[0].1), ("user", &broken));
+}
