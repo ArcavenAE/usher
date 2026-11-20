@@ -42,6 +42,8 @@ struct Layer<'a> {
     role: Role<'a>,
     /// The parsed top-level object, when the file could be read.
     object: Option<serde_json::Map<String, Value>>,
+    /// Why the file could not be read, when it could not: never any of its bytes.
+    unreadable: Option<String>,
 }
 
 enum Role<'a> {
@@ -114,13 +116,15 @@ pub(crate) fn map_settings(
             SourceStatus::Unknown { reason } => Role::Unknown(reason),
             _ => Role::Unknown("status not recognized"),
         };
+        let object = read_object(&source.path);
         layers.push(Layer {
             name: &source.layer,
             rank,
             path: &source.path,
             item_id: &source.item_id,
             role,
-            object: read_object(&source.path),
+            object: object.as_ref().ok().cloned(),
+            unreadable: object.err(),
         });
     }
     layers.sort_by_key(|layer| layer.rank);
@@ -195,6 +199,17 @@ pub(crate) fn map_settings(
     if classifier_set {
         not_observed.push(NotObserved::BuiltInClassifierRules);
     }
+    for layer in &layers {
+        if let Some(reason) = &layer.unreadable
+            && !matches!(layer.role, Role::Skipped)
+        {
+            not_observed.push(NotObserved::FileNotRead {
+                layer: layer.name.to_string(),
+                path: layer.path.to_path_buf(),
+                reason: reason.clone(),
+            });
+        }
+    }
     not_observed.extend(missing.into_iter().map(NotObserved::LayerMissingFromStack));
 
     SettingsMap {
@@ -218,11 +233,18 @@ fn layer_stack<'a>(knowledge: &'a KnowledgeFile, installed: Option<&Version>) ->
         .unwrap_or_default()
 }
 
-fn read_object(path: &Path) -> Option<serde_json::Map<String, Value>> {
-    let bytes = fs::read(path).ok()?;
-    match serde_json::from_slice::<Value>(&bytes).ok()? {
-        Value::Object(map) => Some(map),
-        _ => None,
+/// The top-level object of a settings file, or why it could not be had. The reason names
+/// the cause and, for bad JSON, the position; it never quotes the file.
+fn read_object(path: &Path) -> Result<serde_json::Map<String, Value>, String> {
+    let bytes = fs::read(path).map_err(|why| format!("cannot be opened: {}", why.kind()))?;
+    match serde_json::from_slice::<Value>(&bytes) {
+        Ok(Value::Object(map)) => Ok(map),
+        Ok(_) => Err("is not a JSON object".to_string()),
+        Err(why) => Err(format!(
+            "is not valid JSON at line {} column {}",
+            why.line(),
+            why.column()
+        )),
     }
 }
 
@@ -514,6 +536,7 @@ fn decide(
             }
         }
         MergeKind::ListMerge => {
+            let broken = broken_note(fact, unplaced, "; more entries may apply");
             let mut seen: Vec<(&Value, &str)> = Vec::new();
             for occurrence in &deciding {
                 let Value::Array(entries) = occurrence.value else {
@@ -547,18 +570,28 @@ fn decide(
                     if also.is_none() {
                         seen.push((entry, occurrence.layer.name));
                     }
+                    let note = match (also, &broken) {
+                        (Some(also), Some(broken)) => Some(format!("{also}; {broken}")),
+                        (Some(note), None) => Some(note),
+                        (None, Some(broken)) => Some(broken.clone()),
+                        (None, None) => None,
+                    };
                     rows.push(row(
                         segments.clone(),
                         occurrence.layer,
                         ReadingStatus::InEffect,
                         Some(position),
                         Some(entry.clone()),
-                        also,
+                        note,
                     ));
                 }
             }
         }
         MergeKind::OwnRule => {
+            let note = match broken_note(fact, unplaced, "") {
+                Some(broken) => format!("own merge rule; {broken}"),
+                None => "own merge rule".to_string(),
+            };
             for occurrence in &deciding {
                 rows.push(row(
                     segments.clone(),
@@ -566,7 +599,7 @@ fn decide(
                     ReadingStatus::NotDecided,
                     None,
                     shown(occurrence.value),
-                    Some("own merge rule".to_string()),
+                    Some(note.clone()),
                 ));
             }
         }
@@ -583,6 +616,18 @@ fn decide(
             }
         }
     }
+}
+
+/// The note for a key whose scopes include a layer whose file could not be read: each such
+/// layer is named, in stack order, with `suffix` after the last. Rank plays no part, since
+/// entries from every layer apply.
+fn broken_note(fact: &SettingsKeyFact, unplaced: &[&Layer<'_>], suffix: &str) -> Option<String> {
+    let names: Vec<String> = unplaced
+        .iter()
+        .filter(|layer| layer.unreadable.is_some() && in_scope(fact, layer.name))
+        .map(|layer| format!("{} file could not be read", layer.name))
+        .collect();
+    (!names.is_empty()).then(|| format!("{}{suffix}", names.join("; ")))
 }
 
 /// A reading of a key in a layer that takes no part in deciding it. A list key keeps one
