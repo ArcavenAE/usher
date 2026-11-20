@@ -162,10 +162,10 @@ impl SourceLister for ClaudeCodeAdapter {
                     platform_ok,
                 }),
                 Err(reason) => {
-                    // A layer that is always present, and the global state file that the
-                    // seat's account item also reads, are named when they cannot be placed.
-                    let named = fact.always_present() || fact.layer() == SourceLayer::GlobalState;
-                    if named && platform_ok {
+                    // Not checked is never silent: a source that cannot be placed is named
+                    // whether or not its layer is always present. That flag governs only
+                    // the no-file line for an absent file.
+                    if platform_ok {
                         not_checked.push(NotCheckedLayer {
                             layer: layer_name(fact.layer()).to_string(),
                             reason,
@@ -193,7 +193,7 @@ impl SourceLister for ClaudeCodeAdapter {
                         not_checked.push(NotCheckedLayer {
                             layer: layer_name(candidate.fact.layer()).to_string(),
                             reason: format!(
-                                "{} could not be checked: {:?}",
+                                "{} could not be checked: {}",
                                 candidate.path.display(),
                                 error.kind()
                             ),

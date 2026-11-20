@@ -122,7 +122,7 @@ fn read_path(item: &Item, fact: &SeatFact, path: PathBuf) -> SeatLine {
             return line;
         }
         Err(error) => {
-            line.note = Some(format!("could not be checked: {:?}", error.kind()));
+            line.note = Some(error.kind().to_string());
             return line;
         }
     };
