@@ -5,34 +5,45 @@
 //! no trust of its own: a file that did not verify leaves the knowledge in use
 //! unchanged.
 
-use usher_core::{Policy, Port, Transport, UsherError};
+use usher_core::{Egress, Policy, Port, Request, Transport, UsherError};
 
 use crate::{
     Knowledge, KnowledgeVersion, TrustedKeys,
     update::{KEEP_SIGNING, SIGNATURE_UTF8_CHECK, STEP},
 };
 
+/// The published knowledge file: the embedded seed's own name.
+const FILE: &str = "harness-knowledge.toml";
+
+/// The minisign signature published beside it.
+const SIGNATURE: &str = "harness-knowledge.toml.minisig";
+
 /// Fetches the signed knowledge file and its signature through the port and
 /// takes the update if it verifies.
+///
+/// The file is asked for first, and the signature only when the file arrived.
+/// Nothing is verified until both are in hand; then [`Knowledge::update`]
+/// decides, offline. Any failure leaves `knowledge` as it was.
 pub fn fetch_update<T: Transport, P: Policy>(
     port: &Port<T, P>,
     knowledge: &mut Knowledge,
     trusted: &TrustedKeys,
 ) -> Result<KnowledgeVersion, UsherError> {
-    let _ = (
-        port,
-        knowledge,
-        trusted,
-        STEP,
-        SIGNATURE_UTF8_CHECK,
-        KEEP_SIGNING,
-    );
-    Err(UsherError::new(
-        "fetch harness knowledge",
-        "the fetch is built",
-        "not built",
-        "build the knowledge fetch",
-    ))
+    let file = port
+        .call(Request::new(Egress::KnowledgeUpdate).with("file", FILE))?
+        .body;
+    let signature = port
+        .call(Request::new(Egress::KnowledgeUpdate).with("file", SIGNATURE))?
+        .body;
+    let signature = String::from_utf8(signature).map_err(|why| {
+        UsherError::new(
+            STEP,
+            SIGNATURE_UTF8_CHECK,
+            format!("the signature file is not text: {why}"),
+            KEEP_SIGNING,
+        )
+    })?;
+    knowledge.update(&file, &signature, trusted)
 }
 
 #[cfg(test)]
