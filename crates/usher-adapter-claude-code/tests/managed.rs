@@ -563,3 +563,97 @@ fn two_absent_sources_in_one_layer_keep_each_id_with_its_own_path() {
         ]
     );
 }
+
+/// Puts a directory at mode 000 and restores it on drop, so the scratch home can be
+/// removed even when an assertion fails.
+struct Locked(PathBuf);
+
+impl Locked {
+    fn new(dir: PathBuf) -> Self {
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o000)).expect("mode");
+        Locked(dir)
+    }
+}
+
+impl Drop for Locked {
+    fn drop(&mut self) {
+        let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o755));
+    }
+}
+
+const SECRET: &str = "FILE-CONTENT-NEVER-LISTED";
+
+#[test]
+fn a_candidate_that_cannot_be_checked_is_never_named_as_no_file() {
+    let rig = Rig::new();
+    let file = rig.file(EVERY_USER, SECRET);
+    let _locked = Locked::new(file.parent().expect("a parent").to_path_buf());
+    // Probe the effect, not the uid: root and ACLs can look through a mode 000 directory.
+    if fs::metadata(&file).is_ok() {
+        usher_testkit::skip(
+            "a_candidate_that_cannot_be_checked_is_never_named_as_no_file",
+            "this process can look through a mode 000 directory, so there is nothing to test",
+        );
+        return;
+    }
+    let listing = rig.list();
+    assert!(
+        listing.absent_layers.iter().all(|a| a.layer != "user"),
+        "an always-present layer that could not be checked is not absent: {:?}",
+        listing.absent_layers
+    );
+    let checked = listing
+        .not_checked
+        .iter()
+        .find(|n| n.layer == "user")
+        .unwrap_or_else(|| panic!("the user layer is named as not checked: {listing:?}"));
+    assert!(
+        checked.reason.contains("PermissionDenied"),
+        "{}",
+        checked.reason
+    );
+    assert!(
+        checked.reason.contains(&file.display().to_string()),
+        "{}",
+        checked.reason
+    );
+    assert!(!format!("{listing:?}").contains(SECRET));
+}
+
+#[test]
+fn a_layer_that_is_not_always_present_does_not_drop_out_when_it_cannot_be_checked() {
+    let rig = Rig::new();
+    let knowledge = fixture_with(&item(
+        "demo.locked",
+        "/locked/managed.json",
+        5,
+        Some(r#"["linux"]"#),
+    ));
+    let file = rig.file("locked/managed.json", SECRET);
+    let _locked = Locked::new(file.parent().expect("a parent").to_path_buf());
+    if fs::metadata(&file).is_ok() {
+        usher_testkit::skip(
+            "a_layer_that_is_not_always_present_does_not_drop_out_when_it_cannot_be_checked",
+            "this process can look through a mode 000 directory, so there is nothing to test",
+        );
+        return;
+    }
+    let listing = rig.list_with(&knowledge);
+    let checked = listing
+        .not_checked
+        .iter()
+        .find(|n| n.layer == "managed")
+        .unwrap_or_else(|| panic!("the managed layer is named as not checked: {listing:?}"));
+    assert!(
+        checked.reason.contains("PermissionDenied"),
+        "{}",
+        checked.reason
+    );
+    assert!(
+        checked.reason.contains(&file.display().to_string()),
+        "{}",
+        checked.reason
+    );
+    assert!(listing.sources.is_empty(), "{:?}", listing.sources);
+    assert!(!format!("{listing:?}").contains(SECRET));
+}
