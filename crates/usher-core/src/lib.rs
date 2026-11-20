@@ -12,7 +12,7 @@ mod listing;
 
 pub use environment::{EnvironmentKey, environment_key, key_variables};
 pub use listing::{
-    AbsentLayer, KeyNames, LaunchContext, ListedSource, NotCheckedLayer, SourceLister,
+    AbsentLayer, CheckedPath, KeyNames, LaunchContext, ListedSource, NotCheckedLayer, SourceLister,
     SourceListing, SourceStatus, SystemRoot,
 };
 

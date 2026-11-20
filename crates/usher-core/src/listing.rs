@@ -97,10 +97,17 @@ pub struct ListedSource {
 pub struct AbsentLayer {
     /// The layer, as knowledge names it.
     pub layer: String,
-    /// The paths checked.
-    pub paths: Vec<PathBuf>,
-    /// The id of the knowledge item behind each path, in the same order.
-    pub item_ids: Vec<String>,
+    /// The paths checked, each with the knowledge item that states it.
+    pub checked: Vec<CheckedPath>,
+}
+
+/// One path checked for an always-present layer, and the knowledge item behind it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckedPath {
+    /// The path that was looked at.
+    pub path: PathBuf,
+    /// The id of the knowledge item that states the source at that path.
+    pub item_id: String,
 }
 
 /// A layer knowledge says always exists whose path could not be resolved, so it was

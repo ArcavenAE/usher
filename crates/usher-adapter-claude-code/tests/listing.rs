@@ -165,15 +165,20 @@ fn absent_always_present_layers_are_named_with_the_paths_checked() {
         .map(|a| a.layer.as_str())
         .collect();
     assert_eq!(absent, ["user", "project", "local"]);
+    let user_paths: Vec<&Path> = listing.absent_layers[0]
+        .checked
+        .iter()
+        .map(|c| c.path.as_path())
+        .collect();
     assert_eq!(
-        listing.absent_layers[0].paths,
+        user_paths,
         [rig.scratch.home().join(".claude/settings.json")]
     );
     assert!(listing.not_checked.is_empty());
 }
 
-/// Each path checked comes with the knowledge item that states it, in the same order, so
-/// the store can record an absent source under the item it belongs to.
+/// Each path checked is paired with the knowledge item that states it, so the store can
+/// record an absent source under the item it belongs to.
 #[test]
 fn each_absent_path_comes_with_the_knowledge_item_that_states_it() {
     let rig = Rig::new();
@@ -182,12 +187,10 @@ fn each_absent_path_comes_with_the_knowledge_item_that_states_it() {
         .absent_layers
         .iter()
         .flat_map(|layer| {
-            assert_eq!(layer.paths.len(), layer.item_ids.len(), "{}", layer.layer);
             layer
-                .paths
+                .checked
                 .iter()
-                .zip(&layer.item_ids)
-                .map(|(path, id)| (layer.layer.clone(), path.clone(), id.as_str()))
+                .map(|c| (layer.layer.clone(), c.path.clone(), c.item_id.as_str()))
         })
         .collect();
     assert_eq!(

@@ -309,7 +309,8 @@ fn another_platforms_absent_always_present_source_is_not_named_while_an_every_pl
         .iter()
         .find(|a| a.layer == "user")
         .unwrap_or_else(|| panic!("the every-platform user source is named: {listing:?}"));
-    assert_eq!(user.paths, [rig.system.join(EVERY_USER)]);
+    let paths: Vec<&Path> = user.checked.iter().map(|c| c.path.as_path()).collect();
+    assert_eq!(paths, [rig.system.join(EVERY_USER)]);
     let named = format!("{:?}", listing.absent_layers);
     assert!(!named.contains(MAC_USER), "{named}");
 }

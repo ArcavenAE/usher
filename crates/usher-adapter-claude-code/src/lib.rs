@@ -17,7 +17,7 @@ use std::time::UNIX_EPOCH;
 use std::{fs, io};
 
 use usher_core::{
-    AbsentLayer, KeyNames, LaunchContext, ListedSource, NotCheckedLayer, SourceLister,
+    AbsentLayer, CheckedPath, KeyNames, LaunchContext, ListedSource, NotCheckedLayer, SourceLister,
     SourceListing, SourceStatus, SystemRoot, UsherError,
 };
 use usher_knowledge::{Item, KnowledgeFile, Platform, ReadRule, SourceFact, SourceLayer, Version};
@@ -182,14 +182,16 @@ impl SourceLister for ClaudeCodeAdapter {
                     {
                         let layer = layer_name(candidate.fact.layer());
                         match absent.iter_mut().find(|a| a.layer == layer) {
-                            Some(entry) => {
-                                entry.paths.push(candidate.path.clone());
-                                entry.item_ids.push(candidate.item.id().to_string());
-                            }
+                            Some(entry) => entry.checked.push(CheckedPath {
+                                path: candidate.path.clone(),
+                                item_id: candidate.item.id().to_string(),
+                            }),
                             None => absent.push(AbsentLayer {
                                 layer: layer.to_string(),
-                                paths: vec![candidate.path.clone()],
-                                item_ids: vec![candidate.item.id().to_string()],
+                                checked: vec![CheckedPath {
+                                    path: candidate.path.clone(),
+                                    item_id: candidate.item.id().to_string(),
+                                }],
                             }),
                         }
                     }
