@@ -230,6 +230,11 @@ pub struct SourceFact {
 }
 
 impl SourceFact {
+    /// Whether the layer always exists on a platform, so its absence is named.
+    pub fn always_present(&self) -> bool {
+        false
+    }
+
     /// The path pattern, in the five path tokens.
     pub fn path(&self) -> &str {
         &self.path
@@ -268,7 +273,47 @@ pub struct Item {
     keys: Vec<String>,
 }
 
+/// How a harness version is read from disk without running the harness.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VersionFrom {
+    launcher: String,
+    rule: VersionRule,
+    layout: String,
+}
+
+/// The rule that turns the launcher into a version.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+// Red Gate stub: the schema 3 implementation constructs these and drops the allow.
+#[allow(dead_code)]
+pub enum VersionRule {
+    /// Follow the launcher symlink and take the last component of its target.
+    SymlinkTargetLastComponent,
+}
+
+impl VersionFrom {
+    /// The launcher path, in path tokens.
+    pub fn launcher(&self) -> &str {
+        &self.launcher
+    }
+
+    /// The rule that reads the version.
+    pub fn rule(&self) -> VersionRule {
+        self.rule
+    }
+
+    /// The shape the link target must match for the last component to count.
+    pub fn layout(&self) -> &str {
+        &self.layout
+    }
+}
+
 impl Item {
+    /// How to read the harness version from disk, for a `paths` item that says so.
+    pub fn version_from(&self) -> Option<&VersionFrom> {
+        None
+    }
+
     /// The setting names a `keys` item lists, empty for every other class.
     pub fn keys(&self) -> &[String] {
         &self.keys
