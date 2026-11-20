@@ -134,15 +134,15 @@ mod tests {
             2,
             "one request for the file, one for the signature"
         );
-        assert_eq!(sent[0].path, "/harness-knowledge.toml");
-        assert_eq!(sent[1].path, "/harness-knowledge.toml.minisig");
+        assert_eq!(sent[0].path(), "/harness-knowledge.toml");
+        assert_eq!(sent[1].path(), "/harness-knowledge.toml.minisig");
         for wire in &sent {
-            assert_eq!(wire.host, HOST);
-            assert_eq!(wire.method, Method::Get);
-            assert!(wire.query.is_empty() && wire.body.is_empty());
+            assert_eq!(wire.host(), HOST);
+            assert_eq!(wire.method(), Method::Get);
+            assert!(wire.query().is_empty() && wire.body().is_empty());
             assert_eq!(
-                wire.headers,
-                vec![("user-agent".to_string(), "usher".to_string())]
+                wire.headers(),
+                [("user-agent".to_string(), "usher".to_string())]
             );
         }
     }
