@@ -199,15 +199,28 @@ fn reading<'a>(map: &'a SettingsMap, key: &str, layer: &str) -> &'a SettingReadi
     found[0]
 }
 
-fn value_has(reading: &SettingReading, text: &str) -> bool {
-    reading
-        .value
-        .as_ref()
-        .is_some_and(|v| v.to_string().contains(text))
+/// The typed JSON string a reading must hold.
+fn text(value: &str) -> Option<serde_json::Value> {
+    Some(serde_json::Value::String(value.to_string()))
 }
 
 fn note_has(reading: &SettingReading, text: &str) -> bool {
     reading.note.as_deref().is_some_and(|n| n.contains(text))
+}
+
+/// A value is typed JSON: the string "3" and the number 3 stay distinct, and so do the
+/// string "true" and the boolean.
+#[test]
+fn a_value_is_typed_json_so_a_string_and_a_number_stay_distinct() {
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"fx": {"plain": 3}}"#);
+    rig.write(&rig.project_file(), r#"{"fx": {"plain": "3"}}"#);
+    let map = rig.fixture_map();
+    assert_eq!(
+        reading(&map, "fx.plain", "user").value,
+        Some(serde_json::json!(3))
+    );
+    assert_eq!(reading(&map, "fx.plain", "project").value, text("3"));
 }
 
 // ---- scalar keys follow the stack ------------------------------------------------------
@@ -223,7 +236,7 @@ fn an_any_scope_scalar_set_in_project_and_user_follows_the_stack() {
     let map = rig.seed_map(&[]);
     let project = reading(&map, "model", "project");
     assert_eq!(project.status, ReadingStatus::InEffect);
-    assert!(value_has(project, "project-model"), "{project:?}");
+    assert_eq!(project.value, text("project-model"), "{project:?}");
     assert_eq!(project.source_path, rig.project_file());
     let user = reading(&map, "model", "user");
     assert_eq!(user.status, ReadingStatus::Shadowed);
@@ -298,9 +311,9 @@ fn a_list_key_keeps_every_entry_with_its_layer_file_and_position() {
         ],
         "layers highest first, then entry position: {rows:?}"
     );
-    assert!(value_has(rows[0], "Edit(b)"));
+    assert_eq!(rows[0].value, text("Edit(b)"));
     assert_eq!(rows[0].source_path, rig.project_file());
-    assert!(value_has(rows[2], "Read(a)"));
+    assert_eq!(rows[2].value, text("Read(a)"));
     assert_eq!(rows[2].source_path, rig.user_file());
 }
 
@@ -370,7 +383,7 @@ fn a_key_found_in_a_layer_outside_its_scopes_is_unread_and_never_feeds_the_value
     let map = rig.seed_map(&[]);
     let user = reading(&map, "autoMode.allow", "user");
     assert_eq!(user.status, ReadingStatus::InEffect);
-    assert!(value_has(user, "user rule"));
+    assert_eq!(user.value, text("user rule"));
     let project = reading(&map, "autoMode.allow", "project");
     assert_eq!(project.status, ReadingStatus::Unread);
     assert_eq!(
@@ -378,8 +391,9 @@ fn a_key_found_in_a_layer_outside_its_scopes_is_unread_and_never_feeds_the_value
         Some("not read from project for this key; knowledge item claude-code.key-automode-allow"),
         "{project:?}"
     );
-    assert!(
-        value_has(project, "project rule"),
+    assert_eq!(
+        project.value,
+        text("project rule"),
         "a readable key's value is shown"
     );
     assert!(
@@ -476,14 +490,14 @@ fn default_mode_set_in_two_layers_is_not_decided_and_shows_both_rows() {
         assert_eq!(row.status, ReadingStatus::NotDecided, "{row:?}");
         assert_eq!(row.note.as_deref(), Some("own merge rule"));
     }
-    assert!(value_has(
-        reading(&map, "permissions.defaultMode", "user"),
-        "acceptEdits"
-    ));
-    assert!(value_has(
-        reading(&map, "permissions.defaultMode", "project"),
-        "auto"
-    ));
+    assert_eq!(
+        reading(&map, "permissions.defaultMode", "user").value,
+        text("acceptEdits")
+    );
+    assert_eq!(
+        reading(&map, "permissions.defaultMode", "project").value,
+        text("auto")
+    );
     assert!(rows.iter().all(|r| r.status != ReadingStatus::InEffect));
 }
 
