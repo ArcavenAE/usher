@@ -18,7 +18,7 @@ fn main() -> ExitCode {
         .skip(1)
         .map(|a| a.to_string_lossy().into_owned())
         .collect();
-    let result = if args.first().map(String::as_str) == Some("inventory") {
+    let result = if matches!(args.first().map(String::as_str), Some("inventory" | "map")) {
         usher_cli::run_process(&args)
     } else {
         run(args.into_iter())
@@ -43,13 +43,13 @@ fn run(mut args: impl Iterator<Item = String>) -> Result<String, UsherError> {
             STEP,
             format!("mode `{}` is one this build supports", other.escape_debug()),
             "unknown mode",
-            "run `usher --version` or `usher inventory`",
+            "run `usher inventory`, `usher map <directory>` or `usher --version`",
         )),
         None => Err(UsherError::new(
             STEP,
             "a mode was given",
             "no mode",
-            "run `usher --version` or `usher inventory`",
+            "run `usher inventory`, `usher map <directory>` or `usher --version`",
         )),
     }
 }
@@ -78,6 +78,16 @@ mod tests {
         assert!(err.check().contains("frobnicate"));
         assert_eq!(err.status(), "unknown mode");
         assert!(err.next_action().contains("usher --version"));
+    }
+
+    /// A mistyped or missing mode is told every mode there is, including the map verb.
+    #[test]
+    fn a_mistyped_or_missing_mode_is_told_the_next_action_names_every_verb() {
+        let expected = "run `usher inventory`, `usher map <directory>` or `usher --version`";
+        let err = run(args(&["mpa"])).expect_err("mpa is not a mode");
+        assert_eq!(err.next_action(), expected);
+        let err = run(args(&[])).expect_err("a mode is required");
+        assert_eq!(err.next_action(), expected);
     }
 
     #[test]

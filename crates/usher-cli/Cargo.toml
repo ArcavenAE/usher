@@ -11,8 +11,11 @@ usher-core.workspace = true
 usher-knowledge.workspace = true
 usher-adapter-claude-code.workspace = true
 usher-store.workspace = true
+nix.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
+rusqlite.workspace = true
 usher-testkit.workspace = true
 usher-knowledge = { workspace = true, features = ["test-keys"] }
 

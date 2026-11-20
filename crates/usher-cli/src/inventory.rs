@@ -3,7 +3,6 @@
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use usher_adapter_claude_code::{ClaudeCodeAdapter, VersionReading, read_version};
@@ -12,12 +11,12 @@ use usher_core::{
     SystemRoot, UsherError, environment_key, key_variables,
 };
 use usher_knowledge::{Knowledge, KnowledgeFile, Version};
-use usher_store::{RunRecord, SeatRecord, SourceRecord, Store};
+use usher_store::{RunRecord, SeatRecord, SettingRecord, SourceRecord, Store};
 
 use crate::time::rfc3339;
 use crate::{InventoryEnv, LaunchEnvironment, inventory_platform};
 
-const HARNESS: &str = "claude-code";
+pub(crate) const HARNESS: &str = "claude-code";
 const CONFIG_DIR_TOKEN: &str = "${CONFIG_DIR}";
 const GLOBAL_STATE_TOKEN: &str = "${GLOBAL_STATE_DIR}";
 
@@ -35,6 +34,38 @@ pub fn inventory_with(
     root: SystemRoot,
     knowledge: &Knowledge,
 ) -> Result<String, UsherError> {
+    let observed = observe(env, root, knowledge)?;
+    record(
+        env,
+        knowledge.current(),
+        &observed.listing,
+        &observed.key_text,
+        None,
+    )?;
+    Ok(render(
+        knowledge.current(),
+        &observed.listing,
+        &observed.reading,
+    ))
+}
+
+/// What one look at the environment found: the context it was made for, the sources
+/// listed and how the version read. Shared by the verbs that start from the inventory.
+pub(crate) struct Observed {
+    pub(crate) adapter: ClaudeCodeAdapter,
+    pub(crate) context: LaunchContext,
+    pub(crate) listing: SourceListing,
+    pub(crate) reading: VersionReading,
+    pub(crate) key_text: String,
+}
+
+/// Lists the sources of `env`'s launch directory and reads the harness version, without
+/// recording anything.
+pub(crate) fn observe(
+    env: &InventoryEnv,
+    root: SystemRoot,
+    knowledge: &Knowledge,
+) -> Result<Observed, UsherError> {
     let file = knowledge.current();
 
     // One list of names feeds the key: the variables knowledge names for the harness
@@ -69,9 +100,13 @@ pub fn inventory_with(
 
     let adapter = ClaudeCodeAdapter::new(file.clone(), root, env.platform);
     let listing = adapter.list_sources(&context)?;
-
-    record(env, file, &listing, &key_text)?;
-    Ok(render(file, &listing, &reading))
+    Ok(Observed {
+        adapter,
+        context,
+        listing,
+        reading,
+        key_text,
+    })
 }
 
 /// The directory the config token takes: the variable knowledge binds to it, or its
@@ -144,6 +179,7 @@ fn set_variables(file: &KnowledgeFile, env: &InventoryEnv) -> std::collections::
             listed.extend(seat.variables().iter().map(String::as_str));
         }
     }
+    listed.extend(override_variables(file));
     listed
         .into_iter()
         .filter(|name| env.launch.get(name).is_some_and(|value| !value.is_empty()))
@@ -176,11 +212,14 @@ fn find_repo(dir: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-fn record(
+/// Records the run. With `settings`, it is a map run and the readings are stored with it;
+/// without, an inventory run.
+pub(crate) fn record(
     env: &InventoryEnv,
     file: &KnowledgeFile,
     listing: &SourceListing,
     key: &str,
+    settings: Option<&[SettingRecord<'_>]>,
 ) -> Result<(), UsherError> {
     struct Row {
         item_id: String,
@@ -268,11 +307,18 @@ fn record(
             note: line.note.as_deref(),
         })
         .collect();
-    store.record_inventory_with_seat(&run, &sources, &seat)?;
+    match settings {
+        Some(settings) => store.record_map(&run, &sources, &seat, settings)?,
+        None => store.record_inventory_with_seat(&run, &sources, &seat)?,
+    };
     Ok(())
 }
 
-fn render(file: &KnowledgeFile, listing: &SourceListing, reading: &VersionReading) -> String {
+pub(crate) fn render(
+    file: &KnowledgeFile,
+    listing: &SourceListing,
+    reading: &VersionReading,
+) -> String {
     let knowledge = &listing.knowledge_version;
     let covered = listing
         .harness_version
@@ -505,25 +551,40 @@ fn launch_from_process(
             }
         }
     }
+    for name in override_variables(file) {
+        if !binders.contains(&name) && std::env::var_os(name).is_some_and(|v| !v.is_empty()) {
+            launch.mark_set(name);
+        }
+    }
     Ok(launch)
+}
+
+/// The variables knowledge says override a settings key when set. Only their names are
+/// used: a map says an override is present and never reads what it holds.
+fn override_variables(file: &KnowledgeFile) -> Vec<&str> {
+    file.items()
+        .iter()
+        .filter(|item| item.harness() == HARNESS)
+        .filter_map(|item| item.settings_key())
+        .filter_map(|fact| fact.overrides())
+        .map(|over| over.variable())
+        .collect()
 }
 
 fn host_name() -> Result<String, UsherError> {
     let fail = |status: String| {
         UsherError::new(
             "name this host",
-            "the `hostname` command prints a name",
+            "the system host name can be read",
             status,
-            "run `hostname` and fix what it reports, then run `usher inventory` again",
+            "fix the system host name so it can be read, then run `usher inventory` again",
         )
     };
-    let output = Command::new("hostname")
-        .output()
-        .map_err(|why| fail(why.to_string()))?;
-    let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if output.status.success() && !name.is_empty() {
-        Ok(name)
+    let raw = nix::unistd::gethostname().map_err(|why| fail(why.to_string()))?;
+    let name = raw.to_string_lossy().trim().to_string();
+    if name.is_empty() {
+        Err(fail("the system host name is empty".to_string()))
     } else {
-        Err(fail(format!("exit status {}", output.status)))
+        Ok(name)
     }
 }
