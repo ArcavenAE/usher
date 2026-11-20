@@ -477,3 +477,127 @@ fn a_source_under_an_unreadable_directory_prints_the_path_and_the_plain_kind() {
     assert!(!out.contains("could not be checked"), "{out}");
     assert!(!out.contains("PermissionDenied"), "{out}");
 }
+
+/// A seat file that exists and cannot be read or parsed prints the seat not-checked line
+/// and stores present NULL with a note, no member at all, and none of its content.
+fn assert_stored_not_checked(rig: &Rig, id: &str, why: &str) {
+    let stored = rig.rows();
+    let r = row(&stored, id);
+    assert_eq!(r.present, None, "{r:?}");
+    assert!(r.note.as_deref().is_some_and(|n| n.contains(why)), "{r:?}");
+    assert!(
+        r.members.is_empty() && r.names.is_empty(),
+        "no member or name is stored as absent: {r:?}"
+    );
+}
+
+fn can_still_read(path: &Path) -> bool {
+    if path.is_dir() {
+        fs::read_dir(path).is_ok()
+    } else {
+        fs::File::open(path).is_ok()
+    }
+}
+
+#[test]
+fn an_unreadable_global_state_file_prints_not_checked_and_never_says_the_key_is_absent() {
+    let rig = Rig::new();
+    let file = rig.write(
+        &rig.home().join(".state.json"),
+        r#"{"oauthAccount":{"e":"secret-x"}}"#,
+    );
+    let _locked = Locked::new(file.clone());
+    if can_still_read(&file) {
+        usher_testkit::skip(
+            "an_unreadable_global_state_file_prints_not_checked_and_never_says_the_key_is_absent",
+            "this process can read a mode 000 file, so there is nothing to test",
+        );
+        return;
+    }
+    let out = rig.fixture_run(&rig.env(&[]));
+    assert_eq!(
+        line_for(&out, "claude-code.fx-keys"),
+        format!(
+            "auth-route  {}  not checked (permission denied) (knowledge item claude-code.fx-keys)",
+            file.display()
+        )
+    );
+    assert!(
+        !out.contains("secret-x") && !out.contains("oauthAccount absent"),
+        "{out}"
+    );
+    assert_stored_not_checked(&rig, "claude-code.fx-keys", "permission denied");
+    assert_stored_not_checked(&rig, "claude-code.fx-servers", "permission denied");
+}
+
+#[test]
+fn an_unreadable_pack_directory_prints_not_checked_and_lists_no_entries() {
+    let rig = Rig::new();
+    let dir = rig.home().join(".packs");
+    rig.write(&dir.join("secret-x/pack.toml"), "x = 1");
+    let _locked = Locked::new(dir.clone());
+    if can_still_read(&dir) {
+        usher_testkit::skip(
+            "an_unreadable_pack_directory_prints_not_checked_and_lists_no_entries",
+            "this process can read a mode 000 directory, so there is nothing to test",
+        );
+        return;
+    }
+    let out = rig.fixture_run(&rig.env(&[]));
+    assert_eq!(
+        line_for(&out, "claude-code.fx-packs"),
+        format!(
+            "packs  {}  not checked (permission denied) (knowledge item claude-code.fx-packs)",
+            dir.display()
+        )
+    );
+    assert!(!out.contains("secret-x"), "{out}");
+    assert_stored_not_checked(&rig, "claude-code.fx-packs", "permission denied");
+}
+
+#[test]
+fn invalid_json_prints_not_checked_with_its_position_and_stores_no_member() {
+    let rig = Rig::new();
+    let file = rig.write(
+        &rig.home().join(".state.json"),
+        r#"{"oauthAccount": oops-secret"#,
+    );
+    let out = rig.fixture_run(&rig.env(&[]));
+    for (part, id) in [
+        ("auth-route", "claude-code.fx-keys"),
+        ("mcp", "claude-code.fx-servers"),
+    ] {
+        let l = line_for(&out, id);
+        let head = format!(
+            "{part}  {}  not checked (not valid JSON at line 1, column ",
+            file.display()
+        );
+        let tail = format!(": syntax) (knowledge item {id})");
+        assert!(l.starts_with(&head) && l.ends_with(&tail), "{l}");
+        assert_stored_not_checked(&rig, id, "not valid JSON at line 1, column ");
+    }
+    assert!(
+        !out.contains("oops-secret") && !out.contains("oauthAccount absent"),
+        "{out}"
+    );
+}
+
+#[test]
+fn json_that_is_not_an_object_prints_not_checked() {
+    let rig = Rig::new();
+    let file = rig.write(&rig.home().join(".state.json"), r#"["secret-x"]"#);
+    let out = rig.fixture_run(&rig.env(&[]));
+    for (part, id) in [
+        ("auth-route", "claude-code.fx-keys"),
+        ("mcp", "claude-code.fx-servers"),
+    ] {
+        let l = line_for(&out, id);
+        assert!(
+            l.starts_with(&format!("{part}  {}  not checked (", file.display()))
+                && l.contains("not a JSON object"),
+            "{l}"
+        );
+        assert_stored_not_checked(&rig, id, "not a JSON object");
+    }
+    assert!(!out.contains("secret-x"), "{out}");
+}

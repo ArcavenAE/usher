@@ -708,3 +708,138 @@ fn a_seat_path_that_cannot_be_checked_says_why_in_plain_words_and_keeps_its_path
         "{text}"
     );
 }
+
+/// Makes a file or directory unreadable (mode 000) and says whether the effect holds for
+/// this process; root and ACLs can read it anyway, and then there is nothing to test.
+fn lock_or_skip(name: &str, path: &Path) -> Option<Locked> {
+    let locked = Locked::new(path.to_path_buf());
+    let can_read = if path.is_dir() {
+        fs::read_dir(path).is_ok()
+    } else {
+        fs::File::open(path).is_ok()
+    };
+    if can_read {
+        usher_testkit::skip(
+            name,
+            "this process can read a mode 000 path, so there is nothing to test",
+        );
+        return None;
+    }
+    Some(locked)
+}
+
+/// A seat file that exists and cannot be read or parsed is not a definite answer: the line
+/// says it was not checked, why, and holds no member and no name as absent.
+fn assert_not_checked(l: &SeatLine, why: &str) {
+    assert_eq!(l.present, None, "not a definite answer: {l:?}");
+    let note = l.note.as_deref().unwrap_or_else(|| panic!("a note: {l:?}"));
+    assert!(note.contains(why), "{note}");
+    assert!(l.names.is_empty(), "{l:?}");
+    assert!(l.members.is_empty(), "no member is reported absent: {l:?}");
+    assert!(l.entries.is_empty(), "{l:?}");
+}
+
+#[test]
+fn an_unreadable_file_under_a_keys_present_item_is_not_checked_and_no_key_reads_absent() {
+    let rig = Rig::new();
+    let file = rig.write(
+        &rig.home().join(".state.json"),
+        r#"{"oauthAccount":{"emailAddress":"secret-x@example.test"}}"#,
+    );
+    let Some(_locked) = lock_or_skip(
+        "an_unreadable_file_under_a_keys_present_item_is_not_checked_and_no_key_reads_absent",
+        &file,
+    ) else {
+        return;
+    };
+    let listing = rig.fixture(&rig.context(&rig.repo, &[]));
+    let l = line(&listing, "claude-code.fx-keys");
+    assert_not_checked(l, "permission denied");
+    let text = format!("{listing:?}");
+    assert!(
+        !text.contains("secret-x") && !text.contains("PermissionDenied"),
+        "{text}"
+    );
+}
+
+#[test]
+fn an_unreadable_file_under_a_names_item_is_not_checked_and_lists_no_names() {
+    let rig = Rig::new();
+    let file = rig.write(
+        &rig.home().join(".state.json"),
+        r#"{"mcpServers":{"secret-x":{}}}"#,
+    );
+    let Some(_locked) = lock_or_skip(
+        "an_unreadable_file_under_a_names_item_is_not_checked_and_lists_no_names",
+        &file,
+    ) else {
+        return;
+    };
+    let listing = rig.fixture(&rig.context(&rig.repo, &[]));
+    let l = line(&listing, "claude-code.fx-servers");
+    assert_not_checked(l, "permission denied");
+    assert!(!format!("{listing:?}").contains("secret-x"));
+}
+
+#[test]
+fn an_unreadable_directory_under_a_listing_item_is_not_checked_and_lists_no_entries() {
+    let rig = Rig::new();
+    let dir = rig.home().join(".packs");
+    rig.write(&dir.join("secret-x/pack.toml"), "x = 1");
+    let Some(_locked) = lock_or_skip(
+        "an_unreadable_directory_under_a_listing_item_is_not_checked_and_lists_no_entries",
+        &dir,
+    ) else {
+        return;
+    };
+    let listing = rig.fixture(&rig.context(&rig.repo, &[]));
+    let l = line(&listing, "claude-code.fx-packs");
+    assert_not_checked(l, "permission denied");
+    assert!(!format!("{listing:?}").contains("secret-x"));
+}
+
+#[test]
+fn invalid_json_under_a_keys_present_item_is_not_checked_with_its_position_and_no_content() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.home().join(".state.json"),
+        r#"{"oauthAccount": oops-secret"#,
+    );
+    let listing = rig.fixture(&rig.context(&rig.repo, &[]));
+    let l = line(&listing, "claude-code.fx-keys");
+    assert_not_checked(l, "not valid JSON at line 1, column ");
+    assert!(
+        l.note.as_deref().is_some_and(|n| n.ends_with(": syntax")),
+        "{l:?}"
+    );
+    assert!(!format!("{listing:?}").contains("oops-secret"));
+}
+
+#[test]
+fn invalid_json_under_a_names_item_is_not_checked_with_its_position_and_no_content() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.home().join(".state.json"),
+        r#"{"mcpServers": oops-secret"#,
+    );
+    let listing = rig.fixture(&rig.context(&rig.repo, &[]));
+    let l = line(&listing, "claude-code.fx-servers");
+    assert_not_checked(l, "not valid JSON at line 1, column ");
+    assert!(
+        l.note.as_deref().is_some_and(|n| n.ends_with(": syntax")),
+        "{l:?}"
+    );
+    assert!(!format!("{listing:?}").contains("oops-secret"));
+}
+
+#[test]
+fn json_that_is_not_an_object_is_not_checked_for_both_json_reads() {
+    for id in ["claude-code.fx-keys", "claude-code.fx-servers"] {
+        let rig = Rig::new();
+        rig.write(&rig.home().join(".state.json"), r#"["secret-x"]"#);
+        let listing = rig.fixture(&rig.context(&rig.repo, &[]));
+        let l = line(&listing, id);
+        assert_not_checked(l, "not a JSON object");
+        assert!(!format!("{listing:?}").contains("secret-x"), "{id}");
+    }
+}
