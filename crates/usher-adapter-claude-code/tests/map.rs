@@ -654,3 +654,33 @@ fn a_readable_key_set_in_no_file_gets_no_row() {
         assert!(readings(&map, key).is_empty(), "{key}: {:?}", map.readings);
     }
 }
+
+// ---- the children of a sensitive object ------------------------------------------------
+
+/// `env` children are one row per name per layer. No value is read, so no child is in
+/// effect and none is shadowed: the map claims no winner it cannot show.
+#[test]
+fn no_env_child_is_in_effect_or_shadowed_in_any_layer() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.user_file(),
+        r#"{"env": {"FLEET_TOKEN": "canary-user"}}"#,
+    );
+    rig.write(
+        &rig.project_file(),
+        r#"{"env": {"FLEET_TOKEN": "canary-project"}}"#,
+    );
+    let map = rig.seed_map(&[]);
+    let rows = readings(&map, "env.FLEET_TOKEN");
+    let layers: Vec<&str> = rows.iter().map(|r| r.layer.as_str()).collect();
+    assert_eq!(layers, ["project", "user"], "one row per layer: {rows:?}");
+    assert!(
+        rows.iter().all(|r| r.status == ReadingStatus::ValueNotRead),
+        "{rows:?}"
+    );
+    assert!(
+        map.readings.iter().all(|r| r.key != "env"),
+        "{:?}",
+        map.readings
+    );
+}
