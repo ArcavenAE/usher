@@ -549,6 +549,7 @@ dependencies = [
 name = "usher-profiles"
 version = "0.0.0"
 dependencies = [
+ "serde_json",
  "toml_edit",
  "usher-core",
 ]
