@@ -7,7 +7,7 @@
 use usher_knowledge::{Class, KnowledgeFile, Layer, Platform, ReferenceKind, SeatPart, SeatRead};
 
 const FILE: &str = r#"
-schema_version = 4
+schema_version = 5
 sequence = 11
 
 [[item]]
@@ -95,7 +95,7 @@ fn accepts(text: &str) {
 #[test]
 fn a_schema_4_file_carries_the_five_seat_parts() {
     let file = KnowledgeFile::parse(FILE).expect("a valid schema 4 file");
-    assert_eq!(file.version().schema_version(), 4);
+    assert_eq!(file.version().schema_version(), 5);
     let seats: Vec<_> = file.items().iter().map(|item| item.seat()).collect();
     assert!(
         seats.iter().all(Option::is_some),
@@ -142,7 +142,7 @@ fn a_schema_4_file_carries_the_five_seat_parts() {
 #[test]
 fn a_schema_3_file_is_refused_naming_both_schemas() {
     rejects(
-        &with("schema_version = 4", "schema_version = 3"),
+        &with("schema_version = 5", "schema_version = 3"),
         &["schema 3", "schema 4"],
     );
 }
@@ -150,7 +150,7 @@ fn a_schema_3_file_is_refused_naming_both_schemas() {
 #[test]
 fn the_embedded_file_is_schema_4() {
     let file = KnowledgeFile::embedded().expect("the embedded file");
-    assert_eq!(file.version().schema_version(), 4);
+    assert_eq!(file.version().schema_version(), 5);
 }
 
 /// Whichever auth-route item the seed carries, it cites something. Its exact form waits

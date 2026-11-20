@@ -19,7 +19,7 @@ use crate::version::{Version, VersionRange};
 const EMBEDDED: &str = include_str!("../knowledge/harness-knowledge.toml");
 
 /// The only schema version this build reads.
-const SUPPORTED_SCHEMA: u32 = 4;
+const SUPPORTED_SCHEMA: u32 = 5;
 
 const STEP: &str = "load harness knowledge";
 const NEXT: &str =
@@ -1747,7 +1747,7 @@ mod tests {
     use super::*;
 
     const VALID: &str = r#"
-schema_version = 4
+schema_version = 5
 sequence = 7
 
 [[item]]
@@ -1881,7 +1881,7 @@ capabilities = ["inventory", "map"]
             &VALID.replace("sequence = 7", "sequence = \"seven\""),
             "sequence",
         );
-        rejects(&VALID.replace("schema_version = 4\n", ""), "schema_version");
+        rejects(&VALID.replace("schema_version = 5\n", ""), "schema_version");
     }
 
     #[test]
@@ -1891,15 +1891,15 @@ capabilities = ["inventory", "map"]
 
     #[test]
     fn items_must_be_tables() {
-        rejects("schema_version = 4\nsequence = 1\nitem = 3\n", "[[item]]");
+        rejects("schema_version = 5\nsequence = 1\nitem = 3\n", "[[item]]");
     }
 
     #[test]
     fn the_file_reports_its_version() {
         let file = KnowledgeFile::parse(VALID).expect("valid");
         assert_eq!(file.version().sequence(), 7);
-        assert_eq!(file.version().schema_version(), 4);
-        assert_eq!(file.version().to_string(), "knowledge v7 (schema 4)");
+        assert_eq!(file.version().schema_version(), 5);
+        assert_eq!(file.version().to_string(), "knowledge v7 (schema 5)");
     }
 
     #[test]
@@ -1922,7 +1922,7 @@ capabilities = ["inventory", "map"]
         assert!(lines.contains(&"demo 1.5.0: apply unsupported".to_string()));
         assert_eq!(
             lines.last().map(String::as_str),
-            Some("knowledge v7 (schema 4)")
+            Some("knowledge v7 (schema 5)")
         );
     }
 

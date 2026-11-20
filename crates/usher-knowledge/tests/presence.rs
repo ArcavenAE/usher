@@ -5,7 +5,7 @@
 use usher_knowledge::{Class, KnowledgeFile, ReferenceKind, SourceLayer, VersionRule};
 
 const FILE: &str = r#"
-schema_version = 4
+schema_version = 5
 sequence = 9
 
 [[item]]
