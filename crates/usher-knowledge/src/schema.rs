@@ -1280,18 +1280,18 @@ impl KnowledgeFile {
     }
 
     /// The launch variable names harness knowledge lists for `harness` across every
-    /// version range, sorted and without repeats. Every caller keys an environment from
-    /// this one lookup (AD-17), so the key does not move with the harness version.
+    /// version range, sorted and without repeats, for the variables that bind a path
+    /// token. A variable that moves no path is never part of a key. Every caller keys an
+    /// environment from this one lookup (AD-17), so the key does not move with the
+    /// harness version.
     pub fn launch_variables(&self, harness: &str) -> Vec<&str> {
         let mut names: Vec<&str> = self
             .items
             .iter()
             .filter(|item| item.harness == harness)
-            .filter_map(|item| {
-                item.variable
-                    .as_ref()
-                    .map(|variable| variable.name.as_str())
-            })
+            .filter_map(|item| item.variable.as_ref())
+            .filter(|variable| variable.binds.is_some())
+            .map(|variable| variable.name.as_str())
             .collect();
         names.sort_unstable();
         names.dedup();
