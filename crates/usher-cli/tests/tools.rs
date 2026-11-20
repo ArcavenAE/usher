@@ -15,7 +15,7 @@ use usher_core::{
     render_rows,
 };
 use usher_knowledge::Platform;
-use usher_testkit::ScratchHome;
+use usher_testkit::{InstallerGuard, NamedHome, RealHomes, ScratchHome, observe};
 
 const NOT_RUN: &str = "version check not run";
 
@@ -477,4 +477,36 @@ fn the_new_code_holds_no_process_call_form() {
             forbidden_forms(&text)
         );
     }
+}
+
+// ---- the observation invariant covers installer state ----
+
+#[test]
+fn running_the_verb_leaves_installer_state_and_a_watched_harness_home_unchanged() {
+    let rig = Rig::new();
+    rig.mise_version("go", "1.23.0");
+    rig.good_receipt("jq", "1.7.1");
+    rig.link("jq", "1.7.1");
+    let harness_home = rig.scratch.claude_config_dir().to_path_buf();
+    fs::create_dir_all(&harness_home).expect("a harness home");
+    let homes = RealHomes::from_homes(vec![NamedHome {
+        name: "claude-code",
+        path: harness_home,
+    }]);
+    let guard = InstallerGuard::snapshot(&rig.paths).expect("a snapshot");
+    observe(&homes, |_scratch| {
+        run_tools(&args(&["tools"]), &context(&rig)).expect("rows");
+    });
+    guard.verify().expect("the verb changed no installer state");
+}
+
+#[test]
+fn the_installer_guard_fires_when_a_run_writes_under_a_watched_path() {
+    let rig = Rig::new();
+    let guard = InstallerGuard::snapshot(&rig.paths).expect("a snapshot");
+    rig.mise_version("go", "9.9.9");
+    assert!(
+        guard.verify().is_err(),
+        "a write under the mise installs directory must be seen"
+    );
 }
