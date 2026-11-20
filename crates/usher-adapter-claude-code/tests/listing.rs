@@ -172,6 +172,46 @@ fn absent_always_present_layers_are_named_with_the_paths_checked() {
     assert!(listing.not_checked.is_empty());
 }
 
+/// Each path checked comes with the knowledge item that states it, in the same order, so
+/// the store can record an absent source under the item it belongs to.
+#[test]
+fn each_absent_path_comes_with_the_knowledge_item_that_states_it() {
+    let rig = Rig::new();
+    let listing = rig.list(&rig.context(Some(VERSION), true));
+    let pairs: Vec<(String, PathBuf, &str)> = listing
+        .absent_layers
+        .iter()
+        .flat_map(|layer| {
+            assert_eq!(layer.paths.len(), layer.item_ids.len(), "{}", layer.layer);
+            layer
+                .paths
+                .iter()
+                .zip(&layer.item_ids)
+                .map(|(path, id)| (layer.layer.clone(), path.clone(), id.as_str()))
+        })
+        .collect();
+    assert_eq!(
+        pairs,
+        [
+            (
+                "user".to_string(),
+                rig.scratch.home().join(".claude/settings.json"),
+                "claude-code.source-user-settings"
+            ),
+            (
+                "project".to_string(),
+                rig.repo.join(".claude/settings.json"),
+                "claude-code.source-project-settings"
+            ),
+            (
+                "local".to_string(),
+                rig.repo.join(".claude/settings.local.json"),
+                "claude-code.source-local-settings"
+            ),
+        ]
+    );
+}
+
 #[test]
 fn managed_cache_and_global_state_are_never_named_when_absent() {
     let rig = Rig::new();
