@@ -178,6 +178,7 @@ fn a_refused_class_never_reaches_the_transport() {
         .call(knowledge_request())
         .expect_err("a refused class must fail");
     assert_four_fields(&err);
+    assert_eq!(err.step(), "send knowledge-update");
     assert!(
         transport.sent().is_empty(),
         "the transport saw a refused call"
