@@ -214,19 +214,21 @@ fn a_start_that_outlives_the_timeout_is_gone_afterwards() {
     );
 
     // A harness that records its own pid and then sleeps well past the timeout.
+    // The timeout also covers the version query, so it is long enough that a
+    // loaded machine does not cut that short before the hang start runs.
     let scratch = ScratchHome::new().expect("scratch home");
     let bin = scratch.root().join("bin");
     fs::create_dir_all(&bin).expect("bin dir");
     let path = bin.join("fakeh");
     fs::write(
         &path,
-        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'fakeh 1.2.3'; exit 0; fi\necho $$ > \"$TMPDIR/hang.pid\"\nexec /bin/sleep 20\n",
+        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'fakeh 1.2.3'; exit 0; fi\necho $$ > \"$TMPDIR/hang.pid\"\nexec /bin/sleep 30\n",
     )
     .expect("script written");
     fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("chmod");
     let spec = Spec::new("demo-probe", "fakeh")
         .search_path(bin.as_os_str())
-        .timeout(Duration::from_secs(1));
+        .timeout(Duration::from_secs(5));
     let not_run = run(
         &spec,
         &scratch,
@@ -238,10 +240,10 @@ fn a_start_that_outlives_the_timeout_is_gone_afterwards() {
         },
     )
     .expect_err("a timed-out start is not a result");
-    assert_eq!(not_run.to_string(), "not run: timed out after 1 s");
+    assert_eq!(not_run.to_string(), "not run: timed out after 5 s");
 
     let pid =
-        fs::read_to_string(scratch.tmp().join("hang.pid")).expect("the harness wrote its pid");
+        fs::read_to_string(scratch.tmp().join("hang.pid")).expect("the harness wrote its pid, so its start ran and was not cut short by the version query timing out");
     let pid = pid.trim();
     assert!(!pid.is_empty());
     assert!(
