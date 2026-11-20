@@ -1630,3 +1630,22 @@ fn an_unplaced_file_blocks_a_nested_key_only_when_it_sets_that_path() {
     let user = reading(&map, "fx.nested.leaf", "user");
     assert_eq!(user.status, ReadingStatus::InEffect, "{user:?}");
 }
+
+/// A scalar where an object is expected, at a proper prefix of the key's path, does not
+/// count as holding the key: a member that sets `fx.nested` to a string leaves the user
+/// value in effect.
+#[test]
+fn an_unplaced_file_with_a_scalar_at_a_prefix_of_the_path_does_not_block_the_key() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.system.join("etc/claude-code/managed-settings.json"),
+        r#"{"fx": {"nested": "x"}}"#,
+    );
+    rig.write(
+        &rig.user_file(),
+        r#"{"fx": {"nested": {"leaf": "user-leaf"}}}"#,
+    );
+    let map = fixture_map_with_unplaced_managed(&rig);
+    let user = reading(&map, "fx.nested.leaf", "user");
+    assert_eq!(user.status, ReadingStatus::InEffect, "{user:?}");
+}
