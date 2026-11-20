@@ -158,7 +158,11 @@ pub(crate) fn map_settings(
 
     let broken: Vec<&Layer<'_>> = layers
         .iter()
-        .filter(|l| matches!(l.role, Role::Decides | Role::Unknown(_)) && l.object.is_none())
+        .filter(|l| match l.role {
+            Role::Decides => l.object.is_none(),
+            Role::Unknown(_) => true,
+            Role::Skipped => false,
+        })
         .collect();
     for (key, found) in listed.iter().zip(&occurrences) {
         decide(key, found, &broken, context, &mut rows);
