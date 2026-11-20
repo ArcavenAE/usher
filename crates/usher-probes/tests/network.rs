@@ -105,12 +105,32 @@ fn a_denied_run_is_an_exact_argv_that_starts_nothing() {
 
 #[cfg(target_os = "macos")]
 mod macos {
-    use std::net::TcpListener;
+    use std::{io, net::TcpListener, process::Output};
 
-    use usher_probes::network::{run_denied, run_denied_with_ports};
+    use usher_probes::network::denied_argv;
     use usher_testkit::ScratchHome;
 
     use super::*;
+
+    // Meaning change (Q8): run_denied and run_denied_with_ports no longer
+    // start a process. The tests build the same argv and run it in the scratch
+    // home themselves, so each run is the one the profile refuses or allows.
+    fn run_argv(scratch: &ScratchHome, argv: &[String]) -> io::Result<Output> {
+        scratch.command(&argv[0]).args(&argv[1..]).output()
+    }
+
+    fn run_denied(scratch: &ScratchHome, program: &str, args: &[&str]) -> io::Result<Output> {
+        run_argv(scratch, &denied_argv(&[], program, args))
+    }
+
+    fn run_denied_with_ports(
+        scratch: &ScratchHome,
+        ports: &[u16],
+        program: &str,
+        args: &[&str],
+    ) -> io::Result<Output> {
+        run_argv(scratch, &denied_argv(ports, program, args))
+    }
 
     #[test]
     fn a_macos_host_records_the_network_as_denied() {
