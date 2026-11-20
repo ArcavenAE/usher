@@ -288,6 +288,7 @@ impl SourceLister for ClaudeCodeAdapter {
             sources,
             absent_layers: absent,
             not_checked,
+            seat: Vec::new(),
         })
     }
 }

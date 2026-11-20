@@ -42,6 +42,7 @@ impl Rig {
             key,
             config_dir: home.join(".claude"),
             global_state_dir: home.clone(),
+            set_variables: Default::default(),
             home,
             repo: with_repo.then(|| self.repo.clone()),
             user: "alex".to_string(),

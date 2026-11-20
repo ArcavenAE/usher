@@ -44,6 +44,7 @@ impl Rig {
             key,
             config_dir: home.join(".claude"),
             global_state_dir,
+            set_variables: Default::default(),
             home,
             repo: Some(self.repo.clone()),
             user: "alex".to_string(),

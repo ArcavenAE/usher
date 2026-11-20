@@ -52,6 +52,7 @@ pub fn inventory_with(
         home: env.home.clone(),
         config_dir: config_dir(file, None, env),
         global_state_dir: env.home.clone(),
+        set_variables: Default::default(),
         repo: find_repo(&env.launch_dir),
         user: env.user.clone(),
         harness_version: None,

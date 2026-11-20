@@ -199,6 +199,7 @@ mod tests {
             key,
             config_dir: home.join(".claude"),
             global_state_dir: home.clone(),
+            set_variables: Default::default(),
             home,
             repo: None,
             user: "alex".to_string(),

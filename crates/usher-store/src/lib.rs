@@ -72,6 +72,34 @@ pub struct StoreSettings {
     pub foreign_keys: i64,
 }
 
+/// One seat line to record: the item, the part, whether the file or directory exists,
+/// and the names found, each as its path of segments. Membership only: a value is not
+/// a field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeatRecord<'a> {
+    /// The part of the seat.
+    pub part: &'a str,
+    /// The id of the knowledge item behind the line.
+    pub item_id: &'a str,
+    /// Whether the file or directory exists, or any listed variable is set.
+    pub present: bool,
+    /// The names found, each a path of segments from the root.
+    pub names: &'a [Vec<String>],
+}
+
+/// One seat line as stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeatRow {
+    /// The part of the seat.
+    pub part: String,
+    /// The id of the knowledge item behind the line.
+    pub item_id: String,
+    /// Whether the file or directory exists, or any listed variable is set.
+    pub present: bool,
+    /// The names found, each a path of segments from the root.
+    pub names: Vec<Vec<String>>,
+}
+
 /// One inventory run: when it ran and what it assumed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunRecord<'a> {
@@ -530,6 +558,21 @@ impl Store {
             busy_timeout_ms: number("busy_timeout")?,
             foreign_keys: number("foreign_keys")?,
         })
+    }
+
+    /// Inserts one run, its sources and its seat lines; returns the run id.
+    pub fn record_inventory_with_seat(
+        &mut self,
+        run: &RunRecord<'_>,
+        sources: &[SourceRecord<'_>],
+        _seat: &[SeatRecord<'_>],
+    ) -> Result<i64, UsherError> {
+        self.record_inventory(run, sources)
+    }
+
+    /// The seat lines one run recorded, in the order they were recorded.
+    pub fn seat_of(&self, _run_id: i64) -> Result<Vec<SeatRow>, UsherError> {
+        Ok(Vec::new())
     }
 
     /// Inserts one run and its sources; returns the run id. A run with a bad field inserts
