@@ -343,6 +343,7 @@ mod tests {
         let err = fetch_update(&port(&transport), &mut knowledge, &trusting(&signer))
             .expect_err("a file over the limit must fail");
         assert_four_fields(&err);
+        assert_eq!(err.step(), "send knowledge-update");
         assert!(
             err.to_string().contains("answer larger than the limit"),
             "{err}"

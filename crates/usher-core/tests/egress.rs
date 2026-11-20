@@ -1494,6 +1494,7 @@ fn an_answer_over_the_limit_is_refused_naming_the_host_and_the_limit_and_one_at_
         .call_described(&SMALL, described_request().with("file", "k.toml"))
         .expect_err("an answer over the limit must fail");
     assert_four_fields(&err);
+    assert_eq!(err.step(), "send test-redirecting");
     let text = err.to_string();
     assert!(text.contains(FILES_HOST), "{text}");
     assert!(text.contains("16"), "{text}");
