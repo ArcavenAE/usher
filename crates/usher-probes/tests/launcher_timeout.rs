@@ -1,5 +1,8 @@
 //! A started process that outlives the probe's timeout is killed, and the
 //! probe ends not run; the default timeout is 120 seconds.
+//!
+//! On a host loaded well past its core count, a sandboxed start can take longer
+//! than the bounds these tests use, and the test then fails as a timeout.
 
 mod common;
 

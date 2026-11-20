@@ -1,15 +1,13 @@
 //! The version query is a start of the harness binary, so it goes through the
 //! launcher's one spawn site: the profile, the cleared environment, the harness
 //! home and the timeout apply to it, and it does not count as a claim start.
+//!
+//! On a host loaded well past its core count, a sandboxed start can take longer
+//! than the bounds these tests use, and the test then fails as a timeout.
 
 mod common;
 
-use std::{
-    fs,
-    os::unix::fs::PermissionsExt,
-    path::PathBuf,
-    time::{Duration, Instant},
-};
+use std::{fs, os::unix::fs::PermissionsExt, path::PathBuf, time::Duration};
 
 use common::hold;
 use usher_probes::{
@@ -143,12 +141,14 @@ fn a_version_query_that_outlives_the_timeout_ends_timed_out() {
     assert!(quick_result.is_ok(), "{quick_result:?}");
 
     let scratch = ScratchHome::new().expect("scratch home");
-    let bin = script_harness(&scratch, "exec /bin/sleep 6");
+    // The query would run to its natural end after five seconds, past the
+    // timeout and well under the ten seconds a stretched deadline would give
+    // (a slow start-up still leaves it room), and leave a marker there.
+    let bin = script_harness(&scratch, "sleep 5; touch \"$TMPDIR/finished\"");
     let spec = Spec::new("demo-probe", "fakeh")
         .search_path(bin.as_os_str())
         .timeout(Duration::from_secs(1));
     let claimed = std::cell::Cell::new(false);
-    let started = Instant::now();
     let not_run = run(
         &spec,
         &scratch,
@@ -166,9 +166,8 @@ fn a_version_query_that_outlives_the_timeout_ends_timed_out() {
         "the claim ran after the version query timed out"
     );
     assert!(
-        started.elapsed() < Duration::from_secs(4),
-        "the version query was not killed at the timeout: {:?}",
-        started.elapsed()
+        !scratch.tmp().join("finished").exists(),
+        "the version query ran to its natural end, so it was not killed at the timeout"
     );
 }
 
