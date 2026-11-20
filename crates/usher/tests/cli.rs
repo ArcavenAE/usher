@@ -49,6 +49,10 @@ fn inventory_with_an_argument_is_refused_by_the_verb_not_as_an_unknown_mode() {
     let out = usher(&["inventory", "extra"]);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("takes no argument"), "{stderr}");
+    assert!(
+        stderr.contains("usher inventory takes no arguments"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("next: run `usher inventory`"), "{stderr}");
     assert!(!stderr.contains("unknown mode"), "{stderr}");
 }

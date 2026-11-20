@@ -5,8 +5,9 @@ use std::fs;
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 
-use usher_cli::{InventoryEnv, inventory, inventory_system_root, run};
+use usher_cli::{InventoryEnv, inventory, inventory_system_root, inventory_with, run};
 use usher_core::SystemRoot;
+use usher_knowledge::KnowledgeFile;
 use usher_store::Store;
 use usher_testkit::{NamedHome, RealHomeGuard, RealHomes, ScratchHome};
 
@@ -87,8 +88,16 @@ fn the_first_line_stamps_the_harness_version_and_the_knowledge_version() {
     rig.install("2.1.317");
     let out = rig.run(&rig.env());
     let first = out.lines().next().expect("a first line");
+    let knowledge = KnowledgeFile::embedded()
+        .expect("embedded")
+        .version()
+        .to_string();
     assert!(first.starts_with("Claude Code 2.1.317"), "{first}");
     assert!(first.contains("knowledge v"), "{first}");
+    assert_eq!(
+        first,
+        format!("Claude Code 2.1.317, {knowledge}: every status below assumes these")
+    );
 }
 
 #[test]
@@ -97,8 +106,18 @@ fn an_unknown_version_is_stamped_unknown_with_its_reason_and_statuses_read_unkno
     let user = rig.user(r#"{"model":"m"}"#);
     let out = rig.run(&rig.env());
     let first = out.lines().next().expect("a first line");
+    let knowledge = KnowledgeFile::embedded()
+        .expect("embedded")
+        .version()
+        .to_string();
     assert!(
         first.starts_with("Claude Code version unknown ("),
+        "{first}"
+    );
+    assert!(first.contains("knowledge for it not known"), "{first}");
+    assert!(first.contains(&format!("({knowledge} loaded)")), "{first}");
+    assert!(
+        first.ends_with("every status below reads unknown"),
         "{first}"
     );
     let row = line_with(&out, &user.display().to_string());
@@ -118,8 +137,65 @@ fn a_present_source_prints_its_layer_path_status_and_key_names_never_a_value() {
         keys.contains("model") && keys.contains("permissions"),
         "{keys}"
     );
-    assert!(keys.contains("not classified"), "{keys}");
+    let knowledge = KnowledgeFile::embedded()
+        .expect("embedded")
+        .version()
+        .to_string();
+    assert_eq!(
+        keys.trim(),
+        format!(
+            "keys: model, permissions (names only; not classified: {knowledge} lists no keys for claude-code 2.1.317)"
+        )
+    );
     assert!(!out.contains("super-secret-model"), "no value is printed");
+}
+
+#[test]
+fn a_source_the_version_does_not_read_prints_unread_with_the_knowledge_item() {
+    let rig = Rig::new();
+    rig.install("2.1.317");
+    let old = rig.write(&rig.scratch.home().join(".claude-old.json"), "{}");
+    let knowledge = KnowledgeFile::parse(
+        r#"
+schema_version = 3
+sequence = 9
+
+[[item]]
+id = "claude-code.old-settings"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "A place this version no longer reads."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/old" }
+last_verified = 2026-11-20
+source = { path = "${HOME}/.claude-old.json", layer = "user", read = "not-read", rank = 1, always_present = false }
+"#,
+    )
+    .expect("a fixture knowledge file");
+    let out = inventory_with(&rig.env(), SystemRoot::at(rig.system.clone()), &knowledge)
+        .expect("an inventory");
+    let row = line_with(&out, &old.display().to_string());
+    assert!(
+        row.trim_end()
+            .ends_with("unread (knowledge item claude-code.old-settings)"),
+        "{row}"
+    );
+}
+
+#[test]
+fn an_invalid_file_prints_unknown_with_its_position_and_category_and_no_content() {
+    let rig = Rig::new();
+    rig.install("2.1.317");
+    let user = rig.user(r#"{"token": "sk-live-secret-123" oops}"#);
+    let out = rig.run(&rig.env());
+    let row = line_with(&out, &user.display().to_string());
+    assert!(
+        row.contains("unknown (not valid JSON at line 1, column ") && row.contains("syntax)"),
+        "{row}"
+    );
+    assert!(!out.contains("sk-live-secret-123"), "{out}");
+    assert!(!out.contains("oops"), "{out}");
 }
 
 #[test]
@@ -291,7 +367,21 @@ fn run_hands_inventory_to_its_verb_and_refuses_any_other_command_or_argument() {
         .expect_err("inventory takes no argument");
     assert_eq!(err.step(), "run inventory");
     assert!(err.status().contains("extra"), "{}", err.status());
+    assert!(
+        err.status().contains("usher inventory takes no arguments"),
+        "{}",
+        err.status()
+    );
+    assert_eq!(err.next_action(), "run `usher inventory`");
     let err = run(&["whatever".to_string()], &env).expect_err("an unknown command");
     assert_eq!(err.step(), "select command");
-    assert!(!err.next_action().is_empty());
+    assert!(
+        err.status().contains("`whatever` is not a usher command"),
+        "{}",
+        err.status()
+    );
+    assert_eq!(
+        err.next_action(),
+        "run `usher inventory` or `usher --version`"
+    );
 }

@@ -43,6 +43,17 @@ pub fn inventory(env: &InventoryEnv, root: SystemRoot) -> Result<String, UsherEr
     Ok(String::new())
 }
 
+/// As [`inventory`], over a given knowledge file, for tests that need a fact the seed does
+/// not hold.
+pub fn inventory_with(
+    env: &InventoryEnv,
+    root: SystemRoot,
+    knowledge: &usher_knowledge::KnowledgeFile,
+) -> Result<String, UsherError> {
+    let _ = (env, root, knowledge);
+    Ok(String::new())
+}
+
 /// Hands one command and its arguments to its verb.
 pub fn run(args: &[String], env: &InventoryEnv) -> Result<String, UsherError> {
     let _ = (args, env);
