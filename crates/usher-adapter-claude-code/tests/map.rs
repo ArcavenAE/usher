@@ -1098,16 +1098,17 @@ fn a_sensitive_scalar_names_its_winner_and_shows_no_value() {
         r#"{"fx": {"token": "canary-project-token"}}"#,
     );
     let map = rig.fixture_map();
-    let project = reading(&map, "fx.token", "project");
-    assert_eq!(project.status, ReadingStatus::InEffect, "{project:?}");
-    assert_eq!(project.value, None);
-    assert_eq!(project.note.as_deref(), Some("value not read (sensitive)"));
+    // The fixture's stack puts the user layer above the project layer.
     let user = reading(&map, "fx.token", "user");
-    assert_eq!(user.status, ReadingStatus::Shadowed, "{user:?}");
+    assert_eq!(user.status, ReadingStatus::InEffect, "{user:?}");
     assert_eq!(user.value, None);
+    assert_eq!(user.note.as_deref(), Some("value not read (sensitive)"));
+    let project = reading(&map, "fx.token", "project");
+    assert_eq!(project.status, ReadingStatus::Shadowed, "{project:?}");
+    assert_eq!(project.value, None);
     assert_eq!(
-        user.note.as_deref(),
-        Some(format!("shadowed by project ({})", rig.project_file().display()).as_str())
+        project.note.as_deref(),
+        Some(format!("shadowed by user ({})", rig.user_file().display()).as_str())
     );
     assert!(!format!("{map:?}").contains("canary"));
 }
