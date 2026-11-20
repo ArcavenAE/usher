@@ -20,11 +20,13 @@ use usher_probes::{
 };
 use usher_testkit::ScratchHome;
 
-/// A start that would run to its natural end after eight seconds and leave a
-/// marker there. Eight is past every timeout these tests use and under the ten
-/// seconds a deadline stretched tenfold would allow, so a start that was not
-/// killed at the timeout leaves the marker, whatever the load.
-const FINISH_LATE: &[&str] = &["-c", "sleep 8; touch \"$TMPDIR/finished\""];
+/// A start that would run to its natural end after five seconds and leave a
+/// marker there. A start killed at the 1 s timeout never reaches it, and a
+/// start that was waited out, or given a longer deadline, does. Two margins
+/// set the five: a correct kill has 4 s of slack before the natural end, and a
+/// deadline stretched tenfold (10 s) is only caught while start-up takes under
+/// 5 s, since start-up plus the sleep must end before that deadline.
+const FINISH_LATE: &[&str] = &["-c", "sleep 5; touch \"$TMPDIR/finished\""];
 
 fn marker(scratch: &ScratchHome) -> std::path::PathBuf {
     scratch.tmp().join("finished")
