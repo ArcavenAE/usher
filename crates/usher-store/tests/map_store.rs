@@ -1086,3 +1086,26 @@ fn the_method_key_layer_and_entry_index_checks_refuse_a_raw_insert_on_both_store
         }
     }
 }
+
+/// The method and status lists as the table stores them. SQLite cannot alter a stored check,
+/// so a change to either list is a table rebuild at a new version, and this test fails until
+/// the change is made on purpose.
+#[test]
+fn the_stored_method_and_status_checks_are_these_exact_lists() {
+    let (_f, fresh, _o, old) = fresh_and_migrated();
+    for dir in [&fresh, &old] {
+        let sql: String = raw(dir)
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'map_setting'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("the table definition");
+        for golden in [
+            "CHECK (method IN ('rebuilt', 'harness-reported'))",
+            "CHECK (status IN ('in_effect', 'shadowed', 'unread', 'not_decided', 'overridden_by_environment', 'value_not_read', 'not_checked', 'unknown'))",
+        ] {
+            assert!(sql.contains(golden), "{golden} is not in {sql}");
+        }
+    }
+}
