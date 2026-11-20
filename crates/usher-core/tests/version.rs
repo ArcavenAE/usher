@@ -100,3 +100,10 @@ fn surrounding_whitespace_is_trimmed_from_a_version_and_a_range_term() {
     assert!(range(">= 1.0.0").contains(&v("1.0.0")));
     assert!(range(" >=1.0.0 , <2.0.0 ").contains(&v("1.5.0")));
 }
+
+#[test]
+fn ranges_overlap_through_a_patch_one_above_a_bound() {
+    // 1.0.1 is the only version in both; it is one patch above the lower bound.
+    assert!(range(">1.0.0").overlaps(&range("<1.0.2")));
+    assert!(!range(">1.0.0").overlaps(&range("<1.0.1")));
+}
