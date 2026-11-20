@@ -320,3 +320,52 @@ fn a_profile_that_covers_no_harness_is_refused() {
         assert!(err.step().contains(ORIGIN), "step: {}", err.step());
     }
 }
+
+#[test]
+fn an_mcp_server_name_is_one_to_sixty_four_of_letters_digits_dot_underscore_and_hyphen_not_starting_with_a_dot()
+ {
+    let long_ok = "s".repeat(64);
+    let long_bad = "s".repeat(65);
+    for good in ["github.com_mcp", "fs-tools", "A_b.9", long_ok.as_str()] {
+        let text = format!("{VALID}\n[mcp_servers.\"{good}\"]\ncommand = \"x\"\n");
+        assert_eq!(must_parse(&text).mcp_servers()[0].name(), good);
+    }
+    for bad in ["my server", "a:b", ".hidden", "", long_bad.as_str()] {
+        let text = format!("{VALID}\n[mcp_servers.\"{bad}\"]\ncommand = \"x\"\n");
+        let err = refusal(&text);
+        assert!(
+            err.check().contains("mcp_servers")
+                && (bad.is_empty() || err.check().contains(bad) || err.status().contains(bad)),
+            "the error does not name the server `{bad}`: {} / {}",
+            err.check(),
+            err.status()
+        );
+    }
+}
+
+#[test]
+fn a_tool_name_is_one_to_one_hundred_twenty_eight_printable_characters_without_space_or_quote() {
+    let long_ok = "t".repeat(128);
+    let long_bad = "t".repeat(129);
+    for good in ["node", "cargo:ripgrep", "npm:@scope/pkg", long_ok.as_str()] {
+        let text = format!("{VALID}\n[tools]\n\"{good}\" = \">=1.0.0\"\n");
+        assert_eq!(must_parse(&text).tools()[0].name(), good);
+    }
+    for bad in [
+        "node js",
+        "a'b",
+        "a\\\"b",
+        "a\\u0001b",
+        "",
+        long_bad.as_str(),
+    ] {
+        let text = format!("{VALID}\n[tools]\n\"{bad}\" = \">=1.0.0\"\n");
+        let err = refusal(&text);
+        assert!(
+            err.check().contains("tools"),
+            "the error does not name the tools table: {} / {}",
+            err.check(),
+            err.status()
+        );
+    }
+}
