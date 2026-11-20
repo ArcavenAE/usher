@@ -561,3 +561,84 @@ source = { path = "${HOME}/.other.json", layer = "user", read = "read", rank = 1
 "#;
     accepts(&format!("{}{source}", with_account(unnamed)));
 }
+
+fn item_at(id: &str, seat: &str) -> String {
+    ACCOUNT_ITEM
+        .replace("demo.seat-account", id)
+        .replace(ACCOUNT, seat)
+}
+
+#[test]
+fn a_presence_or_listing_item_does_not_name_a_json_file_for_keys_present() {
+    for (id, read) in [
+        ("demo.seat-only-presence", "presence"),
+        ("demo.seat-only-listing", "listing"),
+    ] {
+        let namer = item_at(
+            id,
+            &format!(
+                r#"seat = {{ part = "packs", path = "${{HOME}}/.only.json", read = "{read}" }}"#
+            ),
+        );
+        let asks = item_at(
+            "demo.seat-account",
+            r#"seat = { part = "auth-route", path = "${HOME}/.only.json", read = "keys-present", keys = ["oauthAccount"] }"#,
+        );
+        rejects(
+            &format!("{FILE}{namer}{asks}"),
+            &["demo.seat-account", "${HOME}/.only.json"],
+        );
+    }
+}
+
+#[test]
+fn another_keys_present_item_does_name_the_file() {
+    let first = item_at(
+        "demo.seat-first",
+        r#"seat = { part = "auth-route", path = "${HOME}/.demo.json", read = "keys-present", keys = ["a"] }"#,
+    );
+    let other = item_at(
+        "demo.seat-second",
+        r#"seat = { part = "auth-route", path = "${HOME}/.second.json", read = "keys-present", keys = ["oauthAccount"] }"#,
+    );
+    let third = item_at(
+        "demo.seat-third",
+        r#"seat = { part = "auth-route", path = "${HOME}/.second.json", read = "keys-present", keys = ["b"] }"#,
+    );
+    accepts(&format!("{FILE}{first}{other}{third}"));
+}
+
+/// The environment half of the auth route, from the vendor's environment-variable page.
+#[test]
+fn the_embedded_file_pins_the_claude_code_auth_route_variables() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    let item = file
+        .items()
+        .iter()
+        .find(|item| item.id() == "claude-code.seat-auth-env")
+        .expect("the auth-route environment item");
+    assert_eq!(item.harness(), "claude-code");
+    assert_eq!(item.class(), Class::Seat);
+    assert_eq!(item.layer(), Layer::Slow);
+    let seat = item.seat().expect("a seat fact");
+    assert_eq!(seat.part(), SeatPart::AuthRoute);
+    assert_eq!(seat.read(), SeatRead::Env);
+    assert_eq!(seat.path(), None);
+    assert_eq!(
+        seat.variables(),
+        [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "CLAUDE_CODE_USE_BEDROCK",
+            "CLAUDE_CODE_USE_VERTEX",
+            "CLAUDE_CODE_USE_FOUNDRY",
+        ]
+    );
+    assert!(seat.key_paths().is_empty() && seat.keys().is_empty());
+    assert_eq!(item.reference().kind(), ReferenceKind::VendorDocs);
+    assert_eq!(
+        item.reference().locator(),
+        "https://code.claude.com/docs/en/env-vars"
+    );
+}
