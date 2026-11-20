@@ -372,25 +372,109 @@ fn a_non_delivering_top_then_a_bad_file_leaves_the_lowest_undecided() {
     );
 }
 
-/// Two present first-wins sources on one platform with the same rank have no stated
-/// winner, so neither is in effect and neither is guessed.
+const TWIN: &str = "etc/claude-code/managed-twin.json";
+
+/// A knowledge file with a second Linux managed source at `rank`.
+fn with_twin(rank: u32) -> KnowledgeFile {
+    fixture_with(&item(
+        "demo.twin",
+        &format!("/{TWIN}"),
+        rank,
+        Some(r#"["linux"]"#),
+    ))
+}
+
+fn undecided_by_rank(rank: u32) -> SourceStatus {
+    SourceStatus::Unknown {
+        reason: format!("first-wins not decided: two managed sources share rank {rank}"),
+    }
+}
+
+/// Two deliverers at one rank have no stated winner, so neither is in effect and neither
+/// is guessed; everything ranked below them is not decided either, and says why.
 #[test]
 fn two_managed_sources_with_one_rank_on_a_platform_read_unknown_naming_the_rank() {
     let rig = Rig::new();
     let top = rig.file(TOP, POLICY);
-    let twin_path = "etc/claude-code/managed-twin.json";
-    let twin = rig.file(twin_path, POLICY);
-    let knowledge = fixture_with(&item(
-        "demo.twin",
-        &format!("/{twin_path}"),
-        2,
-        Some(r#"["linux"]"#),
-    ));
-    let listing = rig.list_with(&knowledge);
-    assert_eq!(listing.sources.len(), 2, "{:?}", listing.sources);
+    let twin = rig.file(TWIN, POLICY);
+    let middle = rig.file(MIDDLE, POLICY);
+    let low = rig.file(LOW, POLICY);
+    let listing = rig.list_with(&with_twin(2));
+    assert_eq!(listing.sources.len(), 4, "{:?}", listing.sources);
     let tied = SourceStatus::Unknown {
         reason: "two managed sources share rank 2".to_string(),
     };
     assert_eq!(status_of(&listing, &top), &tied);
     assert_eq!(status_of(&listing, &twin), &tied);
+    assert_eq!(status_of(&listing, &middle), &undecided_by_rank(2));
+    assert_eq!(status_of(&listing, &low), &undecided_by_rank(2));
+}
+
+/// A tie below a delivering winner decides nothing, so it is never reported as a tie.
+#[test]
+fn a_tie_below_a_delivering_winner_reads_shadowed_for_both_members() {
+    let rig = Rig::new();
+    let top = rig.file(TOP, POLICY);
+    let middle = rig.file(MIDDLE, POLICY);
+    let twin = rig.file(TWIN, POLICY);
+    let listing = rig.list_with(&with_twin(3));
+    assert_eq!(listing.sources.len(), 3, "{:?}", listing.sources);
+    assert_eq!(status_of(&listing, &top), &SourceStatus::InEffect);
+    let shadowed = SourceStatus::Shadowed { by: top };
+    assert_eq!(status_of(&listing, &middle), &shadowed);
+    assert_eq!(status_of(&listing, &twin), &shadowed);
+}
+
+/// Only sources that deliver can tie: an empty member drops out, and the other member
+/// wins alone.
+#[test]
+fn a_tie_where_one_member_delivers_nothing_is_won_by_the_other() {
+    let rig = Rig::new();
+    let top = rig.file(TOP, "{}");
+    let twin = rig.file(TWIN, POLICY);
+    let low = rig.file(LOW, POLICY);
+    let listing = rig.list_with(&with_twin(2));
+    assert_eq!(listing.sources.len(), 3, "{:?}", listing.sources);
+    assert_eq!(
+        status_of(&listing, &top),
+        &unread("delivers no policy key: empty")
+    );
+    assert_eq!(status_of(&listing, &twin), &SourceStatus::InEffect);
+    assert_eq!(
+        status_of(&listing, &low),
+        &SourceStatus::Shadowed { by: twin }
+    );
+}
+
+/// An unreadable member might deliver, so paired with a deliverer nothing is decided, and
+/// the lower sources name the bad file as the cause.
+#[test]
+fn a_tie_of_an_unreadable_source_and_a_deliverer_leaves_both_unknown_and_names_the_bad_file() {
+    let rig = Rig::new();
+    let top = rig.file(TOP, "{ not json");
+    let twin = rig.file(TWIN, POLICY);
+    let middle = rig.file(MIDDLE, POLICY);
+    let listing = rig.list_with(&with_twin(2));
+    assert_eq!(listing.sources.len(), 3, "{:?}", listing.sources);
+    match status_of(&listing, &top) {
+        SourceStatus::Unknown { reason } => assert!(
+            reason.contains("not valid JSON at line 1, column "),
+            "{reason}"
+        ),
+        other => panic!("expected unknown, got {other:?}"),
+    }
+    assert!(
+        matches!(status_of(&listing, &twin), SourceStatus::Unknown { .. }),
+        "{:?}",
+        status_of(&listing, &twin)
+    );
+    assert_eq!(
+        status_of(&listing, &middle),
+        &SourceStatus::Unknown {
+            reason: format!(
+                "first-wins not decided: {} could not be read",
+                top.display()
+            ),
+        }
+    );
 }
