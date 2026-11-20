@@ -293,6 +293,27 @@ mod tests {
         }
     }
 
+    /// The managed directories are system paths, so they are watched whether or not `HOME`
+    /// resolves; `~/.claude.json` needs a home.
+    #[test]
+    fn the_managed_directories_are_watched_when_home_is_unset_but_another_home_resolves() {
+        let homes = RealHomes::resolve(|key| (key == "CLAUDE_CONFIG_DIR").then(|| "/cfg".into()));
+        let paths: Vec<&Path> = homes.homes().iter().map(|h| h.path.as_path()).collect();
+        for managed in [
+            "/Library/Application Support/ClaudeCode",
+            "/etc/claude-code",
+        ] {
+            assert!(
+                paths.contains(&Path::new(managed)),
+                "{managed} is not watched: {paths:?}"
+            );
+        }
+        assert!(
+            paths.iter().all(|p| !p.ends_with(".claude.json")),
+            "{paths:?}"
+        );
+    }
+
     /// A fake "real" home inside its own scratch root, so no test reads the
     /// host's actual harness homes.
     fn fake_real(scratch: &ScratchHome) -> RealHomes {

@@ -806,3 +806,85 @@ fn a_variable_nobody_asked_for_may_hold_invalid_utf8() {
     .expect("only the named variables are read");
     assert_eq!(launch.get("A"), Some("1"));
 }
+
+/// The directory comes from the binding in range for the installed version, not from the
+/// first binder in the file: two ranges with different defaults give different directories.
+#[test]
+fn the_config_directory_default_follows_the_binding_in_range_for_the_version() {
+    let rig = Rig::new();
+    rig.install("2.2.5");
+    let range = |id: &str, versions: &str, dir: &str| {
+        format!(
+            r#"
+[[item]]
+id = "{id}-variable"
+harness = "claude-code"
+layer = "slow"
+class = "paths"
+versions = "{versions}"
+summary = "CLAUDE_CONFIG_DIR relocates the user config home."
+reference = {{ kind = "vendor-docs", locator = "https://example.test/docs/env" }}
+last_verified = 2026-11-20
+variable = {{ name = "CLAUDE_CONFIG_DIR", binds = "${{CONFIG_DIR}}", default = "${{HOME}}/{dir}" }}
+
+[[item]]
+id = "{id}-user"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = "{versions}"
+summary = "The user settings file."
+reference = {{ kind = "vendor-docs", locator = "https://example.test/docs/settings" }}
+last_verified = 2026-11-20
+source = {{ path = "${{CONFIG_DIR}}/settings.json", layer = "user", read = "read", rank = 1, always_present = true }}
+"#
+        )
+    };
+    let knowledge = signed(&format!(
+        "schema_version = 3\nsequence = 9\n{}{}{LAUNCHER}",
+        range("claude-code.early", ">=2.1.317, <2.2.0", ".cfg-early"),
+        range("claude-code.late", ">=2.2.0, <3.0.0", ".cfg-late"),
+    ));
+    let out = inventory_with(&rig.env(), SystemRoot::at(rig.system.clone()), &knowledge)
+        .expect("an inventory");
+    let late = rig.scratch.home().join(".cfg-late/settings.json");
+    let early = rig.scratch.home().join(".cfg-early/settings.json");
+    assert!(
+        out.contains(&format!("no file: user settings ({})", late.display())),
+        "{out}"
+    );
+    assert!(!out.contains(&early.display().to_string()), "{out}");
+}
+
+/// A stored row carries the item, the size and the modified time of what was found, and
+/// an absent row carries the item that states it.
+#[test]
+fn a_recorded_row_holds_the_item_the_size_and_the_modified_time() {
+    let rig = Rig::new();
+    rig.install("2.1.317");
+    let content = r#"{"model":"m"}"#;
+    let user = rig.user(content);
+    let file = fs::File::options().write(true).open(&user).expect("open");
+    file.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_795_089_600))
+        .expect("set the modified time");
+    drop(file);
+    let env = rig.env();
+    rig.run(&env);
+    let store = Store::open(&env.state_dir).expect("the store opens");
+    let runs = store.runs().expect("runs");
+    let sources = store.sources_of(runs[0].id).expect("sources");
+    let present = sources
+        .iter()
+        .find(|s| s.path == user.display().to_string())
+        .expect("the user source is recorded");
+    assert_eq!(present.item_id, "claude-code.source-user-settings");
+    assert_eq!(present.size, Some(content.len() as u64));
+    assert_eq!(present.modified.as_deref(), Some("2026-11-19T12:00:00Z"));
+    let absent = sources
+        .iter()
+        .find(|s| s.layer == "project")
+        .expect("the absent project layer is recorded");
+    assert!(!absent.present);
+    assert_eq!(absent.item_id, "claude-code.source-project-settings");
+    assert_eq!((absent.size, absent.modified.clone()), (None, None));
+}
