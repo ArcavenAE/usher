@@ -38,7 +38,7 @@ pub fn read_version(
 #[cfg(all(test, unix))]
 mod tests {
     use std::fs;
-    use std::os::unix::fs::symlink;
+    use std::os::unix::fs::{PermissionsExt, symlink};
     use std::path::{Path, PathBuf};
 
     use usher_core::{LaunchContext, environment_key};
@@ -71,6 +71,12 @@ mod tests {
         }
     }
 
+    /// A real install is executable, and `sh` skips a `PATH` entry that is not.
+    fn write_exec(path: &Path, contents: &[u8]) {
+        fs::write(path, contents).expect("file");
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("mode");
+    }
+
     fn launcher(scratch: &ScratchHome) -> PathBuf {
         scratch.home().join(".local/bin/claude")
     }
@@ -83,7 +89,7 @@ mod tests {
     fn install(scratch: &ScratchHome, name: &str) -> PathBuf {
         let target = versions(scratch).join(name);
         fs::create_dir_all(target.parent().expect("a parent")).expect("dirs");
-        fs::write(&target, b"binary").expect("file");
+        write_exec(&target, b"binary");
         target
     }
 
@@ -126,7 +132,7 @@ mod tests {
         let scratch = ScratchHome::new().expect("scratch");
         let elsewhere = scratch.home().join("elsewhere/2.1.317");
         fs::create_dir_all(elsewhere.parent().expect("a parent")).expect("dirs");
-        fs::write(&elsewhere, b"binary").expect("file");
+        write_exec(&elsewhere, b"binary");
         link(&scratch, &elsewhere);
         let reading = read_version(&from(), &context(&scratch), Some(&path_of(&scratch)));
         assert!(unknown(&reading).contains("layout"), "{reading:?}");
@@ -155,7 +161,7 @@ mod tests {
         let scratch = ScratchHome::new().expect("scratch");
         let launcher = launcher(&scratch);
         fs::create_dir_all(launcher.parent().expect("a parent")).expect("dirs");
-        fs::write(&launcher, b"#!/bin/sh\n").expect("file");
+        write_exec(&launcher, b"#!/bin/sh\n");
         let reading = read_version(&from(), &context(&scratch), Some(&path_of(&scratch)));
         assert!(unknown(&reading).contains("not a symlink"), "{reading:?}");
     }
@@ -176,7 +182,7 @@ mod tests {
         link(&scratch, &install(&scratch, "2.1.317"));
         let other = scratch.home().join("other-bin");
         fs::create_dir_all(&other).expect("dirs");
-        fs::write(other.join("claude"), b"#!/bin/sh\n").expect("file");
+        write_exec(&other.join("claude"), b"#!/bin/sh\n");
         let path = std::env::join_paths([other.clone(), scratch.home().join(".local/bin")])
             .expect("a path");
         let reading = read_version(&from(), &context(&scratch), Some(&path));
@@ -231,7 +237,7 @@ mod tests {
         let other = scratch.home().join("other-bin");
         fs::create_dir_all(&other).expect("dirs");
         let elsewhere = scratch.home().join("elsewhere");
-        fs::write(&elsewhere, b"#!/bin/sh\n").expect("file");
+        write_exec(&elsewhere, b"#!/bin/sh\n");
         symlink(&elsewhere, other.join("claude")).expect("symlink");
         let reading = read_version(&from(), &context(&scratch), Some(other.as_os_str()));
         let reason = unknown(&reading);
@@ -257,6 +263,59 @@ mod tests {
         let reason = unknown(&reading);
         assert!(
             reason.contains(&other.join("claude").display().to_string()),
+            "{reason}"
+        );
+    }
+
+    /// `sh` skips a `claude` without an execute bit, so the lookup does too.
+    #[test]
+    fn a_claude_without_an_execute_bit_earlier_on_path_is_passed_over() {
+        let scratch = ScratchHome::new().expect("scratch");
+        link(&scratch, &install(&scratch, "2.1.317"));
+        let decoy = scratch.home().join("decoy-bin");
+        fs::create_dir_all(&decoy).expect("dirs");
+        fs::write(decoy.join("claude"), b"#!/bin/sh\n").expect("file");
+        fs::set_permissions(decoy.join("claude"), fs::Permissions::from_mode(0o644)).expect("mode");
+        let path =
+            std::env::join_paths([decoy, scratch.home().join(".local/bin")]).expect("a path");
+        let reading = read_version(&from(), &context(&scratch), Some(&path));
+        assert_eq!(reading, VersionReading::Known("2.1.317".to_string()));
+    }
+
+    /// An empty entry is the launch directory, never usher's own working directory.
+    #[test]
+    fn an_empty_path_entry_means_the_launch_directory() {
+        let scratch = ScratchHome::new().expect("scratch");
+        link(&scratch, &install(&scratch, "2.1.317"));
+        let in_launch_dir = scratch.home().join("claude");
+        write_exec(&in_launch_dir, b"#!/bin/sh\n");
+        let mut path = std::ffi::OsString::from(":");
+        path.push(scratch.home().join(".local/bin"));
+        let reading = read_version(&from(), &context(&scratch), Some(&path));
+        let reason = unknown(&reading);
+        assert!(
+            reason.contains(&format!("claude on PATH is {}", in_launch_dir.display())),
+            "{reason}"
+        );
+        assert!(reason.contains("PATH"), "{reason}");
+    }
+
+    #[test]
+    fn a_relative_path_entry_is_joined_to_the_launch_directory() {
+        let scratch = ScratchHome::new().expect("scratch");
+        link(&scratch, &install(&scratch, "2.1.317"));
+        let bin = scratch.home().join("bin");
+        fs::create_dir_all(&bin).expect("dirs");
+        write_exec(&bin.join("claude"), b"#!/bin/sh\n");
+        let mut path = std::ffi::OsString::from("bin:");
+        path.push(scratch.home().join(".local/bin"));
+        let reading = read_version(&from(), &context(&scratch), Some(&path));
+        let reason = unknown(&reading);
+        assert!(
+            reason.contains(&format!(
+                "claude on PATH is {}",
+                bin.join("claude").display()
+            )),
             "{reason}"
         );
     }
