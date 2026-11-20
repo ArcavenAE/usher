@@ -160,6 +160,28 @@ summary = "GOOSE_PATH_ROOT, when absolute, relocates goose config, data and stat
 reference = { kind = "source", locator = "https://raw.githubusercontent.com/aaif-goose/goose/main/crates/goose/src/config/paths.rs" }
 last_verified = 2026-11-02
 [[item]]
+id = "claude-code.seat-mcp-launch-dir"
+harness = "claude-code"
+layer = "slow"
+class = "seat"
+versions = ">=2.1.317, <3.0.0"
+summary = "The MCP server names registered in the project's .mcp.json at the directory the session starts in, and the names of each server's env and headers entries; no value is read. The vendor's MCP page says to add the entry under mcpServers in .mcp.json at the project root, and does not say how the root is found after a launch in a subdirectory, so both places are listed and neither is claimed."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/mcp" }
+last_verified = 2026-11-20
+seat = { part = "mcp", path = "${LAUNCH_DIR}/.mcp.json", read = "names", key_paths = ["mcpServers.*", "mcpServers.*.env", "mcpServers.*.headers"] }
+
+[[item]]
+id = "claude-code.seat-mcp-repo-root"
+harness = "claude-code"
+layer = "slow"
+class = "seat"
+versions = ">=2.1.317, <3.0.0"
+summary = "The MCP server names registered in the project's .mcp.json at the repository root, and the names of each server's env and headers entries; no value is read. The vendor's MCP page says to add the entry under mcpServers in .mcp.json at the project root, and does not say how the root is found after a launch in a subdirectory, so both places are listed and neither is claimed."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/mcp" }
+last_verified = 2026-11-20
+seat = { part = "mcp", path = "${REPO}/.mcp.json", read = "names", key_paths = ["mcpServers.*", "mcpServers.*.env", "mcpServers.*.headers"] }
+
+[[item]]
 id = "claude-code.seat-auth-env"
 harness = "claude-code"
 layer = "slow"
