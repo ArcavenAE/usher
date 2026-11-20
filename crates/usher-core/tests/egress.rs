@@ -322,6 +322,7 @@ fn a_redirect_to_an_unlisted_host_is_an_error_that_names_the_host() {
         .call(knowledge_request())
         .expect_err("an unlisted redirect must fail");
     assert_four_fields(&err);
+    assert_eq!(err.step(), "send knowledge-update");
     assert!(err.to_string().contains("elsewhere.invalid"), "{err}");
     assert_eq!(transport.sent().len(), 1, "the port followed the redirect");
 }
