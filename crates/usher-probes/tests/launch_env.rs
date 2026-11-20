@@ -34,6 +34,7 @@ fn child_prints_the_launched_environment() {
     println!("SCRATCH_HOME={}", scratch.home().display());
     println!("SCRATCH_TMP={}", scratch.tmp().display());
     println!("SCRATCH_ROOT={}", scratch.root().display());
+    println!("SCRATCH_CODEX_HOME={}", scratch.codex_home().display());
     let kind = match std::env::var(HARNESS).as_deref() {
         Ok("codex") => HarnessKind::Codex,
         Ok("goose") => HarnessKind::Goose,
@@ -261,9 +262,12 @@ fn a_codex_child_gets_the_four_variables_and_codex_home_which_is_its_harness_hom
         "CODEX_HOME is not the launcher's harness home"
     );
     assert_eq!(seen.line("HARNESS_HOME_IS_DIR="), "true");
-    assert!(
-        harness_home.starts_with(seen.line("SCRATCH_ROOT=")),
-        "the codex home {harness_home} is outside the scratch root"
+    // Meaning change: this pinned "an existing directory inside the scratch
+    // root". CODEX_HOME is exactly the scratch home's own codex home.
+    assert_eq!(
+        harness_home,
+        seen.line("SCRATCH_CODEX_HOME="),
+        "the codex home is not the scratch home's codex home"
     );
     assert_ne!(
         harness_home,
