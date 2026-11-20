@@ -29,6 +29,17 @@ summary = "The launcher link whose target names the installed version."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/install" }
 last_verified = 2026-11-20
 version_from = { launcher = "${HOME}/.local/bin/demo", rule = "symlink-target-last-component", layout = "${HOME}/.local/share/demo/versions/${VERSION}" }
+
+[[item]]
+id = "demo.config-dir-variable"
+harness = "demo"
+layer = "slow"
+class = "paths"
+versions = ">=1.0.0, <2.0.0"
+summary = "DEMO_CONFIG_DIR relocates the user config home."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/env" }
+last_verified = 2026-11-20
+variable = { name = "DEMO_CONFIG_DIR", binds = "${CONFIG_DIR}", default = "${HOME}/.demo" }
 "#;
 
 const SOURCE: &str = r#"source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", rank = 1, always_present = true }"#;

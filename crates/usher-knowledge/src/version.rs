@@ -106,6 +106,43 @@ impl VersionRange {
             .any(|candidate| self.contains(&candidate))
     }
 
+    /// Whether some version satisfies both ranges. The candidates are the same as for
+    /// satisfiability: 0.0.0, each bound of either range, and each bound with the patch
+    /// number raised by one.
+    pub fn overlaps(&self, other: &VersionRange) -> bool {
+        std::iter::once(Version::new(0, 0, 0))
+            .chain(
+                self.terms
+                    .iter()
+                    .chain(other.terms.iter())
+                    .flat_map(|(_, v)| {
+                        [
+                            *v,
+                            Version::new(v.major, v.minor, v.patch.saturating_add(1)),
+                        ]
+                    }),
+            )
+            .any(|candidate| self.contains(&candidate) && other.contains(&candidate))
+    }
+
+    /// Whether the two ranges match exactly the same versions.
+    pub fn same_versions(&self, other: &VersionRange) -> bool {
+        std::iter::once(Version::new(0, 0, 0))
+            .chain(
+                self.terms
+                    .iter()
+                    .chain(other.terms.iter())
+                    .flat_map(|(_, v)| {
+                        [
+                            Version::new(v.major, v.minor, v.patch.saturating_sub(1)),
+                            *v,
+                            Version::new(v.major, v.minor, v.patch.saturating_add(1)),
+                        ]
+                    }),
+            )
+            .all(|candidate| self.contains(&candidate) == other.contains(&candidate))
+    }
+
     /// Whether `version` satisfies every comparator.
     pub fn contains(&self, version: &Version) -> bool {
         self.terms.iter().all(|(op, bound)| match op {
