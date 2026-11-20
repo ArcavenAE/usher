@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use usher_core::{
-    ALL, Class, DELEGATED_INSTALLERS, DELEGATED_NOTE, Descriptor, Egress, Method,
+    ALL, Class, DELEGATED_INSTALLERS, DELEGATED_NOTE, DenyAll, Descriptor, Egress, Method,
     PersonStartedOnly, Place, Policy, Port, Request, Response, UsherError, descriptor,
 };
 use usher_testkit::RecordingTransport;
@@ -167,13 +167,6 @@ fn the_policy_allows_person_started_and_refuses_the_other_classes() {
     assert!(PersonStartedOnly.allows(Class::PersonStarted));
     assert!(!PersonStartedOnly.allows(Class::VersionCheck));
     assert!(!PersonStartedOnly.allows(Class::Reporting));
-}
-
-struct DenyAll;
-impl Policy for DenyAll {
-    fn allows(&self, _class: Class) -> bool {
-        false
-    }
 }
 
 #[test]
