@@ -954,3 +954,47 @@ fn wire_request_has_no_public_function_that_returns_one() {
         "the accessors are in this block"
     );
 }
+
+// ---- the policy is sealed, and the test policies are test-only ----
+
+#[test]
+fn deny_all_refuses_every_class_and_allow_all_allows_every_class() {
+    use usher_core::AllowAll;
+    for class in [Class::PersonStarted, Class::VersionCheck, Class::Reporting] {
+        assert!(!DenyAll.allows(class), "DenyAll allowed {class:?}");
+        assert!(AllowAll.allows(class), "AllowAll refused {class:?}");
+    }
+}
+
+#[test]
+fn the_test_policies_are_compiled_only_under_the_test_seam_feature() {
+    let source = include_str!("../src/egress.rs");
+    let lines: Vec<&str> = source.lines().map(str::trim).collect();
+    for name in ["pub struct DenyAll;", "pub struct AllowAll;"] {
+        let at = lines
+            .iter()
+            .position(|l| *l == name)
+            .unwrap_or_else(|| panic!("`{name}` is in egress.rs"));
+        let attributes: Vec<&&str> = lines[..at]
+            .iter()
+            .rev()
+            .take_while(|l| l.starts_with("#[") || l.starts_with("///"))
+            .collect();
+        assert!(
+            attributes
+                .iter()
+                .any(|l| **l == "#[cfg(feature = \"test-seam\")]"),
+            "{name} must sit under its cfg"
+        );
+    }
+}
+
+#[test]
+fn the_policy_trait_has_a_private_supertrait() {
+    let source = include_str!("../src/egress.rs");
+    assert!(
+        source.contains("pub trait Policy: sealed::Sealed"),
+        "Policy must name a private supertrait"
+    );
+    assert!(source.contains("mod sealed {"), "the sealing module exists");
+}

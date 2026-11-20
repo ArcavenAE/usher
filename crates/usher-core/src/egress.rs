@@ -296,6 +296,29 @@ pub trait Transport {
 }
 
 /// Decides whether a class of call may go out now.
+///
+/// Only this crate implements it, so a shipping crate cannot send a call that
+/// the person's switches keep off:
+///
+/// ```compile_fail
+/// use usher_core::{Class, Policy};
+///
+/// struct Permissive;
+/// impl Policy for Permissive {
+///     fn allows(&self, _class: Class) -> bool {
+///         true
+///     }
+/// }
+/// ```
+///
+/// The policy this crate ships allows person-started calls and nothing else:
+///
+/// ```
+/// use usher_core::{Class, PersonStartedOnly, Policy};
+///
+/// assert!(PersonStartedOnly.allows(Class::PersonStarted));
+/// assert!(!PersonStartedOnly.allows(Class::Reporting));
+/// ```
 pub trait Policy {
     /// True when a call of this class may reach the transport.
     fn allows(&self, class: Class) -> bool;
