@@ -34,6 +34,17 @@ pub struct NotRun {
     text: String,
 }
 
+/// Which harness a probe is about, so the launcher can give it its own home.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HarnessKind {
+    /// Claude Code: it reads the scratch `HOME`.
+    ClaudeCode,
+    /// codex: it reads `CODEX_HOME`.
+    Codex,
+    /// goose: it reads the scratch `HOME`.
+    Goose,
+}
+
 /// What a probe is about and where its harness is looked for.
 #[derive(Debug, Clone, Copy)]
 pub struct Spec<'a> {
@@ -47,6 +58,8 @@ pub struct Spec<'a> {
     pub localhost_ports: &'a [u16],
     /// How long a started process may run before it is killed.
     pub timeout: Duration,
+    /// Which harness the probe is about.
+    pub harness: HarnessKind,
 }
 
 /// The harness a probe runs against.
@@ -74,7 +87,14 @@ impl<'a> Spec<'a> {
             search_path: None,
             localhost_ports: &[],
             timeout: Duration::ZERO,
+            harness: HarnessKind::ClaudeCode,
         }
+    }
+
+    /// Names the harness the probe is about.
+    pub fn harness(mut self, harness: HarnessKind) -> Spec<'a> {
+        self.harness = harness;
+        self
     }
 
     /// Looks for the binary on `path` instead of `PATH`.
@@ -106,6 +126,11 @@ impl Launcher<'_> {
     /// How many processes this launcher has started.
     pub fn starts(&self) -> usize {
         self.starts.get()
+    }
+
+    /// The directory the harness reads its own files from. Stub: the scratch home.
+    pub fn harness_home(&self) -> &Path {
+        self.scratch.home()
     }
 
     /// The scratch home's root, for a probe that writes its own files.

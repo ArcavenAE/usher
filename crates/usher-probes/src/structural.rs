@@ -38,3 +38,25 @@ pub fn check_probe_names(carried: &[&str], in_repo: &[&str]) -> Result<(), Vec<M
 pub fn find_launch_bypasses(_source: &str) -> Vec<String> {
     Vec::new()
 }
+
+/// Every `.rs` file under `dir`, nested directories included, that starts a
+/// process on its own: the file and the text found. Stub: nothing is found.
+pub fn find_bypasses_in_tree(
+    _dir: &std::path::Path,
+) -> std::io::Result<Vec<(std::path::PathBuf, String)>> {
+    Ok(Vec::new())
+}
+
+/// Every `.rs` file under `crate_dir/src` and `crate_dir/tests` outside
+/// `src/probes/` that holds an ignored test. Stub: nothing is found.
+pub fn find_misplaced_ignored_tests(
+    _crate_dir: &std::path::Path,
+) -> std::io::Result<Vec<std::path::PathBuf>> {
+    Ok(Vec::new())
+}
+
+/// The methods in `source` that set an environment variable on a launcher.
+/// Stub: nothing is found.
+pub fn find_env_setters(_source: &str) -> Vec<String> {
+    Vec::new()
+}

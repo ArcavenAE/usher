@@ -11,6 +11,7 @@
 pub mod codex_home;
 pub mod fragment;
 pub mod network;
+pub mod probes;
 pub mod run;
 pub mod structural;
 
