@@ -419,3 +419,16 @@ fn a_quoted_segment_is_a_json_string_and_is_quoted_only_when_it_has_to_be() {
         );
     }
 }
+
+#[test]
+fn an_unquoted_segment_holding_whitespace_is_refused_naming_the_segment() {
+    // The "if" half of: a segment is quoted if and only if it holds a dot,
+    // whitespace or a double quote.
+    let err = refusal(&note_with_key("claude-code:a.b c"));
+    assert!(
+        err.check().contains("b c") || err.status().contains("b c"),
+        "the error does not name the segment `b c`: {} / {}",
+        err.check(),
+        err.status()
+    );
+}
