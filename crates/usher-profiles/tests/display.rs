@@ -365,3 +365,33 @@ fn a_note_key_segment_holding_a_bidi_control_is_refused_quoted_or_not() {
         );
     }
 }
+
+// F151: a quoted segment that needs its quotes (it holds a space) and holds a
+// bidi control is refused for the bidi reason, not for a needless quote.
+#[test]
+fn a_quoted_segment_that_needs_its_quotes_and_holds_a_bidi_control_is_refused_for_that_reason() {
+    // Control: the same segment without the control is accepted.
+    let ok = format!("{VALID}\n[notes]\n\"claude-code:a.\\\"b c\\\"\" = \"why\"\n");
+    assert!(Manifest::parse(&ok, "team/profiles/setup").is_ok());
+
+    let err = refusal(&format!(
+        "{VALID}\n[notes]\n\"claude-code:a.\\\"b c\\u2066\\\"\" = \"why\"\n"
+    ));
+    no_raw_bidi(&err);
+    assert!(
+        err.status().contains("direction character"),
+        "the reason is not the bidi control: {}",
+        err.status()
+    );
+    assert!(
+        !err.status().contains("quoted but"),
+        "the needless-quote rule answered: {}",
+        err.status()
+    );
+    assert!(
+        err.status().contains("\\u2066") || err.check().contains("\\u2066"),
+        "{} / {}",
+        err.check(),
+        err.status()
+    );
+}
