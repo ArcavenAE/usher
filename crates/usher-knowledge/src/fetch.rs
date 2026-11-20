@@ -7,7 +7,10 @@
 
 use usher_core::{Policy, Port, Transport, UsherError};
 
-use crate::{Knowledge, KnowledgeVersion, TrustedKeys};
+use crate::{
+    Knowledge, KnowledgeVersion, TrustedKeys,
+    update::{KEEP_SIGNING, SIGNATURE_UTF8_CHECK, STEP},
+};
 
 /// Fetches the signed knowledge file and its signature through the port and
 /// takes the update if it verifies.
@@ -16,7 +19,14 @@ pub fn fetch_update<T: Transport, P: Policy>(
     knowledge: &mut Knowledge,
     trusted: &TrustedKeys,
 ) -> Result<KnowledgeVersion, UsherError> {
-    let _ = (port, knowledge, trusted);
+    let _ = (
+        port,
+        knowledge,
+        trusted,
+        STEP,
+        SIGNATURE_UTF8_CHECK,
+        KEEP_SIGNING,
+    );
     Err(UsherError::new(
         "fetch harness knowledge",
         "the fetch is built",
