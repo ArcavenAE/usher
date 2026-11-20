@@ -5,6 +5,7 @@
 //! look at the file itself.
 
 use std::fs;
+use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -755,4 +756,177 @@ fn a_migrated_store_has_the_schema_of_a_fresh_one_for_the_map_table_and_its_trig
     };
     assert_eq!(verb(&fresh), verb(&old));
     assert_eq!(verb(&old).1, 1, "NOT NULL");
+}
+
+#[test]
+fn the_store_holds_derived_state_only_once_the_map_table_joins_the_allowlist() {
+    let scratch = ScratchHome::new().expect("scratch");
+    let dir = state_dir(&scratch);
+    let mut store = Store::open(&dir).expect("a store");
+    let readable = SettingRecord {
+        value_text: Some("acceptEdits"),
+        ..setting("permissions.defaultMode", "user", "in_effect")
+    };
+    let hidden = SettingRecord {
+        note: Some("ANTHROPIC_MODEL"),
+        ..setting("env", "user", "value_not_read")
+    };
+    store
+        .record_map(&run(), &[], &[], &[readable, hidden])
+        .expect("a map run");
+    drop(store);
+    let conn = raw(&dir);
+    let tables: Vec<String> = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+        .expect("prepare")
+        .query_map([], |r| r.get(0))
+        .expect("query")
+        .collect::<Result<_, _>>()
+        .expect("rows");
+    assert_eq!(
+        tables,
+        [
+            "inventory_run",
+            "inventory_seat",
+            "inventory_source",
+            "map_setting"
+        ],
+        "no table beyond the allowlist"
+    );
+    assert_eq!(
+        columns(&dir, "inventory_run"),
+        [
+            "id",
+            "recorded_at",
+            "harness",
+            "harness_version",
+            "knowledge_schema",
+            "knowledge_sequence",
+            "environment_key",
+            "verb"
+        ]
+    );
+    // Every text cell of every table is a field a record produced, and the one value the
+    // store holds is the readable one. The secret never handed over cannot appear.
+    let allowed = [
+        "2026-11-20T12:00:00Z",
+        "claude-code",
+        "2.1.317",
+        "env-key-1",
+        "map",
+        "/work/repo",
+        "permissions.defaultMode",
+        "env",
+        "user",
+        "/work/repo/.claude/settings.json",
+        "rebuilt",
+        "in_effect",
+        "value_not_read",
+        "acceptEdits",
+        "ANTHROPIC_MODEL",
+    ];
+    for table in &tables {
+        let mut stmt = conn
+            .prepare(&format!("SELECT * FROM {table}"))
+            .expect("prepare");
+        let width = stmt.column_count();
+        let mut rows = stmt.query([]).expect("query");
+        while let Some(row) = rows.next().expect("row") {
+            for i in 0..width {
+                let cell: rusqlite::types::Value = row.get(i).expect("cell");
+                match cell {
+                    rusqlite::types::Value::Null | rusqlite::types::Value::Integer(_) => {}
+                    rusqlite::types::Value::Text(text) => assert!(
+                        allowed.contains(&text.as_str()),
+                        "{table} holds `{text}`, which no recorded field produced"
+                    ),
+                    other => panic!("{table} holds a {other:?} cell"),
+                }
+            }
+        }
+    }
+    let value_cells: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM map_setting WHERE value_text IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )
+        .expect("count");
+    assert_eq!(value_cells, 1, "only the readable key's value is held");
+}
+
+#[test]
+fn four_opens_at_once_of_a_fresh_store_leave_the_four_tables_and_version_three() {
+    for round in 0..10 {
+        let scratch = ScratchHome::new().expect("scratch");
+        let dir = state_dir(&scratch);
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&dir)
+            .expect("an owner-only directory");
+        let barrier = std::sync::Barrier::new(4);
+        let results: Vec<Result<Store, usher_core::UsherError>> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..4)
+                .map(|_| {
+                    scope.spawn(|| {
+                        barrier.wait();
+                        Store::open(&dir)
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|h| h.join().expect("thread"))
+                .collect()
+        });
+        assert!(
+            results.iter().all(Result::is_ok),
+            "round {round}: an open failed"
+        );
+        drop(results);
+        let tables: i64 = raw(&dir)
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND (name LIKE 'inventory_%' OR name = 'map_setting')",
+                [],
+                |r| r.get(0),
+            )
+            .expect("count");
+        assert_eq!(tables, 4, "round {round}: one schema, four tables");
+        assert_eq!(user_version(&dir), 3, "round {round}");
+    }
+}
+
+#[test]
+fn four_opens_at_once_of_a_version_two_store_migrate_it_once() {
+    for round in 0..10 {
+        let scratch = ScratchHome::new().expect("scratch");
+        let dir = version_two(&scratch, "");
+        let barrier = std::sync::Barrier::new(4);
+        let results: Vec<Result<Store, usher_core::UsherError>> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..4)
+                .map(|_| {
+                    scope.spawn(|| {
+                        barrier.wait();
+                        Store::open(&dir)
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|h| h.join().expect("thread"))
+                .collect()
+        });
+        assert!(
+            results.iter().all(Result::is_ok),
+            "round {round}: an open failed"
+        );
+        drop(results);
+        assert_eq!(user_version(&dir), 3, "round {round}");
+        let verbs = columns(&dir, "inventory_run")
+            .iter()
+            .filter(|c| *c == "verb")
+            .count();
+        assert_eq!(verbs, 1, "round {round}: the column was added once");
+    }
 }
