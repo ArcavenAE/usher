@@ -173,3 +173,31 @@ fn a_refusal_holds_no_raw_escape_when_a_version_range_holds_one() {
     assert_no_raw_escape(&tool);
     assert!(tool.check().contains("tools.node"));
 }
+
+// Ruling 7.1 PR A, Q7: the escape set is exactly char::is_control(), which
+// takes in the C1 controls U+0080 to U+009F as well as C0 and DEL.
+#[test]
+fn a_c1_control_character_is_written_as_an_uppercase_u_escape() {
+    let shown = display_name("a\u{9b}b");
+    assert_eq!(shown, "a\\u009Bb");
+    assert!(!shown.contains('\u{9b}'));
+    for n in 0x80u32..=0x9F {
+        let c = char::from_u32(n).expect("a char");
+        assert_eq!(display_name(&c.to_string()), format!("\\u{n:04X}"));
+    }
+    // Control: the characters either side of the C1 block stay as written.
+    assert_eq!(display_name("\u{7e}\u{a0}\u{a1}"), "\u{7e}\u{a0}\u{a1}");
+    assert_eq!(display_name("o'brien"), "o'brien");
+}
+
+#[test]
+fn a_refusal_shows_a_c1_control_in_a_tool_name_as_text_and_holds_no_raw_one() {
+    let err = refusal(&format!("{VALID}\n[tools]\n\"a\\u009Bb\" = \">=1.0.0\"\n"));
+    assert_no_raw_escape(&err);
+    assert!(
+        err.check().contains("a\\u009Bb") || err.status().contains("a\\u009Bb"),
+        "{} / {}",
+        err.check(),
+        err.status()
+    );
+}
