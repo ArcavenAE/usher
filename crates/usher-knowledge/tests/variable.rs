@@ -137,6 +137,9 @@ fn only_the_config_dir_token_may_be_bound() {
         "${REPO}",
         "${LAUNCH_DIR}",
         "${VERSION}",
+        "${CONFIG_DIR}/x",
+        "${ELSEWHERE}",
+        "/x",
     ] {
         let text = with_variable(&format!(
             r#"variable = {{ name = "DEMO_CONFIG_DIR", binds = "{token}", default = "${{HOME}}/.demo" }}"#
