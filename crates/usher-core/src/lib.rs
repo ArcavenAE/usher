@@ -16,6 +16,8 @@ pub use egress::{
     Field, Method, PersonStartedOnly, Place, Policy, Port, Request, Response, Transport,
     WireRequest, descriptor,
 };
+#[cfg(feature = "test-seam")]
+pub use egress::{AllowAll, DenyAll};
 pub use environment::{EnvironmentKey, environment_key, key_variables};
 pub use listing::{
     AbsentLayer, CheckedPath, KeyNames, LaunchContext, ListedSource, NotCheckedLayer, SeatLine,

@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use usher_core::{
-    ALL, Class, DELEGATED_INSTALLERS, DELEGATED_NOTE, Descriptor, Egress, Method,
+    ALL, Class, DELEGATED_INSTALLERS, DELEGATED_NOTE, DenyAll, Descriptor, Egress, Method,
     PersonStartedOnly, Place, Policy, Port, Request, Response, UsherError, descriptor,
 };
 use usher_testkit::RecordingTransport;
@@ -169,13 +169,6 @@ fn the_policy_allows_person_started_and_refuses_the_other_classes() {
     assert!(!PersonStartedOnly.allows(Class::Reporting));
 }
 
-struct DenyAll;
-impl Policy for DenyAll {
-    fn allows(&self, _class: Class) -> bool {
-        false
-    }
-}
-
 #[test]
 fn a_refused_class_never_reaches_the_transport() {
     assert_a_valid_call_goes_through();
@@ -185,6 +178,7 @@ fn a_refused_class_never_reaches_the_transport() {
         .call(knowledge_request())
         .expect_err("a refused class must fail");
     assert_four_fields(&err);
+    assert_eq!(err.step(), "send knowledge-update");
     assert!(
         transport.sent().is_empty(),
         "the transport saw a refused call"
@@ -205,13 +199,13 @@ fn a_call_sends_exactly_the_listed_fields_and_fills_the_path() {
     let sent = transport.sent();
     assert_eq!(sent.len(), 1);
     let wire = &sent[0];
-    assert_eq!(wire.method, Method::Get);
-    assert_eq!(wire.host, FILE_URL_HOST);
-    assert_eq!(wire.path, "/knowledge.toml");
-    assert!(wire.query.is_empty());
-    assert!(wire.body.is_empty());
+    assert_eq!(wire.method(), Method::Get);
+    assert_eq!(wire.host(), FILE_URL_HOST);
+    assert_eq!(wire.path(), "/knowledge.toml");
+    assert!(wire.query().is_empty());
+    assert!(wire.body().is_empty());
     assert_eq!(
-        wire.headers,
+        wire.headers(),
         vec![("user-agent".to_string(), "usher".to_string())],
         "the headers are the listed ones and nothing else: no cookie, no accept-encoding"
     );
@@ -225,6 +219,7 @@ fn a_field_the_descriptor_does_not_list_is_refused_before_the_transport() {
         .call(knowledge_request().with("cookie", "x"))
         .expect_err("an unlisted field must fail");
     assert_four_fields(&err);
+    assert_eq!(err.step(), "send knowledge-update");
     assert!(
         err.to_string().contains("cookie"),
         "the error names the field: {err}"
@@ -298,6 +293,7 @@ fn a_non_success_status_is_an_error_that_names_the_status() {
         .call(knowledge_request())
         .expect_err("a 404 must fail");
     assert_four_fields(&err);
+    assert_eq!(err.step(), "send knowledge-update");
     assert!(err.to_string().contains("404"), "{err}");
 }
 
@@ -326,6 +322,7 @@ fn a_redirect_to_an_unlisted_host_is_an_error_that_names_the_host() {
         .call(knowledge_request())
         .expect_err("an unlisted redirect must fail");
     assert_four_fields(&err);
+    assert_eq!(err.step(), "send knowledge-update");
     assert!(err.to_string().contains("elsewhere.invalid"), "{err}");
     assert_eq!(transport.sent().len(), 1, "the port followed the redirect");
 }
@@ -416,6 +413,7 @@ const UA: Field = Field {
 };
 
 const REDIRECTING: Descriptor = Descriptor {
+    name: "test-redirecting",
     method: Method::Get,
     host: FILES_HOST,
     path: "/{file}",
@@ -434,6 +432,7 @@ const REDIRECTING: Descriptor = Descriptor {
 };
 
 const SHAPED: Descriptor = Descriptor {
+    name: "test-shaped",
     method: Method::Post,
     host: FILES_HOST,
     path: "/report",
@@ -467,6 +466,7 @@ const SHAPED: Descriptor = Descriptor {
 };
 
 const VERSION_CHECK: Descriptor = Descriptor {
+    name: "test-version-check",
     method: Method::Get,
     host: FILES_HOST,
     path: "/version",
@@ -501,13 +501,13 @@ fn a_redirect_to_a_listed_host_is_followed_once_and_its_answer_returned() {
 
     let sent = transport.sent();
     assert_eq!(sent.len(), 2, "one call and one follow");
-    assert_eq!(sent[0].host, FILES_HOST);
-    assert_eq!(sent[0].path, "/knowledge.toml");
-    assert_eq!(sent[1].host, ASSETS_HOST);
-    assert_eq!(sent[1].path, "/release/knowledge.toml");
-    assert_eq!(sent[1].method, Method::Get);
+    assert_eq!(sent[0].host(), FILES_HOST);
+    assert_eq!(sent[0].path(), "/knowledge.toml");
+    assert_eq!(sent[1].host(), ASSETS_HOST);
+    assert_eq!(sent[1].path(), "/release/knowledge.toml");
+    assert_eq!(sent[1].method(), Method::Get);
     assert_eq!(
-        sent[1].headers,
+        sent[1].headers(),
         vec![("user-agent".to_string(), "usher".to_string())]
     );
 }
@@ -580,17 +580,17 @@ fn listed_query_and_body_fields_go_in_descriptor_order() {
         .expect("listed fields go through");
     let sent = transport.sent();
     assert_eq!(sent.len(), 1);
-    assert_eq!(sent[0].method, Method::Post);
-    assert_eq!(sent[0].path, "/report");
+    assert_eq!(sent[0].method(), Method::Post);
+    assert_eq!(sent[0].path(), "/report");
     assert_eq!(
-        sent[0].query,
+        sent[0].query(),
         vec![
             ("q2".to_string(), "one".to_string()),
             ("q1".to_string(), "three".to_string())
         ]
     );
     assert_eq!(
-        sent[0].body,
+        sent[0].body(),
         vec![
             ("b2".to_string(), "two".to_string()),
             ("b1".to_string(), "four".to_string())
@@ -622,13 +622,14 @@ fn a_percent_sign_or_dot_segment_in_a_path_value_is_refused_naming_the_field_and
         let err = port(&transport)
             .call(Request::new(Egress::KnowledgeUpdate).with("file", value))
             .expect_err("a percent sign or a dot segment must fail");
+        assert_eq!(err.step(), "send knowledge-update", "{value:?}");
         assert!(
             err.to_string().contains("file"),
             "{value:?}: the error names the field: {err}"
         );
         assert_eq!(
             err.check(),
-            "a path value holds no `/`, `?`, `#`, `%`, whitespace or control character, and is not `.`, `..` or empty",
+            "a path value holds no `/`, `?`, `#`, `%`, whitespace or control character, and is not `.` or `..`",
             "{value:?}"
         );
         assert!(
@@ -684,8 +685,8 @@ fn a_303_and_a_308_to_a_listed_host_are_each_followed_once() {
         assert_eq!(response.body, b"moved body", "{status}");
         let sent = transport.sent();
         assert_eq!(sent.len(), 2, "{status}: one call and one follow");
-        assert_eq!(sent[1].host, ASSETS_HOST, "{status}");
-        assert_eq!(sent[1].path, "/moved", "{status}");
+        assert_eq!(sent[1].host(), ASSETS_HOST, "{status}");
+        assert_eq!(sent[1].path(), "/moved", "{status}");
     }
 }
 
@@ -706,6 +707,7 @@ fn a_redirect_with_no_location_on_a_descriptor_that_lists_a_host_is_refused_with
 }
 
 const POSTING: Descriptor = Descriptor {
+    name: "test-posting",
     method: Method::Post,
     host: FILES_HOST,
     path: "/report",
@@ -724,6 +726,7 @@ const POSTING: Descriptor = Descriptor {
 };
 
 const EXTRA_HEADER: Descriptor = Descriptor {
+    name: "test-extra-header",
     method: Method::Get,
     host: FILES_HOST,
     path: "/{file}",
@@ -781,7 +784,7 @@ fn a_get_with_an_extra_listed_header_follows_with_the_user_agent_only() {
     let sent = transport.sent();
     assert_eq!(sent.len(), 2);
     assert_eq!(
-        sent[0].headers,
+        sent[0].headers(),
         vec![
             ("user-agent".to_string(), "usher".to_string()),
             ("x-note".to_string(), "private".to_string())
@@ -789,11 +792,11 @@ fn a_get_with_an_extra_listed_header_follows_with_the_user_agent_only() {
         "the first request carries the listed header"
     );
     assert_eq!(
-        sent[1].headers,
+        sent[1].headers(),
         vec![("user-agent".to_string(), "usher".to_string())],
         "the follow carries the user agent and nothing else"
     );
-    assert!(sent[1].query.is_empty() && sent[1].body.is_empty());
+    assert!(sent[1].query().is_empty() && sent[1].body().is_empty());
 }
 
 #[test]
@@ -831,6 +834,7 @@ fn the_test_seam_method_is_compiled_only_under_its_feature() {
 }
 
 const QUERYING: Descriptor = Descriptor {
+    name: "test-querying",
     method: Method::Get,
     host: FILES_HOST,
     path: "/{file}",
@@ -854,6 +858,7 @@ const QUERYING: Descriptor = Descriptor {
 };
 
 const BODIED_GET: Descriptor = Descriptor {
+    name: "test-bodied-get",
     method: Method::Get,
     host: FILES_HOST,
     path: "/{file}",
@@ -893,9 +898,9 @@ fn a_follow_carries_no_query_and_no_body_field_to_the_second_host() {
         let sent = transport.sent();
         assert_eq!(sent.len(), 2, "{name}");
         let first = if name == "q" {
-            &sent[0].query
+            &sent[0].query()
         } else {
-            &sent[0].body
+            &sent[0].body()
         };
         assert_eq!(
             first,
@@ -903,7 +908,7 @@ fn a_follow_carries_no_query_and_no_body_field_to_the_second_host() {
             "the first request carries the listed {name} field"
         );
         assert!(
-            sent[1].query.is_empty() && sent[1].body.is_empty(),
+            sent[1].query().is_empty() && sent[1].body().is_empty(),
             "{name}: the follow carried a query or body field"
         );
     }
@@ -924,6 +929,521 @@ fn a_redirect_on_a_post_with_no_body_field_is_refused_with_one_send() {
     assert_four_fields(&err);
     assert!(err.to_string().contains("307"), "{err}");
     assert_eq!(transport.sent().len(), 1, "the port followed");
+}
+
+// ---- the request cannot be built outside the port ----
+
+fn block<'a>(source: &'a str, start: &str) -> &'a str {
+    let from = source
+        .find(start)
+        .unwrap_or_else(|| panic!("`{start}` is in egress.rs"));
+    let rest = &source[from..];
+    let to = rest.find("\n}\n").expect("the block ends");
+    &rest[..to]
+}
+
+#[test]
+fn wire_request_has_no_public_field() {
+    let source = include_str!("../src/egress.rs");
+    let body = block(source, "pub struct WireRequest {");
+    for line in body.lines().skip(1) {
+        let line = line.trim();
+        assert!(
+            line.starts_with("///") || !line.starts_with("pub "),
+            "a WireRequest field is public: {line}"
+        );
+    }
+}
+
+#[test]
+fn wire_request_has_no_public_function_that_returns_one() {
+    let source = include_str!("../src/egress.rs");
+    assert_eq!(
+        source.matches("impl WireRequest {").count(),
+        1,
+        "WireRequest has exactly one inherent impl block"
+    );
+    assert!(
+        !source.contains("for WireRequest"),
+        "no trait impl for WireRequest: that covers Default, From and the rest"
+    );
+    let start = source
+        .find("pub struct WireRequest {")
+        .expect("the struct is in egress.rs");
+    let derives: Vec<&str> = source[..start]
+        .lines()
+        .rev()
+        .take_while(|l| l.starts_with("#[") || l.starts_with("///") || l.is_empty())
+        .collect();
+    assert!(
+        !derives.iter().any(|l| l.contains("Default")),
+        "WireRequest must not derive Default"
+    );
+
+    let body = block(source, "impl WireRequest {");
+    let mut rest = body;
+    let mut signatures = 0;
+    while let Some(at) = rest.find("pub fn") {
+        let from = &rest[at..];
+        let open = from.find('{').expect("a signature ends at its brace");
+        let signature = &from[..open];
+        if let Some((_, returned)) = signature.split_once("->") {
+            assert!(
+                !returned.contains("Self") && !returned.contains("WireRequest"),
+                "a public function returns a WireRequest: {signature}"
+            );
+        }
+        signatures += 1;
+        rest = &from[open..];
+    }
+    assert!(signatures >= 6, "the accessors are in this block");
+    assert!(
+        body.contains("pub fn host("),
+        "the accessors are in this block"
+    );
+}
+
+// ---- the policy is sealed, and the test policies are test-only ----
+
+#[test]
+fn deny_all_refuses_every_class_and_allow_all_allows_every_class() {
+    use usher_core::AllowAll;
+    for class in [Class::PersonStarted, Class::VersionCheck, Class::Reporting] {
+        assert!(!DenyAll.allows(class), "DenyAll allowed {class:?}");
+        assert!(AllowAll.allows(class), "AllowAll refused {class:?}");
+    }
+}
+
+#[test]
+fn the_test_policies_are_compiled_only_under_the_test_seam_feature() {
+    let source = include_str!("../src/egress.rs");
+    let lines: Vec<&str> = source.lines().map(str::trim).collect();
+    for name in ["pub struct DenyAll;", "pub struct AllowAll;"] {
+        let at = lines
+            .iter()
+            .position(|l| *l == name)
+            .unwrap_or_else(|| panic!("`{name}` is in egress.rs"));
+        let attributes: Vec<&&str> = lines[..at]
+            .iter()
+            .rev()
+            .take_while(|l| l.starts_with("#[") || l.starts_with("///"))
+            .collect();
+        assert!(
+            attributes
+                .iter()
+                .any(|l| **l == "#[cfg(feature = \"test-seam\")]"),
+            "{name} must sit under its cfg"
+        );
+    }
+}
+
+#[test]
+fn the_policy_trait_has_a_private_supertrait() {
+    let source = include_str!("../src/egress.rs");
+    assert!(
+        source.contains("pub trait Policy: sealed::Sealed"),
+        "Policy must name a private supertrait"
+    );
+    assert!(
+        source.contains("\nmod sealed {"),
+        "the sealing module exists and is private"
+    );
+    assert!(
+        !source.contains("pub mod sealed") && !source.contains("pub(crate) mod sealed"),
+        "the sealing module must stay private"
+    );
+    let lib = include_str!("../src/lib.rs");
+    assert!(
+        !lib.contains("sealed") && !lib.contains("Sealed"),
+        "lib.rs must not name the sealing trait or module"
+    );
+}
+
+// ---- header values ----
+
+fn header_call(value: &str) -> (Result<Response, UsherError>, RecordingTransport) {
+    let transport = RecordingTransport::new().answering_ok("body");
+    let result = port(&transport).call_described(
+        &EXTRA_HEADER,
+        described_request()
+            .with("file", "k.toml")
+            .with("x-note", value),
+    );
+    (result, transport)
+}
+
+#[test]
+fn a_header_value_of_printable_ascii_is_sent() {
+    let (result, transport) = header_call("a printable value ~");
+    result.expect("a printable value goes out");
+    assert_eq!(
+        transport.sent()[0].headers()[1],
+        ("x-note".to_string(), "a printable value ~".to_string())
+    );
+}
+
+#[test]
+fn a_header_value_with_a_control_or_non_ascii_byte_or_edge_space_is_refused_without_echo() {
+    let (control, _) = header_call("a printable value");
+    control.expect("the control call goes through");
+    for value in [
+        "secret\r\nvalue",
+        "secret\tvalue",
+        "secretcaf\u{e9}",
+        "secret\u{7f}",
+        "secret\u{0}",
+    ] {
+        let (result, transport) = header_call(value);
+        let err = result.expect_err("an unprintable header value must fail");
+        assert_eq!(err.step(), "send test-extra-header", "{value:?}");
+        assert_eq!(err.check(), "a header value holds only printable ASCII");
+        assert_eq!(
+            err.status(),
+            "header x-note holds a character that is not printable ASCII"
+        );
+        assert_eq!(
+            err.next_action(),
+            "send a header value of printable ASCII only"
+        );
+        assert!(
+            !err.to_string().contains("secret"),
+            "{value:?}: the error echoes the value: {err}"
+        );
+        assert!(
+            transport.sent().is_empty(),
+            "{value:?} reached the transport"
+        );
+    }
+}
+
+// ---- query values ----
+
+fn query_call(value: &str) -> (Result<Response, UsherError>, RecordingTransport) {
+    let transport = RecordingTransport::new().answering_ok("body");
+    let result = port(&transport).call_described(&SHAPED, described_request().with("q1", value));
+    (result, transport)
+}
+
+#[test]
+fn query_values_are_percent_encoded_outside_the_unreserved_set() {
+    for (value, wanted) in [
+        ("a b&c=d", "a%20b%26c%3Dd"),
+        ("50%", "50%25"),
+        ("\u{e9}", "%C3%A9"),
+        ("A-Za-z0-9._~", "A-Za-z0-9._~"),
+        ("a/b?c#d+e", "a%2Fb%3Fc%23d%2Be"),
+    ] {
+        let (result, transport) = query_call(value);
+        result.unwrap_or_else(|e| panic!("{value:?} goes out: {e}"));
+        assert_eq!(
+            transport.sent()[0].query(),
+            [("q1".to_string(), wanted.to_string())],
+            "{value:?}"
+        );
+    }
+}
+
+#[test]
+fn a_control_character_in_a_query_value_is_refused_without_echo() {
+    let (control, _) = query_call("fine");
+    control.expect("the control call goes through");
+    for value in ["secret\nvalue", "secret\u{0}", "secret\u{7f}", "secret\r"] {
+        let (result, transport) = query_call(value);
+        let err = result.expect_err("a control character must fail");
+        assert_eq!(err.step(), "send test-shaped", "{value:?}");
+        assert_eq!(err.status(), "query q1 holds a control character");
+        assert!(!err.to_string().contains("secret"), "{err}");
+        assert!(
+            transport.sent().is_empty(),
+            "{value:?} reached the transport"
+        );
+    }
+}
+
+#[test]
+fn encoded_query_fields_keep_the_descriptor_order() {
+    let transport = RecordingTransport::new().answering_ok("body");
+    port(&transport)
+        .call_described(
+            &SHAPED,
+            described_request().with("q1", "b c").with("q2", "a b"),
+        )
+        .expect("goes out");
+    assert_eq!(
+        transport.sent()[0].query(),
+        [
+            ("q2".to_string(), "a%20b".to_string()),
+            ("q1".to_string(), "b%20c".to_string())
+        ]
+    );
+}
+
+#[test]
+fn every_registered_query_name_is_a_plain_token() {
+    assert!(!ALL.is_empty(), "ALL names no call");
+    for egress in ALL {
+        for field in descriptor(*egress)
+            .fields
+            .iter()
+            .filter(|f| f.place == Place::Query)
+        {
+            assert!(
+                !field.name.is_empty()
+                    && field
+                        .name
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-')),
+                "query name `{}` is not [A-Za-z0-9_.-]",
+                field.name
+            );
+        }
+    }
+}
+
+// ---- what a redirect's text may put in an error ----
+
+fn redirect_error(location: &str) -> UsherError {
+    let transport = RecordingTransport::new().answering_redirect(location);
+    port(&transport)
+        .call(knowledge_request())
+        .expect_err("an unlisted redirect must fail")
+}
+
+#[test]
+fn a_valid_host_name_in_a_refused_redirect_is_echoed_and_no_path_or_query_is() {
+    let err = redirect_error("https://elsewhere.invalid/secret?token=1");
+    let text = err.to_string();
+    assert!(text.contains("elsewhere.invalid"), "{text}");
+    assert!(!text.contains("secret"), "the path is echoed: {text}");
+    assert!(!text.contains("token"), "the query is echoed: {text}");
+}
+
+#[test]
+fn a_host_that_is_not_a_valid_name_is_never_echoed() {
+    let long = "a".repeat(254);
+    for host in [
+        "ev\u{1b}il.invalid".to_string(),
+        "user@assets.invalid".to_string(),
+        "assets.invalid:443".to_string(),
+        "caf\u{e9}.invalid".to_string(),
+        "a b.invalid".to_string(),
+        "a_b.invalid".to_string(),
+        String::new(),
+        long,
+    ] {
+        let err = redirect_error(&format!("https://{host}/x"));
+        let text = err.to_string();
+        assert!(
+            text.contains("a host that is not a valid name"),
+            "{host:?}: {text}"
+        );
+        assert!(!text.contains('\u{1b}'), "{host:?}: the error holds ESC");
+        if !host.is_empty() {
+            assert!(!text.contains(&host), "{host:?}: the host is echoed");
+        }
+        assert_four_fields(&err);
+    }
+}
+
+#[test]
+fn a_refused_redirect_path_on_a_listed_host_is_not_echoed() {
+    let transport =
+        RecordingTransport::new().answering_redirect(format!("https://{ASSETS_HOST}/secret path"));
+    let err = port(&transport)
+        .call_described(&REDIRECTING, described_request().with("file", "k.toml"))
+        .expect_err("a path with a space must fail");
+    assert!(!err.to_string().contains("secret"), "{err}");
+}
+
+// ---- the call's name ----
+
+#[test]
+fn every_descriptor_name_is_unique_kebab_case_and_the_variants_own() {
+    assert!(!ALL.is_empty(), "ALL names no call");
+    let mut seen = BTreeSet::new();
+    for egress in ALL {
+        let name = descriptor(*egress).name;
+        assert_eq!(
+            name,
+            every_variant_named(*egress),
+            "the name is the variant's kebab form"
+        );
+        assert!(
+            (1..=64).contains(&name.len())
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+            "name `{name}` is not 1 to 64 of [a-z0-9-]"
+        );
+        assert!(seen.insert(name), "name `{name}` is used twice");
+    }
+}
+
+#[test]
+fn a_header_value_with_a_leading_or_trailing_space_has_its_own_status_and_no_echo() {
+    let (control, _) = header_call("a printable value");
+    control.expect("the control call goes through");
+    for value in [" secret", "secret ", " secret ", " "] {
+        let (result, transport) = header_call(value);
+        let err = result.expect_err("an edge space must fail");
+        assert_eq!(err.step(), "send test-extra-header", "{value:?}");
+        assert_eq!(
+            err.status(),
+            "header x-note starts or ends with a space",
+            "{value:?}"
+        );
+        assert!(!err.to_string().contains("secret"), "{err}");
+        assert!(
+            transport.sent().is_empty(),
+            "{value:?} reached the transport"
+        );
+    }
+}
+
+// ---- empty values ----
+
+#[test]
+fn an_empty_value_is_refused_in_every_place_naming_the_place_and_the_field() {
+    let (control, _) = query_call("fine");
+    control.expect("the control call goes through");
+
+    let transport = RecordingTransport::new().answering_ok("body");
+    let err = port(&transport)
+        .call_described(&SHAPED, described_request().with("q1", ""))
+        .expect_err("an empty query value must fail");
+    assert_eq!(err.step(), "send test-shaped");
+    assert_eq!(err.status(), "query q1 is empty");
+    assert!(transport.sent().is_empty());
+
+    let transport = RecordingTransport::new().answering_ok("body");
+    let err = port(&transport)
+        .call_described(&SHAPED, described_request().with("b1", ""))
+        .expect_err("an empty body value must fail");
+    assert_eq!(err.step(), "send test-shaped");
+    assert_eq!(err.status(), "body b1 is empty");
+    assert!(transport.sent().is_empty());
+
+    let (result, transport) = header_call("");
+    let err = result.expect_err("an empty header value must fail");
+    assert_eq!(err.step(), "send test-extra-header");
+    assert_eq!(err.status(), "header x-note is empty");
+    assert!(transport.sent().is_empty());
+
+    let transport = RecordingTransport::new().answering_ok("body");
+    let err = port(&transport)
+        .call(Request::new(Egress::KnowledgeUpdate).with("file", ""))
+        .expect_err("an empty path value must fail");
+    assert_eq!(err.step(), "send knowledge-update");
+    assert_eq!(err.status(), "path file is empty");
+    assert!(transport.sent().is_empty());
+}
+
+#[test]
+fn a_port_or_userinfo_in_a_redirect_host_reads_as_not_a_valid_name() {
+    for host in ["a.invalid:443", "u@a.invalid"] {
+        let err = redirect_error(&format!("https://{host}/x"));
+        let text = err.to_string();
+        assert!(
+            text.contains("a host that is not a valid name"),
+            "{host}: {text}"
+        );
+        assert!(!text.contains(host), "{host}: the host is echoed: {text}");
+    }
+}
+
+#[test]
+fn a_valid_host_name_of_253_characters_is_echoed() {
+    let host = format!("{}.invalid", "a".repeat(253 - ".invalid".len()));
+    assert_eq!(host.len(), 253);
+    let err = redirect_error(&format!("https://{host}/x"));
+    let text = err.to_string();
+    assert!(text.contains(&host), "the 253-character host is not echoed");
+    assert!(!text.contains("not a valid name"), "{text}");
+}
+
+#[test]
+fn no_refusal_uses_the_generic_step_because_every_one_has_a_descriptor_in_scope() {
+    let source = include_str!("../src/egress.rs");
+    assert!(
+        !source.contains("send an outbound call"),
+        "a refusal of a described call must say `send <name>`, not the generic step"
+    );
+}
+
+#[test]
+fn no_public_function_on_any_type_returns_a_wire_request_whatever_its_qualifiers() {
+    let source = include_str!("../src/egress.rs");
+    let mut found = 0;
+    let mut rest = source;
+    while let Some(at) = rest.find("pub ") {
+        let from = &rest[at..];
+        rest = &from[4..];
+        // `pub fn`, `pub const fn`, `pub async fn`, `pub unsafe fn`, `pub extern "C" fn`:
+        // a plain `pub` and then qualifiers up to `fn`, with no item keyword between.
+        let head: String = from
+            .chars()
+            .take_while(|c| !matches!(c, '(' | '{' | '\n'))
+            .collect();
+        let words: Vec<&str> = head.split_whitespace().collect();
+        let Some(fn_at) = words
+            .iter()
+            .position(|w| *w == "fn" || w.starts_with("fn("))
+        else {
+            continue;
+        };
+        if words[1..fn_at].iter().any(|w| {
+            matches!(
+                *w,
+                "struct" | "enum" | "trait" | "type" | "mod" | "use" | "static" | "let"
+            )
+        }) {
+            continue;
+        }
+        let end = from
+            .find(['{', ';'])
+            .expect("a signature ends at a brace or a semicolon");
+        let signature = &from[..end];
+        found += 1;
+        if let Some((_, returned)) = signature.split_once("->") {
+            assert!(
+                !returned.contains("WireRequest"),
+                "a public function returns a WireRequest: {signature}"
+            );
+        }
+    }
+    assert!(found >= 10, "the scan saw only {found} public functions");
+}
+
+#[test]
+fn no_public_function_in_the_wire_request_impl_returns_self_whatever_its_qualifiers() {
+    let source = include_str!("../src/egress.rs");
+    let body = block(source, "impl WireRequest {");
+    let mut seen = 0;
+    let mut rest = body;
+    while let Some(at) = rest.find("pub ") {
+        let from = &rest[at..];
+        rest = &from[4..];
+        let head: String = from
+            .chars()
+            .take_while(|c| !matches!(c, '(' | '{' | '\n'))
+            .collect();
+        let words: Vec<&str> = head.split_whitespace().collect();
+        if !words.iter().any(|w| *w == "fn") {
+            continue;
+        }
+        let end = from
+            .find(['{', ';'])
+            .expect("a signature ends at a brace or a semicolon");
+        let signature = &from[..end];
+        seen += 1;
+        if let Some((_, returned)) = signature.split_once("->") {
+            assert!(
+                !returned.contains("Self") && !returned.contains("WireRequest"),
+                "a public function in the WireRequest impl returns Self or WireRequest: {signature}"
+            );
+        }
+    }
+    assert!(seen >= 6, "the scan saw only {seen} public functions");
 }
 
 // ---- the body limit ----
