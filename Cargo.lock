@@ -524,6 +524,7 @@ dependencies = [
 name = "usher-cli"
 version = "0.0.0"
 dependencies = [
+ "nix",
  "rusqlite",
  "usher-adapter-claude-code",
  "usher-core",

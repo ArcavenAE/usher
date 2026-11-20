@@ -11,6 +11,7 @@ usher-core.workspace = true
 usher-knowledge.workspace = true
 usher-adapter-claude-code.workspace = true
 usher-store.workspace = true
+nix.workspace = true
 
 [dev-dependencies]
 rusqlite.workspace = true

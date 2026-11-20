@@ -3,7 +3,6 @@
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use usher_adapter_claude_code::{ClaudeCodeAdapter, VersionReading, read_version};
@@ -512,18 +511,16 @@ fn host_name() -> Result<String, UsherError> {
     let fail = |status: String| {
         UsherError::new(
             "name this host",
-            "the `hostname` command prints a name",
+            "the system host name can be read",
             status,
-            "run `hostname` and fix what it reports, then run `usher inventory` again",
+            "fix the system host name so it can be read, then run `usher inventory` again",
         )
     };
-    let output = Command::new("hostname")
-        .output()
-        .map_err(|why| fail(why.to_string()))?;
-    let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if output.status.success() && !name.is_empty() {
-        Ok(name)
+    let raw = nix::unistd::gethostname().map_err(|why| fail(why.to_string()))?;
+    let name = raw.to_string_lossy().trim().to_string();
+    if name.is_empty() {
+        Err(fail("the system host name is empty".to_string()))
     } else {
-        Err(fail(format!("exit status {}", output.status)))
+        Ok(name)
     }
 }
