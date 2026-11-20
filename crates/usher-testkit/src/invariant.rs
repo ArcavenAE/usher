@@ -256,6 +256,23 @@ mod tests {
     use super::*;
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
+    /// Claude Code reads managed settings from absolute system paths, so the
+    /// observation invariant watches them on every host (Story 1.5).
+    #[test]
+    fn the_watched_set_includes_the_managed_settings_directories() {
+        let homes = RealHomes::resolve(|key| (key == "HOME").then(|| "/scratch-home".into()));
+        let paths: Vec<&Path> = homes.homes().iter().map(|h| h.path.as_path()).collect();
+        for managed in [
+            "/Library/Application Support/ClaudeCode",
+            "/etc/claude-code",
+        ] {
+            assert!(
+                paths.contains(&Path::new(managed)),
+                "{managed} is not watched: {paths:?}"
+            );
+        }
+    }
+
     /// A fake "real" home inside its own scratch root, so no test reads the
     /// host's actual harness homes.
     fn fake_real(scratch: &ScratchHome) -> RealHomes {

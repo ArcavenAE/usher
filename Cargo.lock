@@ -502,6 +502,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "usher-cli"
+version = "0.0.0"
+dependencies = [
+ "usher-adapter-claude-code",
+ "usher-core",
+ "usher-knowledge",
+ "usher-store",
+ "usher-testkit",
+]
+
+[[package]]
 name = "usher-core"
 version = "0.0.0"
 
