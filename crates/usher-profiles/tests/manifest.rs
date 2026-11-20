@@ -369,3 +369,24 @@ fn a_tool_name_is_one_to_one_hundred_twenty_eight_printable_characters_without_s
         );
     }
 }
+
+#[test]
+fn an_mcp_note_is_accepted_whether_or_not_the_manifest_holds_the_server() {
+    // A fragment read later may hold the server, so the manifest alone cannot
+    // refuse a well-formed note on one.
+    let without =
+        format!("{VALID}\n[notes]\n\"mcp:fs-tools\" = \"why\"\n\"mcp:github.com_mcp\" = \"why\"\n");
+    let manifest = must_parse(&without);
+    let keys: Vec<&str> = manifest.notes().iter().map(|n| n.key()).collect();
+    assert_eq!(keys, ["mcp:fs-tools", "mcp:github.com_mcp"]);
+
+    let with = format!(
+        "{VALID}\n[mcp_servers.\"fs-tools\"]\ncommand = \"x\"\n\n[notes]\n\"mcp:fs-tools\" = \"why\"\n"
+    );
+    assert_eq!(must_parse(&with).notes()[0].key(), "mcp:fs-tools");
+
+    // Control on the other side of the rule: a harness note for a harness the
+    // profile does not cover is still refused.
+    let uncovered = format!("{VALID}\n[notes]\n\"codex:model\" = \"why\"\n");
+    names_field(&refusal(&uncovered), "codex:model");
+}
