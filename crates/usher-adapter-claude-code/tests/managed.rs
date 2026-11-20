@@ -3,7 +3,7 @@
 //! ranks and platforms below are the test's own.
 
 use std::fs;
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use usher_adapter_claude_code::ClaudeCodeAdapter;
@@ -306,14 +306,15 @@ fn another_platforms_absent_always_present_source_is_not_named_while_an_every_pl
 fn an_unreadable_top_file_is_unknown_and_leaves_the_lower_ones_undecided() {
     let rig = Rig::new();
     let top = rig.file(TOP, POLICY);
-    if fs::metadata(&top).expect("metadata").uid() == 0 {
+    fs::set_permissions(&top, fs::Permissions::from_mode(0o000)).expect("mode");
+    // Probe the effect, not the uid: root, root squash and ACLs all read a mode 000 file.
+    if fs::File::open(&top).is_ok() {
         usher_testkit::skip(
             "an_unreadable_top_file_is_unknown_and_leaves_the_lower_ones_undecided",
-            "running as root, which reads a mode 000 file",
+            "this process can read a mode 000 file, so there is no unreadable file to test",
         );
         return;
     }
-    fs::set_permissions(&top, fs::Permissions::from_mode(0o000)).expect("mode");
     let middle = rig.file(MIDDLE, POLICY);
     let listing = rig.list();
     assert_eq!(listing.sources.len(), 2, "{:?}", listing.sources);
