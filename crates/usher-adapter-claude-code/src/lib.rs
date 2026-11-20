@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+mod map;
 mod paths;
 mod seat;
 pub mod version;
@@ -109,15 +110,9 @@ impl SettingsMapper for ClaudeCodeAdapter {
     fn map_settings(
         &self,
         listing: &SourceListing,
-        _context: &LaunchContext,
+        context: &LaunchContext,
     ) -> Result<SettingsMap, UsherError> {
-        Ok(SettingsMap {
-            harness: listing.harness.clone(),
-            harness_version: listing.harness_version.clone(),
-            readings: Vec::new(),
-            skipped_layers: Vec::new(),
-            not_observed: Vec::new(),
-        })
+        Ok(map::map_settings(&self.knowledge, listing, context))
     }
 }
 
