@@ -82,6 +82,21 @@ impl Rig {
     }
 }
 
+/// The seed's launcher item. An update replaces the whole file, so a fixture that wants
+/// the version read from the launcher link carries the item that says how.
+const LAUNCHER: &str = r#"
+[[item]]
+id = "claude-code.native-launcher"
+harness = "claude-code"
+layer = "slow"
+class = "paths"
+versions = ">=2.1.317, <3.0.0"
+summary = "The native installer's launcher is a symlink to a file named by its version."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/setup" }
+last_verified = 2026-11-20
+version_from = { launcher = "${HOME}/.local/bin/claude", rule = "symlink-target-last-component", layout = "${HOME}/.local/share/claude/versions/${VERSION}" }
+"#;
+
 /// Fixture knowledge goes through the signed update path, never in unsigned.
 fn signed(text: &str) -> Knowledge {
     let signer = Signer::new();
@@ -177,7 +192,8 @@ fn a_source_the_version_does_not_read_prints_unread_with_the_knowledge_item() {
     let rig = Rig::new();
     rig.install("2.1.317");
     let old = rig.write(&rig.scratch.home().join(".claude-old.json"), "{}");
-    let knowledge = signed(
+    let knowledge = signed(&format!(
+        "{}{LAUNCHER}",
         r#"
 schema_version = 3
 sequence = 9
@@ -192,8 +208,8 @@ summary = "A place this version no longer reads."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/old" }
 last_verified = 2026-11-20
 source = { path = "${HOME}/.claude-old.json", layer = "user", read = "not-read", rank = 1, always_present = false }
-"#,
-    );
+"#
+    ));
     let out = inventory_with(&rig.env(), SystemRoot::at(rig.system.clone()), &knowledge)
         .expect("an inventory");
     let row = line_with(&out, &old.display().to_string());
@@ -240,7 +256,7 @@ source = {{ path = "{path}", layer = "managed", read = "first-wins", rank = {ran
         )
     };
     let knowledge = signed(&format!(
-        "schema_version = 3\nsequence = 9\n{}{}",
+        "schema_version = 3\nsequence = 9\n{}{}{LAUNCHER}",
         managed("demo.high", "/etc/claude-code/high.json", 2),
         managed("demo.low", "/etc/claude-code/low.json", 3),
     ));
@@ -675,7 +691,8 @@ fn a_variable_named_only_by_another_range_enters_the_key_of_a_known_version_run(
     rig.install("2.1.317");
     let mut env = rig.env();
     env.launch = LaunchEnvironment::from_pairs(&[("CLAUDE_OTHER_DIR", "/elsewhere")]);
-    let knowledge = signed(
+    let knowledge = signed(&format!(
+        "{}{LAUNCHER}",
         r#"
 schema_version = 3
 sequence = 99
@@ -701,8 +718,8 @@ summary = "A variable a later range reads."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/env" }
 last_verified = 2026-11-20
 variable = { name = "CLAUDE_OTHER_DIR" }
-"#,
-    );
+"#
+    ));
     inventory_with(&env, SystemRoot::at(rig.system.clone()), &knowledge).expect("an inventory");
     let store = Store::open(&env.state_dir).expect("the store opens");
     let runs = store.runs().expect("runs");
