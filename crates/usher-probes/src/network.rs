@@ -1,43 +1,34 @@
-//! Running a harness with the network denied except localhost.
+//! Running a harness with the network denied: the profile, the host state a
+//! fragment records, and the argument vector a denied start runs with. This
+//! file starts nothing; the launcher's one spawn site runs the vector.
 
-use std::{io, path::Path, process::Output};
-
-use usher_testkit::ScratchHome;
+use std::path::Path;
 
 use crate::fragment::Network;
 
 const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
 
-/// The sandbox profile: deny the network, allow localhost, and nothing else.
+/// The sandbox profile: deny the network and allow nothing.
 ///
-/// Later rules win, so the localhost allows follow the one deny. Nothing else
-/// is changed: the run keeps every other permission it would have had.
+/// Every other permission the run would have had is kept. A probe that needs
+/// a local port declares it, and [`profile_with_ports`] allows that port only.
 pub fn profile() -> String {
-    [
-        "(version 1)",
-        "(allow default)",
-        "(deny network*)",
-        r#"(allow network* (remote ip "localhost:*"))"#,
-        r#"(allow network-bind (local ip "localhost:*"))"#,
-        r#"(allow network-inbound (local ip "localhost:*"))"#,
-    ]
-    .join("\n")
-        + "\n"
+    ["(version 1)", "(allow default)", "(deny network*)"].join("\n") + "\n"
 }
 
-/// Runs `program` under the profile, in the scratch home, and returns its
-/// output. Only hosts with `sandbox-exec` can do this.
-pub fn run_denied(scratch: &ScratchHome, program: &str, args: &[&str]) -> io::Result<Output> {
-    if !Path::new(SANDBOX_EXEC).exists() {
-        return Err(io::Error::from(io::ErrorKind::Unsupported));
+/// The sandbox profile for a run that may reach exactly `ports` on localhost.
+///
+/// Later rules win, so each allow follows the one deny.
+pub fn profile_with_ports(ports: &[u16]) -> String {
+    let mut text = profile();
+    for port in ports {
+        text.push_str(&format!(
+            "(allow network* (remote ip \"localhost:{port}\"))\n\
+             (allow network-bind (local ip \"localhost:{port}\"))\n\
+             (allow network-inbound (local ip \"localhost:{port}\"))\n"
+        ));
     }
-    scratch
-        .command(SANDBOX_EXEC)
-        .arg("-p")
-        .arg(profile())
-        .arg(program)
-        .args(args)
-        .output()
+    text
 }
 
 /// The state a probe on this host records: denied where the sandbox exists,
@@ -50,28 +41,15 @@ pub fn host_state() -> Network {
     }
 }
 
-/// The sandbox profile for a run that may reach exactly `ports` on localhost.
-pub fn profile_with_ports(_ports: &[u16]) -> String {
-    profile()
-}
-
-/// As [`run_denied`], with the localhost ports the run may reach.
-pub fn run_denied_with_ports(
-    scratch: &ScratchHome,
-    _ports: &[u16],
-    program: &str,
-    args: &[&str],
-) -> io::Result<Output> {
-    run_denied(scratch, program, args)
-}
-
 /// The argument vector that runs `program` with `args` under the profile for
 /// `ports`: the sandbox tool, `-p`, the profile, the program, then its
-/// arguments. It starts nothing; the launcher's one spawn site runs it.
-/// Stub: the program and its arguments, with no sandbox.
-pub fn denied_argv(_ports: &[u16], program: &str, args: &[&str]) -> Vec<String> {
-    std::iter::once(program)
-        .chain(args.iter().copied())
+/// arguments. It starts nothing; the launcher runs it.
+pub fn denied_argv(ports: &[u16], program: &str, args: &[&str]) -> Vec<String> {
+    [SANDBOX_EXEC, "-p"]
+        .into_iter()
         .map(str::to_string)
+        .chain(std::iter::once(profile_with_ports(ports)))
+        .chain(std::iter::once(program.to_string()))
+        .chain(args.iter().map(|arg| (*arg).to_string()))
         .collect()
 }
