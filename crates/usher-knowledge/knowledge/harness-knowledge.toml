@@ -265,7 +265,7 @@ harness = "claude-code"
 layer = "fast"
 class = "settings-keys"
 versions = ">=2.1.317, <3.0.0"
-summary = "The autoMode switch that sends every shell command to the classifier. A true in the user file or on the command line is honored even over a managed false, so it is not plain scalar precedence."
+summary = "The autoMode switch that sends every shell command to the classifier. The settings page, in its section on exceptions to managed settings precedence, says a true from ~/.claude/settings.json or --settings is honored even when a managed source sets false, so the key is not plain scalar precedence."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings-reference#automode-classifyallshell" }
 last_verified = 2026-11-20
 settings_key = { key = "autoMode.classifyAllShell", merge = "own-rule", sensitive = false, scopes = ["user", "managed"] }
@@ -287,7 +287,7 @@ harness = "claude-code"
 layer = "fast"
 class = "settings-keys"
 versions = ">=2.1.317, <3.0.0"
-summary = "A control key for how managed sources are delivered; it carries no policy of its own."
+summary = "A managed key that names an executable which computes managed settings at startup. The reference says Claude Code treats the settings it emits as the managed settings for the session."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings-reference#policyhelper" }
 last_verified = 2026-11-20
 settings_key = { key = "policyHelper", merge = "scalar", sensitive = false, scopes = ["managed"] }
