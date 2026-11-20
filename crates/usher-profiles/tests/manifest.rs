@@ -257,9 +257,9 @@ fn a_shared_mcp_server_must_be_a_table() {
     names_field(&refusal(&text), "mcp_servers.github");
 }
 
-// Meaning change: this red also refused the note key "mcp:" with no server
-// name. The manifest reader does not decide that case, so it is no longer
-// pinned here; the note key for a server is read by the next change.
+// Meaning change, reversing an earlier one: a note key for an MCP server whose
+// name does not fit the server-name pattern is refused ("mcp:" alone, and a
+// name with a space), naming the note.
 #[test]
 fn a_note_is_keyed_by_a_covered_harness_and_a_key_path_or_by_an_mcp_server() {
     let good = [
@@ -278,6 +278,8 @@ fn a_note_is_keyed_by_a_covered_harness_and_a_key_path_or_by_an_mcp_server() {
         "claude-code:permissions..allow",
         "codex:model",
         ":model",
+        "mcp:",
+        "mcp:a b",
     ];
     for key in bad {
         let text = format!("{VALID}\n[notes]\n\"{key}\" = \"why\"\n");
