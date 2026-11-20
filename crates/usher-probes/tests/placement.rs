@@ -1,6 +1,7 @@
 //! Probes live only in `src/probes/`, the scan over them reads every nested
 //! file and knows twelve ways to start a process, no ignored test sits outside
-//! `src/probes/`, and the launcher has no method that sets a variable.
+//! `src/probes/`, and the launcher has no method that sets a variable. The
+//! scan reads raw source text, so a comment that writes a call form fails it.
 
 use std::{fs, path::Path};
 
@@ -356,4 +357,65 @@ fn exec_is_a_call_form_and_a_word_or_a_constant_is_not() {
             "the scan flagged: {clean}"
         );
     }
+}
+
+// Q9: the scan reads raw source text, so a comment is scanned like code.
+#[test]
+fn a_url_string_then_a_spawn_on_one_line_is_flagged() {
+    // `//` inside a string literal is not a comment: it must not hide the rest.
+    let line = "let url = \"http://example.test\"; Command::new(\"x\");";
+    assert!(
+        !find_launch_bypasses(line).is_empty(),
+        "the scan missed a spawn after a URL string"
+    );
+    // Control: the same line without the spawn is clean.
+    assert!(find_launch_bypasses("let url = \"http://example.test\";").is_empty());
+}
+
+#[test]
+fn a_comment_naming_sandbox_exec_and_the_constant_pass_because_the_needles_do_not_match_them() {
+    for clean in [
+        "// runs under sandbox-exec, the macOS tool",
+        "/// The sandbox-exec path.",
+        "//! Wraps a program in sandbox-exec.",
+        "const SANDBOX_EXEC: &str = \"/usr/bin/sandbox-exec\";",
+    ] {
+        assert!(
+            find_launch_bypasses(clean).is_empty(),
+            "the scan flagged: {clean}"
+        );
+    }
+    // Control: the scan is not silent on a comment that does write a needle.
+    assert!(!find_launch_bypasses("// sandbox-exec, then Command::new").is_empty());
+}
+
+#[test]
+fn a_comment_that_writes_a_call_form_fails_the_scan() {
+    for flagged in [
+        "/// Starts it with Command::new and waits.",
+        "//! Uses std::process directly.",
+        "// calls exec( at the end",
+        "fn f() {} // libc::execvp(p, a)",
+    ] {
+        assert!(
+            !find_launch_bypasses(flagged).is_empty(),
+            "the scan missed: {flagged}"
+        );
+    }
+}
+
+#[test]
+fn a_call_form_in_a_block_comment_fails_the_scan() {
+    for flagged in [
+        "/* exec( */",
+        "fn f() {}\n/* Command::new(\"x\")\n   spans lines */\n",
+        "/** doc block with scratch.command( inside */",
+    ] {
+        assert!(
+            !find_launch_bypasses(flagged).is_empty(),
+            "the scan missed: {flagged}"
+        );
+    }
+    // Control: a block comment that writes no needle is clean.
+    assert!(find_launch_bypasses("/* nothing to see here */").is_empty());
 }
