@@ -78,7 +78,7 @@ pub(crate) fn read_seat(
         }) {
             continue;
         }
-        lines.push(read_path(knowledge, item, fact, path));
+        lines.push(read_path(item, fact, path));
     }
     stamp_mcp_blind_spot(&mut lines);
     lines
@@ -110,7 +110,7 @@ fn read_env(item: &Item, fact: &SeatFact, context: &LaunchContext) -> SeatLine {
     line
 }
 
-fn read_path(knowledge: &KnowledgeFile, item: &Item, fact: &SeatFact, path: PathBuf) -> SeatLine {
+fn read_path(item: &Item, fact: &SeatFact, path: PathBuf) -> SeatLine {
     let mut line = base(item, fact, Some(path.clone()));
     let meta = match fs::metadata(&path) {
         Ok(meta) => meta,
@@ -144,7 +144,7 @@ fn read_path(knowledge: &KnowledgeFile, item: &Item, fact: &SeatFact, path: Path
                 let mut found: BTreeSet<Vec<String>> = BTreeSet::new();
                 for key_path in fact.key_paths() {
                     let segments: Vec<&str> = key_path.split('.').collect();
-                    walk(knowledge, &root, &segments, &[], &mut found);
+                    walk(&root, &segments, &[], &mut found);
                 }
                 line.names = found.into_iter().collect();
             }
@@ -181,13 +181,7 @@ fn parse(path: &PathBuf, meta: &fs::Metadata) -> Option<Value> {
 /// key it matches is listed by name, and the walk goes on under it unless the key is a
 /// credential key, which is listed and never entered. At the end of the path, the keys of
 /// the object found there are listed; a trailing wildcard lists the keys of its parent.
-fn walk(
-    knowledge: &KnowledgeFile,
-    value: &Value,
-    rest: &[&str],
-    prefix: &[String],
-    out: &mut BTreeSet<Vec<String>>,
-) {
+fn walk(value: &Value, rest: &[&str], prefix: &[String], out: &mut BTreeSet<Vec<String>>) {
     let Value::Object(object) = value else {
         return;
     };
@@ -206,13 +200,13 @@ fn walk(
             for (key, child) in object {
                 out.insert(join(key));
                 if !KnowledgeFile::is_credential_key(key) {
-                    walk(knowledge, child, tail, &join(key), out);
+                    walk(child, tail, &join(key), out);
                 }
             }
         }
         [literal, tail @ ..] => {
             if let Some(child) = object.get(*literal) {
-                walk(knowledge, child, tail, &join(literal), out);
+                walk(child, tail, &join(literal), out);
             }
         }
     }
