@@ -44,7 +44,7 @@ impl InstallerGuard {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, os::unix::fs::symlink, path::Path};
+    use std::{fs, os::unix::fs::symlink, path::Path, time::Duration};
 
     use usher_core::BrewPaths;
 
@@ -75,7 +75,7 @@ mod tests {
                 .repository
                 .join("Library/Taps/acme/homebrew-tools"),
             b(&paths).prefix.join("Cellar/jq/1.7.1/bin"),
-            b(&paths).prefix.join("Caskroom"),
+            b(&paths).prefix.join("Caskroom/app/1.0"),
             b(&paths).prefix.join("var/homebrew/linked"),
             b(&paths).cache.join("api"),
             paths.mise_data.join("installs/go/1.23.0/bin"),
@@ -93,6 +93,7 @@ mod tests {
         fs::write(b(&paths).repository.join(".git/FETCH_HEAD"), "one").expect("fetch head");
         fs::write(b(&paths).cache.join("api/formula.json"), "12345").expect("api");
         fs::write(paths.mise_cache.join("c"), "1").expect("mise cache file");
+        fs::write(paths.mise_state.join("s"), "1").expect("mise state file");
         Rig {
             _scratch: scratch,
             paths,
@@ -169,6 +170,19 @@ mod tests {
     }
 
     #[test]
+    fn a_new_tap_under_an_existing_org_is_a_change() {
+        let rig = rig();
+        let before = digest(&rig);
+        fs::create_dir_all(
+            b(&rig.paths)
+                .repository
+                .join("Library/Taps/acme/homebrew-more"),
+        )
+        .expect("tap");
+        assert_ne!(before, digest(&rig));
+    }
+
+    #[test]
     fn a_new_cellar_version_is_a_change() {
         let rig = rig();
         let before = digest(&rig);
@@ -177,10 +191,10 @@ mod tests {
     }
 
     #[test]
-    fn a_file_deep_inside_a_cellar_version_is_not_watched() {
+    fn a_file_directly_inside_a_cellar_version_is_not_watched() {
         let rig = rig();
         let before = digest(&rig);
-        write(&b(&rig.paths).prefix.join("Cellar/jq/1.7.1/bin/jq"), "x");
+        write(&b(&rig.paths).prefix.join("Cellar/jq/1.7.1/README"), "x");
         assert_eq!(
             before,
             digest(&rig),
@@ -189,10 +203,18 @@ mod tests {
     }
 
     #[test]
-    fn a_new_cask_version_is_a_change() {
+    fn a_new_cask_is_a_change() {
         let rig = rig();
         let before = digest(&rig);
-        fs::create_dir_all(b(&rig.paths).prefix.join("Caskroom/app/3.0")).expect("cask");
+        fs::create_dir_all(b(&rig.paths).prefix.join("Caskroom/other/1.0")).expect("cask");
+        assert_ne!(before, digest(&rig));
+    }
+
+    #[test]
+    fn a_new_version_of_an_existing_cask_is_a_change() {
+        let rig = rig();
+        let before = digest(&rig);
+        fs::create_dir_all(b(&rig.paths).prefix.join("Caskroom/app/2.0")).expect("version");
         assert_ne!(before, digest(&rig));
     }
 
@@ -262,5 +284,69 @@ mod tests {
         fs::create_dir_all(b(&rig.paths).prefix.join("Cellar/jq/1.7.2")).expect("version");
         let err = guard.verify().expect_err("a positive control must fire");
         assert!(err.contains("installer state changed"), "{err}");
+    }
+
+    /// The files whose size and modification time are both read.
+    fn timed_files(rig: &Rig) -> Vec<std::path::PathBuf> {
+        vec![
+            b(&rig.paths).cache.join("api/formula.json"),
+            rig.paths.mise_cache.join("c"),
+            rig.paths.mise_state.join("s"),
+        ]
+    }
+
+    fn mtime(path: &Path) -> std::time::SystemTime {
+        fs::metadata(path)
+            .expect("metadata")
+            .modified()
+            .expect("mtime")
+    }
+
+    fn set_mtime(path: &Path, when: std::time::SystemTime) {
+        fs::File::options()
+            .write(true)
+            .open(path)
+            .expect("open")
+            .set_modified(when)
+            .expect("set mtime");
+    }
+
+    #[test]
+    fn a_rewrite_of_the_same_size_with_a_later_mtime_is_a_change() {
+        let rig = rig();
+        for path in timed_files(&rig) {
+            let before = digest(&rig);
+            let old = mtime(&path);
+            let text = fs::read_to_string(&path).expect("text");
+            fs::write(&path, text.replace(|_| true, "z")).expect("same size");
+            set_mtime(&path, old + Duration::from_secs(60));
+            assert_ne!(before, digest(&rig), "{}", path.display());
+        }
+    }
+
+    #[test]
+    fn a_rewrite_to_a_new_size_that_keeps_the_mtime_is_a_change() {
+        let rig = rig();
+        for path in timed_files(&rig) {
+            let before = digest(&rig);
+            let old = mtime(&path);
+            fs::write(&path, "a longer text than before").expect("new size");
+            set_mtime(&path, old);
+            assert_ne!(before, digest(&rig), "{}", path.display());
+        }
+    }
+
+    #[test]
+    fn an_absent_brew_digests_and_a_mise_install_is_still_a_change() {
+        let rig = rig();
+        let no_brew = InstallerPaths {
+            brew: None,
+            mise_data: rig.paths.mise_data.clone(),
+            mise_cache: rig.paths.mise_cache.clone(),
+            mise_state: rig.paths.mise_state.clone(),
+        };
+        let before = digest_installers(&no_brew).expect("a digest without brew");
+        fs::create_dir_all(rig.paths.mise_data.join("installs/go/1.25.0")).expect("install");
+        assert_ne!(before, digest_installers(&no_brew).expect("a digest"));
     }
 }
