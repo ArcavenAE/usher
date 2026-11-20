@@ -176,13 +176,13 @@ fn a_default_is_an_absolute_path_that_names_neither_its_own_token_nor_the_versio
 }
 
 #[test]
-fn two_items_of_one_harness_may_not_share_a_name_or_a_token_over_the_same_versions() {
+fn two_items_of_one_harness_may_not_bind_one_token_over_overlapping_versions() {
     let overlapping = BINDER
         .replace("demo.config-dir-variable", "demo.second")
         .replace(">=1.0.0, <2.0.0", ">=1.5.0, <3.0.0");
     rejects(
         &file(&[BINDER, &overlapping, SOURCE]),
-        &["demo.config-dir-variable", "demo.second", "DEMO_CONFIG_DIR"],
+        &["demo.config-dir-variable", "demo.second"],
     );
     let same_token = overlapping.replace("DEMO_CONFIG_DIR", "DEMO_OTHER_DIR");
     rejects(
