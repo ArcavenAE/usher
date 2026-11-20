@@ -594,7 +594,7 @@ fn the_store_holds_derived_state_only() {
     tables.sort();
     assert_eq!(
         tables,
-        ["inventory_run", "inventory_source"],
+        ["inventory_run", "inventory_seat", "inventory_source"],
         "no table beyond the allowlist"
     );
 
@@ -631,6 +631,13 @@ fn the_store_holds_derived_state_only() {
             "size",
             "modified",
             "key_names"
+        ]
+    );
+
+    assert_eq!(
+        columns("inventory_seat"),
+        [
+            "run_id", "part", "item_id", "present", "names", "members", "note"
         ]
     );
 
@@ -707,7 +714,7 @@ fn two_first_opens_at_once_both_succeed_and_leave_one_schema() {
                 |r| r.get(0),
             )
             .expect("count");
-        assert_eq!(tables, 2, "round {round}: one schema");
+        assert_eq!(tables, 3, "round {round}: one schema");
     }
 }
 
