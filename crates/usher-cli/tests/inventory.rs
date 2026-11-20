@@ -841,9 +841,10 @@ source = {{ path = "${{CONFIG_DIR}}/settings.json", layer = "user", read = "read
         )
     };
     let knowledge = signed(&format!(
-        "schema_version = 3\nsequence = 9\n{}{}{LAUNCHER}",
+        "schema_version = 3\nsequence = 9\n{}{}{}{LAUNCHER}",
         range("claude-code.early", ">=2.1.317, <2.2.0", ".cfg-early"),
-        range("claude-code.late", ">=2.2.0, <3.0.0", ".cfg-late"),
+        range("claude-code.late", ">=2.2.0, <2.3.0", ".cfg-late"),
+        range("claude-code.last", ">=2.3.0, <3.0.0", ".cfg-last"),
     ));
     let out = inventory_with(&rig.env(), SystemRoot::at(rig.system.clone()), &knowledge)
         .expect("an inventory");
