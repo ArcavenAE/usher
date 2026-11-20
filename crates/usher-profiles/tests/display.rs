@@ -161,3 +161,15 @@ fn a_refusal_shows_an_escape_in_an_unknown_key_as_text() {
         under_harness.status()
     );
 }
+
+#[test]
+fn a_refusal_holds_no_raw_escape_when_a_version_range_holds_one() {
+    let harness = VALID.replace(">=2.1.317, <3.0.0", "\\u001B[31m");
+    let err = refusal(&harness);
+    assert_no_raw_escape(&err);
+    assert!(err.check().contains("harnesses.claude-code.versions"));
+
+    let tool = refusal(&format!("{VALID}\n[tools]\nnode = \"\\u001B[31m\"\n"));
+    assert_no_raw_escape(&tool);
+    assert!(tool.check().contains("tools.node"));
+}
