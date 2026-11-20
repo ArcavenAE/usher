@@ -3,7 +3,7 @@
 //! tested only against a listener on this host that speaks no TLS.
 
 use std::{
-    io::{self, Read, Write},
+    io::{self, Read},
     net::{IpAddr, TcpListener},
     thread,
     time::Duration,
