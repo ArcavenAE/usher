@@ -176,20 +176,20 @@ fn a_list_entry_prints_its_index_after_the_key_path() {
     assert_eq!(line.trim(), expected, "{out}");
 }
 
-/// A value that is not a string prints as compact JSON.
+/// A value that is not a string prints as compact JSON, with no spaces.
 ///
 /// Provisional: as above, and it rests on which keys are listed by default.
 #[test]
 fn a_value_that_is_not_a_string_prints_as_compact_json() {
     let rig = Rig::new();
     let file = rig.write(
-        &rig.system.join("etc/claude-code/managed-settings.json"),
-        r#"{"wslInheritsWindowsSettings": true}"#,
+        &rig.user_file(),
+        r#"{"autoMode": {"allow": [{"a": 1, "b": [true]}]}}"#,
     );
     let out = rig.map(&rig.env());
-    let line = line_with(&out, "wslInheritsWindowsSettings  ");
+    let line = line_with(&out, r#"{"a":1,"b":[true]}"#);
     let expected = format!(
-        "wslInheritsWindowsSettings  {}  true  (managed: {})",
+        r#"autoMode.allow[0]  {}  {{"a":1,"b":[true]}}  (user: {})"#,
         ReadingStatus::InEffect.display(),
         file.display()
     );
@@ -538,7 +538,10 @@ fn a_top_level_credential_key_is_listed_by_name_and_nothing_under_it_is_printed(
     );
     let env = rig.env();
     let out = rig.map(&env);
-    let line = line_with(&out, "oauthAccount");
+    let line = out
+        .lines()
+        .find(|l| l.contains("oauthAccount") && !l.trim_start().starts_with("keys:"))
+        .unwrap_or_else(|| panic!("no map row names oauthAccount in:\n{out}"));
     assert!(line.contains("credential key; not opened"), "{line}");
     assert_nowhere(&rig, &env, &out, "canary-k");
     assert_nowhere(&rig, &env, &out, "canary-v");
