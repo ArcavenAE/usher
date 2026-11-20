@@ -184,10 +184,14 @@ pub(crate) fn map_settings(
     if listed.iter().any(|key| key.fact.key() == "model") {
         not_observed.push(NotObserved::OrganizationDefaultModel);
     }
-    let classifier_set = listed
-        .iter()
-        .zip(&occurrences)
-        .any(|(key, found)| key.fact.key().starts_with(CLASSIFIER_PREFIX) && !found.is_empty());
+    let classifier_set = rows.iter().any(|r| {
+        r.reading.status == ReadingStatus::InEffect
+            && listed.iter().any(|key| {
+                key.fact.merge() == MergeKind::ListMerge
+                    && key.fact.key().starts_with(CLASSIFIER_PREFIX)
+                    && key.fact.key() == r.reading.key
+            })
+    });
     if classifier_set {
         not_observed.push(NotObserved::BuiltInClassifierRules);
     }
