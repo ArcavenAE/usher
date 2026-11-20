@@ -10,6 +10,7 @@ use std::{error::Error, fmt};
 mod egress;
 mod environment;
 mod listing;
+mod tools;
 
 pub use egress::{
     ALL, Class, DELEGATED_INSTALLERS, DELEGATED_NOTE, DelegatedInstaller, Descriptor, Egress,
@@ -19,6 +20,11 @@ pub use egress::{
 #[cfg(feature = "test-seam")]
 pub use egress::{AllowAll, DenyAll};
 pub use environment::{EnvironmentKey, environment_key, key_variables};
+pub use tools::{
+    Hint, HintKind, InstallState, Installer, InstallerPaths, Reading, ToolRow, ToolSpec, Verdict,
+    allowed_invocations, command_text, never_call, no_update_env, render_rows,
+    tool_specs,
+};
 pub use listing::{
     AbsentLayer, CheckedPath, KeyNames, LaunchContext, ListedSource, NotCheckedLayer, SeatLine,
     SourceLister, SourceListing, SourceStatus, SystemRoot,

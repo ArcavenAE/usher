@@ -6,6 +6,7 @@
 
 mod inventory;
 mod time;
+mod tools;
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -14,6 +15,7 @@ use std::path::PathBuf;
 use usher_core::{SystemRoot, UsherError};
 
 pub use inventory::{inventory, inventory_with};
+pub use tools::{ToolsContext, read_brew, read_mise, read_tools, run_tools};
 
 /// The launch variables the verb asked for, as a name-to-value lookup. In production
 /// [`LaunchEnvironment::from_process`] fills it with the variables knowledge names and
