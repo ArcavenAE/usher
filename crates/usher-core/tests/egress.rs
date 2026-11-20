@@ -401,3 +401,212 @@ fn a_path_value_of_two_dots_alone_is_refused() {
         );
     }
 }
+
+// ---- the test seam: descriptors the registry does not hold ----
+
+use usher_core::Field;
+
+const FILES_HOST: &str = "files.invalid";
+const ASSETS_HOST: &str = "assets.invalid";
+
+const UA: Field = Field {
+    name: "user-agent",
+    place: Place::Header,
+    meaning: "the program name, fixed",
+};
+
+const REDIRECTING: Descriptor = Descriptor {
+    method: Method::Get,
+    host: FILES_HOST,
+    path: "/{file}",
+    purpose: "a test call that may be redirected",
+    class: Class::PersonStarted,
+    fields: &[
+        UA,
+        Field {
+            name: "file",
+            place: Place::Path,
+            meaning: "which file",
+        },
+    ],
+    redirect_hosts: &[ASSETS_HOST],
+};
+
+const SHAPED: Descriptor = Descriptor {
+    method: Method::Post,
+    host: FILES_HOST,
+    path: "/report",
+    purpose: "a test call with query and body fields",
+    class: Class::PersonStarted,
+    fields: &[
+        UA,
+        Field {
+            name: "q2",
+            place: Place::Query,
+            meaning: "second query field, listed first",
+        },
+        Field {
+            name: "b2",
+            place: Place::Body,
+            meaning: "second body field, listed second",
+        },
+        Field {
+            name: "q1",
+            place: Place::Query,
+            meaning: "first query field, listed third",
+        },
+        Field {
+            name: "b1",
+            place: Place::Body,
+            meaning: "first body field, listed fourth",
+        },
+    ],
+    redirect_hosts: &[],
+};
+
+const VERSION_CHECK: Descriptor = Descriptor {
+    method: Method::Get,
+    host: FILES_HOST,
+    path: "/version",
+    purpose: "a test version check",
+    class: Class::VersionCheck,
+    fields: &[UA],
+    redirect_hosts: &[],
+};
+
+const PERSON_STARTED: Descriptor = Descriptor {
+    class: Class::PersonStarted,
+    ..VERSION_CHECK
+};
+
+fn described_request() -> Request {
+    Request::new(Egress::KnowledgeUpdate)
+}
+
+#[test]
+fn a_redirect_to_a_listed_host_is_followed_once_and_its_answer_returned() {
+    let transport = RecordingTransport::new()
+        .answering_redirect(format!("https://{ASSETS_HOST}/release/knowledge.toml"))
+        .answering_ok("from the asset host");
+    let response = port(&transport)
+        .call_described(
+            &REDIRECTING,
+            described_request().with("file", "knowledge.toml"),
+        )
+        .expect("a listed redirect is followed");
+    assert_eq!(response.body, b"from the asset host");
+
+    let sent = transport.sent();
+    assert_eq!(sent.len(), 2, "one call and one follow");
+    assert_eq!(sent[0].host, FILES_HOST);
+    assert_eq!(sent[0].path, "/knowledge.toml");
+    assert_eq!(sent[1].host, ASSETS_HOST);
+    assert_eq!(sent[1].path, "/release/knowledge.toml");
+    assert_eq!(sent[1].method, Method::Get);
+    assert_eq!(
+        sent[1].headers,
+        vec![("user-agent".to_string(), "usher".to_string())]
+    );
+}
+
+#[test]
+fn a_second_redirect_after_the_follow_is_refused_and_not_followed() {
+    let transport = RecordingTransport::new()
+        .answering_redirect(format!("https://{ASSETS_HOST}/one"))
+        .answering_redirect(format!("https://{ASSETS_HOST}/two"))
+        .answering_ok("never reached");
+    let err = port(&transport)
+        .call_described(
+            &REDIRECTING,
+            described_request().with("file", "knowledge.toml"),
+        )
+        .expect_err("a second redirect must fail");
+    assert_four_fields(&err);
+    assert_eq!(
+        transport.sent().len(),
+        2,
+        "the port followed a second redirect"
+    );
+}
+
+#[test]
+fn a_listed_redirect_still_refuses_an_unlisted_host_and_a_downgrade() {
+    assert_a_valid_call_goes_through();
+    for target in [
+        "https://elsewhere.invalid/x".to_string(),
+        format!("http://{ASSETS_HOST}/x"),
+    ] {
+        let transport = RecordingTransport::new().answering_redirect(target.clone());
+        let err = port(&transport)
+            .call_described(&REDIRECTING, described_request().with("file", "k.toml"))
+            .expect_err("an unlisted or downgraded redirect must fail");
+        assert_four_fields(&err);
+        assert_eq!(transport.sent().len(), 1, "followed {target}");
+    }
+}
+
+#[test]
+fn an_unlisted_query_or_body_field_is_refused_before_the_transport() {
+    assert_a_valid_call_goes_through();
+    for extra in ["extra-query", "extra-body"] {
+        let transport = RecordingTransport::new().answering_ok("body");
+        let err = port(&transport)
+            .call_described(
+                &SHAPED,
+                described_request().with("q1", "1").with(extra, "x"),
+            )
+            .expect_err("an unlisted field must fail");
+        assert_four_fields(&err);
+        assert!(err.to_string().contains(extra), "{err}");
+        assert!(transport.sent().is_empty(), "{extra} reached the transport");
+    }
+}
+
+#[test]
+fn listed_query_and_body_fields_go_in_descriptor_order() {
+    let transport = RecordingTransport::new().answering_ok("body");
+    port(&transport)
+        .call_described(
+            &SHAPED,
+            described_request()
+                .with("b1", "four")
+                .with("q1", "three")
+                .with("b2", "two")
+                .with("q2", "one"),
+        )
+        .expect("listed fields go through");
+    let sent = transport.sent();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].method, Method::Post);
+    assert_eq!(sent[0].path, "/report");
+    assert_eq!(
+        sent[0].query,
+        vec![
+            ("q2".to_string(), "one".to_string()),
+            ("q1".to_string(), "three".to_string())
+        ]
+    );
+    assert_eq!(
+        sent[0].body,
+        vec![
+            ("b2".to_string(), "two".to_string()),
+            ("b1".to_string(), "four".to_string())
+        ]
+    );
+}
+
+#[test]
+fn a_version_check_descriptor_never_reaches_the_transport_under_the_one_1_15_policy() {
+    let allowed = RecordingTransport::new().answering_ok("control");
+    port(&allowed)
+        .call_described(&PERSON_STARTED, described_request())
+        .expect("a person-started descriptor goes through");
+    assert_eq!(allowed.sent().len(), 1);
+
+    let transport = RecordingTransport::new().answering_ok("body");
+    let err = port(&transport)
+        .call_described(&VERSION_CHECK, described_request())
+        .expect_err("a version check is refused until its switch exists");
+    assert_four_fields(&err);
+    assert!(transport.sent().is_empty());
+}
