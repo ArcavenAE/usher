@@ -446,3 +446,28 @@ fn a_seat_path_under_an_unreadable_directory_prints_not_checked_in_plain_words()
     assert_eq!(row.present, None);
     assert_eq!(row.note.as_deref(), Some("permission denied"));
 }
+
+#[test]
+fn a_source_under_an_unreadable_directory_prints_the_path_and_the_plain_kind() {
+    let rig = Rig::new();
+    let file = rig.write(&rig.home().join(".claude/settings.json"), "{\"k\": 1}");
+    let _locked = Locked::new(file.parent().expect("a parent").to_path_buf());
+    if fs::metadata(&file).is_ok() {
+        usher_testkit::skip(
+            "a_source_under_an_unreadable_directory_prints_the_path_and_the_plain_kind",
+            "this process can look through a mode 000 directory, so there is nothing to test",
+        );
+        return;
+    }
+    let out = rig.fixture_run(&rig.env(&[]));
+    let expected = format!(
+        "not checked: user settings ({}: permission denied)",
+        file.display()
+    );
+    assert!(
+        out.lines().any(|l| l == expected),
+        "missing the line {expected:?} in:\n{out}"
+    );
+    assert!(!out.contains("could not be checked"), "{out}");
+    assert!(!out.contains("PermissionDenied"), "{out}");
+}
