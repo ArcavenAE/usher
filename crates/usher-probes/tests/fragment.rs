@@ -128,3 +128,23 @@ fn the_date_is_the_utc_calendar_date_at_the_edges_of_midnight() {
         "2026-11-21"
     );
 }
+
+#[test]
+fn a_version_must_have_the_shape_of_a_version() {
+    let today = date(2026, 11, 20);
+    // Digits and dots, with an optional pre-release suffix that starts with a
+    // digit or a hyphen. A bare word could be a user name, a host name or a
+    // key fragment, and the version is the fragment's only free text.
+    for accepted in ["2.1.329", "0.160.1", "1.0.0-rc.1"] {
+        assert!(
+            Fragment::new(accepted, Outcome::Passed, today, Network::Denied).is_ok(),
+            "control: `{accepted}` has the shape of a version"
+        );
+    }
+    for refused in ["alex", "kinu", "sk-abc"] {
+        assert!(
+            Fragment::new(refused, Outcome::Passed, today, Network::Denied).is_err(),
+            "`{refused}` must be refused"
+        );
+    }
+}
