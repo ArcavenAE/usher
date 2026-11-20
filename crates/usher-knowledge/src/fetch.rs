@@ -24,3 +24,263 @@ pub fn fetch_update<T: Transport, P: Policy>(
         "build the knowledge fetch",
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use usher_core::{Class, Method, PersonStartedOnly, Policy, Port, Response, UsherError};
+    use usher_testkit::{RecordingTransport, Signer};
+
+    use super::*;
+
+    const SEED: &str = include_str!("../knowledge/harness-knowledge.toml");
+    const HOST: &str = "knowledge.usher.invalid";
+
+    fn held() -> Knowledge {
+        Knowledge::embedded().expect("embedded knowledge")
+    }
+
+    fn sequence(knowledge: &Knowledge) -> u64 {
+        knowledge.current().version().sequence()
+    }
+
+    fn file_at(sequence: u64) -> String {
+        let held = held();
+        let base = self::sequence(&held);
+        SEED.replace(
+            &format!("\nsequence = {base}\n"),
+            &format!("\nsequence = {sequence}\n"),
+        )
+    }
+
+    fn trusting(signer: &Signer) -> TrustedKeys {
+        TrustedKeys::for_tests(&signer.public_key_base64(), None).expect("keys")
+    }
+
+    fn port(transport: &RecordingTransport) -> Port<RecordingTransport, PersonStartedOnly> {
+        Port::new(transport.clone(), PersonStartedOnly)
+    }
+
+    fn answers(file: &str, signature: &str) -> RecordingTransport {
+        RecordingTransport::new()
+            .answering_ok(file.as_bytes())
+            .answering_ok(signature.as_bytes())
+    }
+
+    fn assert_four_fields(err: &UsherError) {
+        assert!(!err.step().is_empty() && !err.check().is_empty(), "{err}");
+        assert!(
+            !err.status().is_empty() && !err.next_action().is_empty(),
+            "{err}"
+        );
+    }
+
+    /// A signed update at the next sequence goes through, so the failing cases
+    /// below cannot pass merely because the fetch refuses everything.
+    fn assert_a_valid_fetch_is_taken() {
+        let signer = Signer::new();
+        let next = sequence(&held()) + 1;
+        let file = file_at(next);
+        let transport = answers(&file, &signer.sign(file.as_bytes(), "control"));
+        let mut knowledge = held();
+        fetch_update(&port(&transport), &mut knowledge, &trusting(&signer))
+            .expect("the control fetch is taken");
+        assert_eq!(sequence(&knowledge), next);
+    }
+
+    #[test]
+    fn a_signed_update_is_fetched_and_taken() {
+        let signer = Signer::new();
+        let next = sequence(&held()) + 1;
+        let file = file_at(next);
+        let transport = answers(&file, &signer.sign(file.as_bytes(), "sequence"));
+        let mut knowledge = held();
+        let version = fetch_update(&port(&transport), &mut knowledge, &trusting(&signer))
+            .expect("a signed update is taken");
+        assert_eq!(version.sequence(), next);
+        assert_eq!(sequence(&knowledge), next);
+    }
+
+    #[test]
+    fn the_file_and_then_its_signature_are_fetched_with_nothing_else_sent() {
+        let signer = Signer::new();
+        let file = file_at(sequence(&held()) + 1);
+        let transport = answers(&file, &signer.sign(file.as_bytes(), "sequence"));
+        let mut knowledge = held();
+        fetch_update(&port(&transport), &mut knowledge, &trusting(&signer)).expect("taken");
+        let sent = transport.sent();
+        assert_eq!(
+            sent.len(),
+            2,
+            "one request for the file, one for the signature"
+        );
+        assert_eq!(sent[0].path, "/knowledge.toml");
+        assert_eq!(sent[1].path, "/knowledge.toml.minisig");
+        for wire in &sent {
+            assert_eq!(wire.host, HOST);
+            assert_eq!(wire.method, Method::Get);
+            assert!(wire.query.is_empty() && wire.body.is_empty());
+            assert_eq!(
+                wire.headers,
+                vec![("user-agent".to_string(), "usher".to_string())]
+            );
+        }
+    }
+
+    #[test]
+    fn a_tampered_body_is_refused_and_the_knowledge_stays() {
+        assert_a_valid_fetch_is_taken();
+        let signer = Signer::new();
+        let file = file_at(sequence(&held()) + 1);
+        let signature = signer.sign(file.as_bytes(), "sequence");
+        let tampered = file.replace("goose", "g00se");
+        let transport = answers(&tampered, &signature);
+        let mut knowledge = held();
+        let before = sequence(&knowledge);
+        let err = fetch_update(&port(&transport), &mut knowledge, &trusting(&signer))
+            .expect_err("a tampered body must fail");
+        assert_four_fields(&err);
+        assert!(err.to_string().contains("signature"), "{err}");
+        assert_eq!(sequence(&knowledge), before);
+    }
+
+    #[test]
+    fn a_lower_or_equal_sequence_is_refused_and_the_knowledge_stays() {
+        assert_a_valid_fetch_is_taken();
+        let signer = Signer::new();
+        let before = sequence(&held());
+        for lower in [before, before - 1] {
+            let file = file_at(lower);
+            let transport = answers(&file, &signer.sign(file.as_bytes(), "sequence"));
+            let mut knowledge = held();
+            let err = fetch_update(&port(&transport), &mut knowledge, &trusting(&signer))
+                .expect_err("a sequence that is not higher must fail");
+            assert_four_fields(&err);
+            assert!(err.to_string().contains("sequence"), "{err}");
+            assert_eq!(sequence(&knowledge), before, "sequence {lower}");
+        }
+    }
+
+    #[test]
+    fn a_signature_from_an_untrusted_key_is_refused_and_the_knowledge_stays() {
+        assert_a_valid_fetch_is_taken();
+        let (trusted, stranger) = (Signer::new(), Signer::new());
+        let file = file_at(sequence(&held()) + 1);
+        let transport = answers(&file, &stranger.sign(file.as_bytes(), "sequence"));
+        let mut knowledge = held();
+        let before = sequence(&knowledge);
+        let err = fetch_update(&port(&transport), &mut knowledge, &trusting(&trusted))
+            .expect_err("an untrusted key must fail");
+        assert_four_fields(&err);
+        assert_eq!(sequence(&knowledge), before);
+    }
+
+    #[test]
+    fn the_update_error_comes_back_as_the_update_gave_it() {
+        assert_a_valid_fetch_is_taken();
+        let (trusted, stranger) = (Signer::new(), Signer::new());
+        let file = file_at(sequence(&held()) + 1);
+        let signature = stranger.sign(file.as_bytes(), "sequence");
+        let direct = held()
+            .update(file.as_bytes(), &signature, &trusting(&trusted))
+            .expect_err("the update refuses it");
+        let transport = answers(&file, &signature);
+        let mut knowledge = held();
+        let err = fetch_update(&port(&transport), &mut knowledge, &trusting(&trusted))
+            .expect_err("the fetch refuses it");
+        assert_eq!(err, direct, "the fetch rewrote the update's error");
+    }
+
+    #[test]
+    fn a_redirect_to_an_unlisted_host_on_the_file_stops_the_fetch_after_one_send() {
+        assert_a_valid_fetch_is_taken();
+        let signer = Signer::new();
+        let transport = RecordingTransport::new()
+            .answering_redirect("https://elsewhere.invalid/knowledge.toml");
+        let mut knowledge = held();
+        let before = sequence(&knowledge);
+        let err = fetch_update(&port(&transport), &mut knowledge, &trusting(&signer))
+            .expect_err("an unlisted redirect must fail");
+        assert_four_fields(&err);
+        assert!(err.to_string().contains("elsewhere.invalid"), "{err}");
+        assert_eq!(
+            transport.sent().len(),
+            1,
+            "the signature was asked for anyway"
+        );
+        assert_eq!(sequence(&knowledge), before);
+    }
+
+    #[test]
+    fn a_failed_file_fetch_asks_for_no_signature() {
+        assert_a_valid_fetch_is_taken();
+        let signer = Signer::new();
+        let transport = RecordingTransport::new().answering(Ok(Response {
+            status: 404,
+            location: None,
+            body: Vec::new(),
+        }));
+        let mut knowledge = held();
+        let before = sequence(&knowledge);
+        let err = fetch_update(&port(&transport), &mut knowledge, &trusting(&signer))
+            .expect_err("a 404 must fail");
+        assert!(err.to_string().contains("404"), "{err}");
+        assert_eq!(transport.sent().len(), 1);
+        assert_eq!(sequence(&knowledge), before);
+    }
+
+    #[test]
+    fn a_failed_signature_fetch_leaves_the_knowledge_and_names_the_failure() {
+        assert_a_valid_fetch_is_taken();
+        let signer = Signer::new();
+        let file = file_at(sequence(&held()) + 1);
+        let failure = UsherError::new("send", "the host answers", "connection reset", "try later");
+        let transport = RecordingTransport::new()
+            .answering_ok(file.as_bytes())
+            .answering(Err(failure.clone()));
+        let mut knowledge = held();
+        let before = sequence(&knowledge);
+        let err = fetch_update(&port(&transport), &mut knowledge, &trusting(&signer))
+            .expect_err("a failed signature fetch must fail");
+        assert_eq!(err, failure);
+        assert_eq!(sequence(&knowledge), before);
+    }
+
+    #[test]
+    fn a_signature_that_is_not_text_is_refused_and_the_knowledge_stays() {
+        assert_a_valid_fetch_is_taken();
+        let signer = Signer::new();
+        let file = file_at(sequence(&held()) + 1);
+        let transport = RecordingTransport::new()
+            .answering_ok(file.as_bytes())
+            .answering_ok(vec![0xff, 0xfe, 0x00]);
+        let mut knowledge = held();
+        let before = sequence(&knowledge);
+        let err = fetch_update(&port(&transport), &mut knowledge, &trusting(&signer))
+            .expect_err("a binary signature must fail");
+        assert_four_fields(&err);
+        assert_eq!(sequence(&knowledge), before);
+    }
+
+    struct Closed;
+    impl Policy for Closed {
+        fn allows(&self, _class: Class) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn a_closed_policy_sends_nothing_and_leaves_the_knowledge() {
+        assert_a_valid_fetch_is_taken();
+        let signer = Signer::new();
+        let file = file_at(sequence(&held()) + 1);
+        let transport = answers(&file, &signer.sign(file.as_bytes(), "sequence"));
+        let closed = Port::new(transport.clone(), Closed);
+        let mut knowledge = held();
+        let before = sequence(&knowledge);
+        let err = fetch_update(&closed, &mut knowledge, &trusting(&signer))
+            .expect_err("a closed policy must fail");
+        assert_four_fields(&err);
+        assert!(transport.sent().is_empty());
+        assert_eq!(sequence(&knowledge), before);
+    }
+}
