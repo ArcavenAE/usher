@@ -240,7 +240,11 @@ fn an_any_scope_scalar_set_in_project_and_user_follows_the_stack() {
     assert_eq!(project.source_path, rig.project_file());
     let user = reading(&map, "model", "user");
     assert_eq!(user.status, ReadingStatus::Shadowed);
-    assert!(note_has(user, "project"), "the winner is named: {user:?}");
+    assert_eq!(
+        user.note.as_deref(),
+        Some(format!("shadowed by project ({})", rig.project_file().display()).as_str()),
+        "the winner is named with its layer and its file: {user:?}"
+    );
     assert_eq!(user.source_path, rig.user_file());
 }
 
@@ -255,14 +259,13 @@ fn local_outranks_project_and_project_outranks_user_in_the_seeded_stack() {
         reading(&map, "model", "local").status,
         ReadingStatus::InEffect
     );
-    assert_eq!(
-        reading(&map, "model", "project").status,
-        ReadingStatus::Shadowed
-    );
-    assert_eq!(
-        reading(&map, "model", "user").status,
-        ReadingStatus::Shadowed
-    );
+    let project = reading(&map, "model", "project");
+    let user = reading(&map, "model", "user");
+    assert_eq!(project.status, ReadingStatus::Shadowed);
+    assert_eq!(user.status, ReadingStatus::Shadowed);
+    let winner = format!("shadowed by local ({})", rig.local_file().display());
+    assert_eq!(project.note.as_deref(), Some(winner.as_str()));
+    assert_eq!(user.note.as_deref(), Some(winner.as_str()));
 }
 
 /// The order across layers is knowledge, not a constant in the reader: a knowledge file
