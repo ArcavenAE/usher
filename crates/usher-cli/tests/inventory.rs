@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use usher_cli::{InventoryEnv, inventory, inventory_system_root, inventory_with, run};
 use usher_core::SystemRoot;
-use usher_knowledge::KnowledgeFile;
+use usher_knowledge::{KnowledgeFile, Platform};
 use usher_store::Store;
 use usher_testkit::{NamedHome, RealHomeGuard, RealHomes, ScratchHome};
 
@@ -43,6 +43,7 @@ impl Rig {
             path: Some(self.scratch.home().join(".local/bin").into_os_string()),
             state_dir: self.scratch.home().join(".local/state/usher"),
             now: NOW.to_string(),
+            platform: Platform::Linux,
         }
     }
 
@@ -202,16 +203,38 @@ fn an_invalid_file_prints_unknown_with_its_position_and_category_and_no_content(
 fn a_shadowed_managed_source_names_the_winner() {
     let rig = Rig::new();
     rig.install("2.1.317");
+    let managed = |id: &str, path: &str, rank: u32| {
+        format!(
+            r#"
+[[item]]
+id = "{id}"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "A managed settings file."
+reference = {{ kind = "vendor-docs", locator = "https://example.test/docs/managed" }}
+last_verified = 2026-11-20
+source = {{ path = "{path}", layer = "managed", read = "first-wins", rank = {rank}, always_present = false, platforms = ["linux"] }}
+"#
+        )
+    };
+    let knowledge = KnowledgeFile::parse(&format!(
+        "schema_version = 3\nsequence = 9\n{}{}",
+        managed("demo.high", "/etc/claude-code/high.json", 4),
+        managed("demo.low", "/etc/claude-code/low.json", 3),
+    ))
+    .expect("a fixture knowledge file");
     let winner = rig.write(
-        &rig.system
-            .join("Library/Application Support/ClaudeCode/managed-settings.json"),
+        &rig.system.join("etc/claude-code/high.json"),
         r#"{"permissions":{}}"#,
     );
     let loser = rig.write(
-        &rig.system.join("etc/claude-code/managed-settings.json"),
+        &rig.system.join("etc/claude-code/low.json"),
         r#"{"model":"m"}"#,
     );
-    let out = rig.run(&rig.env());
+    let out = inventory_with(&rig.env(), SystemRoot::at(rig.system.clone()), &knowledge)
+        .expect("an inventory");
     let row = line_with(&out, &loser.display().to_string());
     assert!(
         row.contains(&format!("shadowed by {}", winner.display())),

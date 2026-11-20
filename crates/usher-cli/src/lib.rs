@@ -29,6 +29,8 @@ pub struct InventoryEnv {
     pub state_dir: PathBuf,
     /// Now, as `YYYY-MM-DDTHH:MM:SSZ`, for the run record.
     pub now: String,
+    /// The platform whose sources are read: the build's own in production.
+    pub platform: usher_knowledge::Platform,
 }
 
 /// The system root the `inventory` verb builds its adapter with: the host's own.
