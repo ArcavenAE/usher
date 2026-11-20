@@ -64,3 +64,14 @@ pub fn run_denied_with_ports(
 ) -> io::Result<Output> {
     run_denied(scratch, program, args)
 }
+
+/// The argument vector that runs `program` with `args` under the profile for
+/// `ports`: the sandbox tool, `-p`, the profile, the program, then its
+/// arguments. It starts nothing; the launcher's one spawn site runs it.
+/// Stub: the program and its arguments, with no sandbox.
+pub fn denied_argv(_ports: &[u16], program: &str, args: &[&str]) -> Vec<String> {
+    std::iter::once(program)
+        .chain(args.iter().copied())
+        .map(str::to_string)
+        .collect()
+}
