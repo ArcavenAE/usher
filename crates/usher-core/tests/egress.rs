@@ -1224,3 +1224,24 @@ fn every_descriptor_name_is_unique_kebab_case_and_the_variants_own() {
         assert!(seen.insert(name), "name `{name}` is used twice");
     }
 }
+
+#[test]
+fn a_header_value_with_a_leading_or_trailing_space_has_its_own_status_and_no_echo() {
+    let (control, _) = header_call("a printable value");
+    control.expect("the control call goes through");
+    for value in [" secret", "secret ", " secret ", " "] {
+        let (result, transport) = header_call(value);
+        let err = result.expect_err("an edge space must fail");
+        assert_eq!(err.step(), "send test-extra-header", "{value:?}");
+        assert_eq!(
+            err.status(),
+            "header x-note starts or ends with a space",
+            "{value:?}"
+        );
+        assert!(!err.to_string().contains("secret"), "{err}");
+        assert!(
+            transport.sent().is_empty(),
+            "{value:?} reached the transport"
+        );
+    }
+}
