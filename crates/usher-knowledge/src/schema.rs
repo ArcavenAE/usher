@@ -2044,6 +2044,7 @@ versions = ">=1.2.0, <2.0.0"
 summary = "A fact."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs" }
 last_verified = 2026-11-02
+stack = ["managed", "user"]
 
 [[item]]
 id = "demo.default-model"
