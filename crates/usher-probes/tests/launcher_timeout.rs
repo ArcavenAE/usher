@@ -17,6 +17,16 @@ use usher_probes::{
 };
 use usher_testkit::ScratchHome;
 
+/// A start that would run to its natural end after eight seconds and leave a
+/// marker there. Eight is past every timeout these tests use and under the ten
+/// seconds a deadline stretched tenfold would allow, so a start that was not
+/// killed at the timeout leaves the marker, whatever the load.
+const FINISH_LATE: &[&str] = &["-c", "sleep 8; touch \"$TMPDIR/finished\""];
+
+fn marker(scratch: &ScratchHome) -> std::path::PathBuf {
+    scratch.tmp().join("finished")
+}
+
 fn today() -> Date {
     Date::new(2026, 11, 20).expect("a real date")
 }
@@ -43,7 +53,6 @@ fn a_start_that_outlives_the_timeout_is_killed_and_the_probe_is_not_run() {
     // Control: a start that returns at once is a result.
     assert!(run(&fast, &scratch, today(), |_, _| Ok(()), hold).is_ok());
 
-    let started = Instant::now();
     let not_run = run(
         &spec,
         &scratch,
@@ -51,16 +60,15 @@ fn a_start_that_outlives_the_timeout_is_killed_and_the_probe_is_not_run() {
         |_, _| Ok(()),
         |_, launcher| {
             // The outcome of the run is ignored: the timeout wins.
-            let _ = launcher.run("/bin/sleep", &["6"]);
+            let _ = launcher.run("/bin/sh", FINISH_LATE);
             Ok(true)
         },
     )
     .expect_err("a timed-out start is not a result");
     assert_eq!(not_run.to_string(), "not run: timed out after 1 s");
     assert!(
-        started.elapsed() < Duration::from_secs(4),
-        "the process was not killed at the timeout: {:?}",
-        started.elapsed()
+        !marker(&scratch).exists(),
+        "the process ran to its natural end, so it was not killed at the timeout"
     );
 }
 
@@ -101,25 +109,25 @@ fn the_timeout_wins_whatever_the_claim_returns_after_a_start_timed_out() {
     let claims: [(&str, Claim); 4] = [
         ("passes the error on as Broken", |_, launcher| {
             launcher
-                .run("/bin/sleep", &["6"])
+                .run("/bin/sh", FINISH_LATE)
                 .map_err(|err| Unmeasured::Broken(err.to_string()))?;
             Ok(true)
         }),
         ("returns Passed after the error", |_, launcher| {
-            let _ = launcher.run("/bin/sleep", &["6"]).is_err();
+            let _ = launcher.run("/bin/sh", FINISH_LATE).is_err();
             Ok(true)
         }),
         ("returns Failed after the error", |_, launcher| {
-            let _ = launcher.run("/bin/sleep", &["6"]).is_err();
+            let _ = launcher.run("/bin/sh", FINISH_LATE).is_err();
             Ok(false)
         }),
         ("names another reason", |_, launcher| {
-            let _ = launcher.run("/bin/sleep", &["6"]).is_err();
+            let _ = launcher.run("/bin/sh", FINISH_LATE).is_err();
             Err(Unmeasured::NeedsNetwork)
         }),
     ];
     for (what, claim) in claims {
-        let started = Instant::now();
+        let _ = fs::remove_file(marker(&scratch));
         let not_run = run(&spec, &scratch, today(), |_, _| Ok(()), claim)
             .expect_err("a timed-out start is not a result");
         assert_eq!(
@@ -128,8 +136,8 @@ fn the_timeout_wins_whatever_the_claim_returns_after_a_start_timed_out() {
             "a claim that {what}"
         );
         assert!(
-            started.elapsed() < Duration::from_secs(4),
-            "a claim that {what}: the process was not killed at the timeout"
+            !marker(&scratch).exists(),
+            "a claim that {what}: the process ran to its natural end, so it was not killed at the timeout"
         );
     }
 }
@@ -145,14 +153,13 @@ fn a_control_that_outlives_the_timeout_ends_timed_out_and_the_claim_is_never_cal
         .timeout(Duration::from_secs(1));
 
     let claimed = std::cell::Cell::new(false);
-    let started = Instant::now();
     let not_run = run(
         &spec,
         &scratch,
         today(),
         |_, launcher| {
             launcher
-                .run("/bin/sleep", &["6"])
+                .run("/bin/sh", FINISH_LATE)
                 .map(|_| ())
                 .map_err(|err| err.to_string())
         },
@@ -165,9 +172,8 @@ fn a_control_that_outlives_the_timeout_ends_timed_out_and_the_claim_is_never_cal
     assert_eq!(not_run.to_string(), "not run: timed out after 1 s");
     assert!(!claimed.get(), "the claim ran after the control timed out");
     assert!(
-        started.elapsed() < Duration::from_secs(4),
-        "the control's process was not killed at the timeout: {:?}",
-        started.elapsed()
+        !marker(&scratch).exists(),
+        "the control's process ran to its natural end, so it was not killed at the timeout"
     );
 
     // Control: a control that answers wrongly, fast, keeps its own words.
@@ -226,41 +232,49 @@ fn a_start_that_outlives_the_timeout_is_gone_afterwards() {
         "control: a killed process reads as gone"
     );
 
-    // A harness that records its own pid and then sleeps well past the timeout.
-    // The timeout also covers the version query, so it is long enough that a
-    // loaded machine does not cut that short before the hang start runs.
+    // A harness that records its own pid and then sleeps far past the timeout.
+    // The one timeout bounds two starts, the version query and the hang start,
+    // so it is long enough for both to get going on a loaded machine; the
+    // sleep is several times longer, so only the launcher's kill ends it.
     let scratch = ScratchHome::new().expect("scratch home");
     let bin = scratch.root().join("bin");
     fs::create_dir_all(&bin).expect("bin dir");
     let path = bin.join("fakeh");
     fs::write(
         &path,
-        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'fakeh 1.2.3'; exit 0; fi\necho $$ > \"$TMPDIR/hang.pid\"\nexec /bin/sleep 30\n",
+        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'fakeh 1.2.3'; exit 0; fi\necho $$ > \"$TMPDIR/hang.pid\"\nexec /bin/sleep 120\n",
     )
     .expect("script written");
     fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("chmod");
     let spec = Spec::new("demo-probe", "fakeh")
         .search_path(bin.as_os_str())
-        .timeout(Duration::from_secs(5));
+        .timeout(Duration::from_secs(15));
+    let claim_ran = std::cell::Cell::new(false);
     let not_run = run(
         &spec,
         &scratch,
         today(),
         |_, _| Ok(()),
         |harness, launcher| {
+            claim_ran.set(true);
             let _ = launcher.run(&harness.path, &["hang"]);
             Ok(true)
         },
     )
     .expect_err("a timed-out start is not a result");
-    assert_eq!(not_run.to_string(), "not run: timed out after 5 s");
+    assert_eq!(not_run.to_string(), "not run: timed out after 15 s");
+    assert!(
+        claim_ran.get(),
+        "the claim never ran: the version query outlived the timeout"
+    );
 
-    let pid =
-        fs::read_to_string(scratch.tmp().join("hang.pid")).expect("the harness wrote its pid, so its start ran and was not cut short by the version query timing out");
+    let pid = fs::read_to_string(scratch.tmp().join("hang.pid")).expect(
+        "the claim ran but the hang start wrote no pid: it was killed before its script started",
+    );
     let pid = pid.trim();
     assert!(!pid.is_empty());
     assert!(
-        gone_within(pid, Duration::from_secs(2)),
+        gone_within(pid, Duration::from_secs(20)),
         "the timed-out process {pid} is still running"
     );
 }
