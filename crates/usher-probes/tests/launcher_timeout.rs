@@ -118,3 +118,51 @@ fn the_timeout_wins_whatever_the_claim_returns_after_a_start_timed_out() {
         );
     }
 }
+
+// Any start the launcher kills reads "timed out", the control's included. A
+// control that simply gives the wrong answer keeps "the control failed".
+#[test]
+fn a_control_that_outlives_the_timeout_ends_timed_out_and_the_claim_is_never_called() {
+    let scratch = ScratchHome::new().expect("scratch home");
+    let bin = fake_harness(&scratch, "fakeh", "fakeh 1.2.3");
+    let spec = Spec::new("demo-probe", "fakeh")
+        .search_path(bin.as_os_str())
+        .timeout(Duration::from_secs(1));
+
+    let claimed = std::cell::Cell::new(false);
+    let started = Instant::now();
+    let not_run = run(
+        &spec,
+        &scratch,
+        today(),
+        |_, launcher| {
+            launcher
+                .run("/bin/sleep", &["6"])
+                .map(|_| ())
+                .map_err(|err| err.to_string())
+        },
+        |harness, launcher| {
+            claimed.set(true);
+            hold(harness, launcher)
+        },
+    )
+    .expect_err("a control that timed out is not a result");
+    assert_eq!(not_run.to_string(), "not run: timed out after 1 s");
+    assert!(!claimed.get(), "the claim ran after the control timed out");
+    assert!(
+        started.elapsed() < Duration::from_secs(4),
+        "the control's process was not killed at the timeout: {:?}",
+        started.elapsed()
+    );
+
+    // Control: a control that answers wrongly, fast, keeps its own words.
+    let wrong = run(
+        &spec,
+        &scratch,
+        today(),
+        |_, _| Err("it said no".to_string()),
+        hold,
+    )
+    .expect_err("a failed control is not a result");
+    assert_eq!(wrong.to_string(), "not run: the control failed: it said no");
+}
