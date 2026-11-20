@@ -291,3 +291,77 @@ fn a_refusal_shows_an_escape_in_a_note_keys_harness_prefix_as_text() {
         err.status()
     );
 }
+
+// F150, ruling 7.1 PR A, Q8: the version and every key-path segment refuse the
+// bidi format controls, and the error shows the value through the helper.
+// Every literal is an escape in the source.
+fn no_raw_bidi(err: &usher_core::UsherError) {
+    for value in [err.step(), err.check(), err.status(), err.next_action()] {
+        assert!(
+            !value.chars().any(|c| matches!(
+                u32::from(c),
+                0x200E | 0x200F | 0x202A..=0x202E | 0x2066..=0x2069
+            )),
+            "a raw direction control in {value:?}"
+        );
+    }
+}
+
+#[test]
+fn a_version_holding_a_bidi_control_is_refused_and_a_plain_one_is_not() {
+    // Control: plain ASCII versions pass.
+    for plain in ["2026.11", "v1", "draft for review"] {
+        assert!(Manifest::parse(&VALID.replace("2026.11", plain), "team/profiles/setup").is_ok());
+    }
+    let err = refusal(&VALID.replace("2026.11", "v\\u202Eb"));
+    no_raw_bidi(&err);
+    assert!(
+        err.check().contains("v\\u202Eb") || err.status().contains("v\\u202Eb"),
+        "{} / {}",
+        err.check(),
+        err.status()
+    );
+    assert!(err.check().contains("version"), "{}", err.check());
+}
+
+#[test]
+fn a_note_key_segment_holding_a_bidi_control_is_refused_quoted_or_not() {
+    // TOML decodes the first escape into the character itself; the second keeps
+    // a JSON escape in the segment for the key path to decode.
+    let cases = [
+        (
+            "a quoted segment",
+            "claude-code:a.\\\"b\\u2066c\\\"",
+            "\\u2066",
+        ),
+        (
+            "a quoted segment with a JSON escape",
+            "claude-code:a.\\\"b\\\\u2066c\\\"",
+            "\\u2066",
+        ),
+        (
+            "an unquoted segment",
+            "claude-code:a.b\\u2066c",
+            "b\\u2066c",
+        ),
+    ];
+    for (what, key, shown) in cases {
+        let err = refusal(&format!("{VALID}\n[notes]\n\"{key}\" = \"why\"\n"));
+        no_raw_bidi(&err);
+        assert_no_raw_escape(&err);
+        assert!(
+            err.check().contains(shown) || err.status().contains(shown),
+            "{what}: {} / {}",
+            err.check(),
+            err.status()
+        );
+    }
+    // Control: the same keys without the control are accepted.
+    for key in ["claude-code:a.\\\"b c\\\"", "claude-code:a.bc"] {
+        let text = format!("{VALID}\n[notes]\n\"{key}\" = \"why\"\n");
+        assert!(
+            Manifest::parse(&text, "team/profiles/setup").is_ok(),
+            "{key}"
+        );
+    }
+}
