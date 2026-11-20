@@ -1032,7 +1032,19 @@ fn the_policy_trait_has_a_private_supertrait() {
         source.contains("pub trait Policy: sealed::Sealed"),
         "Policy must name a private supertrait"
     );
-    assert!(source.contains("mod sealed {"), "the sealing module exists");
+    assert!(
+        source.contains("\nmod sealed {"),
+        "the sealing module exists and is private"
+    );
+    assert!(
+        !source.contains("pub mod sealed") && !source.contains("pub(crate) mod sealed"),
+        "the sealing module must stay private"
+    );
+    let lib = include_str!("../src/lib.rs");
+    assert!(
+        !lib.contains("sealed") && !lib.contains("Sealed"),
+        "lib.rs must not name the sealing trait or module"
+    );
 }
 
 // ---- header values ----
