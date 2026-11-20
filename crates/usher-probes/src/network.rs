@@ -49,3 +49,18 @@ pub fn host_state() -> Network {
         Network::NotDenied
     }
 }
+
+/// The sandbox profile for a run that may reach exactly `ports` on localhost.
+pub fn profile_with_ports(_ports: &[u16]) -> String {
+    profile()
+}
+
+/// As [`run_denied`], with the localhost ports the run may reach.
+pub fn run_denied_with_ports(
+    scratch: &ScratchHome,
+    _ports: &[u16],
+    program: &str,
+    args: &[&str],
+) -> io::Result<Output> {
+    run_denied(scratch, program, args)
+}

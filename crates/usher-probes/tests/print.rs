@@ -8,7 +8,7 @@ use std::process::{Command, Output};
 
 use common::fake_harness;
 use usher_probes::{
-    fragment::{Date, Network},
+    fragment::Date,
     run::{Spec, Unmeasured, run_or_panic},
 };
 use usher_testkit::ScratchHome;
@@ -32,18 +32,13 @@ fn child_runs_one_probe() {
     } else {
         fake_harness(&scratch, "fakeh", "fakeh 1.2.3")
     };
-    let spec = Spec {
-        name: "demo-probe",
-        binary: "fakeh",
-        search_path: Some(bin.as_os_str()),
-        network: Network::Denied,
-    };
+    let spec = Spec::new("demo-probe", "fakeh").search_path(bin.as_os_str());
     run_or_panic(
         &spec,
         &scratch,
         Date::new(2026, 11, 20).expect("a real date"),
-        |_| Ok(()),
-        |_| match mode.to_str() {
+        |_, _| Ok(()),
+        |_, _| match mode.to_str() {
             Some("needs-credentials") => Err(Unmeasured::NeedsCredentials),
             Some("needs-network") => Err(Unmeasured::NeedsNetwork),
             _ => Ok(true),

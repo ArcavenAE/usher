@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use common::fake_harness;
 use usher_probes::{
     codex_home::probe_home,
-    fragment::{Date, Network},
+    fragment::Date,
     run::{Spec, Unmeasured, run, run_or_panic},
 };
 use usher_testkit::ScratchHome;
@@ -18,12 +18,7 @@ fn today() -> Date {
 }
 
 fn spec<'a>(binary: &'a str, search: &'a std::ffi::OsStr) -> Spec<'a> {
-    Spec {
-        name: "demo-probe",
-        binary,
-        search_path: Some(search),
-        network: Network::Denied,
-    }
+    Spec::new("demo-probe", binary).search_path(search)
 }
 
 #[test]
@@ -35,11 +30,11 @@ fn the_control_runs_before_the_claim_and_a_pass_is_reported() {
         &spec("fakeh", bin.as_os_str()),
         &scratch,
         today(),
-        |_| {
+        |_, _| {
             order.borrow_mut().push("control");
             Ok(())
         },
-        |_| {
+        |_, _| {
             order.borrow_mut().push("claim");
             Ok(true)
         },
@@ -60,8 +55,8 @@ fn a_claim_that_does_not_hold_is_a_failed_result() {
         &spec("fakeh", bin.as_os_str()),
         &scratch,
         today(),
-        |_| Ok(()),
-        |_| Ok(false),
+        |_, _| Ok(()),
+        |_, _| Ok(false),
     )
     .expect("a refuted claim with a held control still produces a result");
     assert!(
@@ -80,8 +75,8 @@ fn a_failed_control_is_not_run_and_the_claim_is_never_called() {
         &spec("fakeh", bin.as_os_str()),
         &scratch,
         today(),
-        |_| Err("the control read no rules".to_string()),
-        |_| {
+        |_, _| Err("the control read no rules".to_string()),
+        |_, _| {
             *claim_called.borrow_mut() = true;
             Ok(true)
         },
@@ -107,8 +102,8 @@ fn run_unmeasured(why: Unmeasured) -> usher_probes::run::NotRun {
         &spec("fakeh", bin.as_os_str()),
         &scratch,
         today(),
-        |_| Ok(()),
-        |_| Err(why),
+        |_, _| Ok(()),
+        |_, _| Err(why),
     )
     .expect_err("an unmeasurable claim is not a result")
 }
@@ -122,8 +117,8 @@ fn panic_text(why: Unmeasured) -> String {
             &spec("fakeh", bin.as_os_str()),
             &scratch,
             today(),
-            |_| Ok(()),
-            |_| Err(why),
+            |_, _| Ok(()),
+            |_, _| Err(why),
         )
     }));
     let payload = caught.expect_err("a probe that cannot run must panic");
@@ -178,11 +173,11 @@ fn a_missing_binary_is_not_run_and_neither_closure_runs() {
         &spec("usher-no-such-harness", empty.as_os_str()),
         &scratch,
         today(),
-        |_| {
+        |_, _| {
             *called.borrow_mut() = true;
             Ok(())
         },
-        |_| {
+        |_, _| {
             *called.borrow_mut() = true;
             Ok(true)
         },
@@ -203,8 +198,8 @@ fn a_version_line_with_no_version_in_it_is_not_run() {
         &spec("fakeh", bin.as_os_str()),
         &scratch,
         today(),
-        |_| Ok(()),
-        |_| Ok(true),
+        |_, _| Ok(()),
+        |_, _| Ok(true),
     )
     .expect_err("a version that cannot be read is not a result");
     assert!(not_run.reason().contains("version"), "{not_run}");
@@ -219,15 +214,15 @@ fn the_closures_get_the_bare_version_the_path_and_the_scratch_home() {
         &spec("fakeh", bin.as_os_str()),
         &scratch,
         today(),
-        |harness| {
+        |harness, launcher| {
             *seen.borrow_mut() = Some((
                 harness.version.clone(),
                 harness.path.clone(),
-                harness.scratch.root().to_path_buf(),
+                launcher.scratch_root().to_path_buf(),
             ));
             Ok(())
         },
-        |_| Ok(true),
+        |_, _| Ok(true),
     )
     .expect("a pass");
     let (version, path, root) = seen.borrow().clone().expect("the control saw the harness");
@@ -246,8 +241,8 @@ fn run_or_panic_panics_with_the_not_run_reason() {
         &spec("usher-no-such-harness", empty.as_os_str()),
         &scratch,
         today(),
-        |_| Ok(()),
-        |_| Ok(true),
+        |_, _| Ok(()),
+        |_, _| Ok(true),
     );
 }
 
@@ -259,8 +254,8 @@ fn run_or_panic_returns_the_fragment_when_the_probe_ran() {
         &spec("fakeh", bin.as_os_str()),
         &scratch,
         today(),
-        |_| Ok(()),
-        |_| Ok(true),
+        |_, _| Ok(()),
+        |_, _| Ok(true),
     );
     assert!(fragment.render().contains(r#"version = "1.2.3""#));
 }

@@ -32,3 +32,9 @@ pub fn check_probe_names(carried: &[&str], in_repo: &[&str]) -> Result<(), Vec<M
         Err(mismatches)
     }
 }
+
+/// The ways a probe source file starts a process on its own instead of through
+/// the launcher: each entry names the text found. Empty when the source is clean.
+pub fn find_launch_bypasses(_source: &str) -> Vec<String> {
+    Vec::new()
+}

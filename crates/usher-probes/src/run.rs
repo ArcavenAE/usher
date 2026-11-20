@@ -1,10 +1,20 @@
 //! The probe runner: find the harness, check the control, then the claim.
 
-use std::{ffi::OsStr, fmt, path::PathBuf};
+use std::{
+    cell::Cell,
+    ffi::OsStr,
+    fmt, io,
+    path::{Path, PathBuf},
+    process::Output,
+    time::Duration,
+};
 
 use usher_testkit::{Probe, ScratchHome, probe};
 
-use crate::fragment::{Date, Fragment, Network, Outcome, bare_version};
+use crate::{
+    fragment::{Date, Fragment, Network, Outcome, bare_version},
+    network::host_state,
+};
 
 /// Why a claim could not be measured.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,19 +43,75 @@ pub struct Spec<'a> {
     pub binary: &'a str,
     /// Where to look for it; `PATH` when `None`.
     pub search_path: Option<&'a OsStr>,
-    /// The network state the run is under, recorded in the fragment.
-    pub network: Network,
+    /// The localhost ports a run may reach; none by default.
+    pub localhost_ports: &'a [u16],
+    /// How long a started process may run before it is killed.
+    pub timeout: Duration,
 }
 
 /// The harness a probe runs against.
 #[derive(Debug)]
-pub struct Harness<'a> {
+pub struct Harness {
     /// Where the binary was found.
     pub path: PathBuf,
     /// Its bare version number.
     pub version: String,
-    /// The scratch home it runs under.
-    pub scratch: &'a ScratchHome,
+}
+
+/// The only way a probe starts a process.
+#[derive(Debug)]
+pub struct Launcher<'a> {
+    scratch: &'a ScratchHome,
+    starts: Cell<usize>,
+}
+
+impl<'a> Spec<'a> {
+    /// A spec with no search path, no localhost ports and the default timeout.
+    pub fn new(name: &'a str, binary: &'a str) -> Spec<'a> {
+        Spec {
+            name,
+            binary,
+            search_path: None,
+            localhost_ports: &[],
+            timeout: Duration::ZERO,
+        }
+    }
+
+    /// Looks for the binary on `path` instead of `PATH`.
+    pub fn search_path(mut self, path: &'a OsStr) -> Spec<'a> {
+        self.search_path = Some(path);
+        self
+    }
+
+    /// Allows the run to reach exactly these localhost ports.
+    pub fn localhost_ports(mut self, ports: &'a [u16]) -> Spec<'a> {
+        self.localhost_ports = ports;
+        self
+    }
+
+    /// Kills a started process that outlives `timeout`.
+    pub fn timeout(mut self, timeout: Duration) -> Spec<'a> {
+        self.timeout = timeout;
+        self
+    }
+}
+
+impl Launcher<'_> {
+    /// Starts `program` with `args` and returns its output.
+    pub fn run(&self, program: impl AsRef<OsStr>, args: &[&str]) -> io::Result<Output> {
+        self.starts.set(self.starts.get() + 1);
+        self.scratch.command(program).args(args).output()
+    }
+
+    /// How many processes this launcher has started.
+    pub fn starts(&self) -> usize {
+        self.starts.get()
+    }
+
+    /// The scratch home's root, for a probe that writes its own files.
+    pub fn scratch_root(&self) -> &Path {
+        self.scratch.root()
+    }
 }
 
 impl fmt::Display for Unmeasured {
@@ -92,8 +158,25 @@ pub fn run<C, K>(
     claim: K,
 ) -> Result<Fragment, NotRun>
 where
-    C: FnOnce(&Harness<'_>) -> Result<(), String>,
-    K: FnOnce(&Harness<'_>) -> Result<bool, Unmeasured>,
+    C: FnOnce(&Harness, &Launcher<'_>) -> Result<(), String>,
+    K: FnOnce(&Harness, &Launcher<'_>) -> Result<bool, Unmeasured>,
+{
+    run_with_host_state(host_state(), spec, scratch, today, control, claim)
+}
+
+/// As [`run`], on a host that is taken to deny the network or not. This is the
+/// seam a test uses to check what the fragment says on a host that cannot.
+pub fn run_with_host_state<C, K>(
+    host: Network,
+    spec: &Spec<'_>,
+    scratch: &ScratchHome,
+    today: Date,
+    control: C,
+    claim: K,
+) -> Result<Fragment, NotRun>
+where
+    C: FnOnce(&Harness, &Launcher<'_>) -> Result<(), String>,
+    K: FnOnce(&Harness, &Launcher<'_>) -> Result<bool, Unmeasured>,
 {
     let (path, version_line) = match probe(spec.binary, spec.search_path, scratch) {
         Probe::Found { path, version } => (path, version),
@@ -105,22 +188,22 @@ where
             spec.binary
         ))));
     };
-    let harness = Harness {
-        path,
-        version,
+    let harness = Harness { path, version };
+    let launcher = Launcher {
         scratch,
+        starts: Cell::new(0),
     };
 
-    control(&harness)
+    control(&harness, &launcher)
         .map_err(|text| NotRun::new(Unmeasured::Broken(format!("the control failed: {text}"))))?;
-    let held = claim(&harness).map_err(NotRun::new)?;
+    let held = claim(&harness, &launcher).map_err(NotRun::new)?;
 
     let outcome = if held {
         Outcome::Passed
     } else {
         Outcome::Failed
     };
-    Fragment::new(&harness.version, outcome, today, spec.network)
+    Fragment::new(&harness.version, outcome, today, host)
         .map_err(|err| NotRun::new(Unmeasured::Broken(err.to_string())))
 }
 
@@ -135,8 +218,8 @@ pub fn run_or_panic<C, K>(
     claim: K,
 ) -> Fragment
 where
-    C: FnOnce(&Harness<'_>) -> Result<(), String>,
-    K: FnOnce(&Harness<'_>) -> Result<bool, Unmeasured>,
+    C: FnOnce(&Harness, &Launcher<'_>) -> Result<(), String>,
+    K: FnOnce(&Harness, &Launcher<'_>) -> Result<bool, Unmeasured>,
 {
     match run(spec, scratch, today, control, claim) {
         Ok(fragment) => {
