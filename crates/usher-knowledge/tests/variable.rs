@@ -95,12 +95,38 @@ fn only_a_paths_item_may_carry_a_variable() {
 
 #[test]
 fn a_variable_name_is_upper_case_letters_digits_and_underscores() {
-    for bad in ["demo_config_dir", "1DEMO", "DEMO-DIR", "DEMO DIR", ""] {
+    for bad in [
+        "demo_config_dir",
+        "1DEMO",
+        "_DEMO",
+        "DEMO-DIR",
+        "DEMO DIR",
+        "",
+    ] {
         let text = with_variable(&format!(
             r#"variable = {{ name = "{bad}", binds = "${{CONFIG_DIR}}", default = "${{HOME}}/.demo" }}"#
         ));
         rejects(&text, &["demo.config-dir-variable", "name"]);
     }
+}
+
+#[test]
+fn a_name_may_hold_digits_after_its_first_letter() {
+    let text = with_variable(
+        r#"variable = { name = "DEMO2_DIR", binds = "${CONFIG_DIR}", default = "${HOME}/.demo" }"#,
+    );
+    let parsed = KnowledgeFile::parse(&text).expect("DEMO2_DIR is a valid name");
+    assert_eq!(
+        parsed.items()[0].variable().map(|v| v.name()),
+        Some("DEMO2_DIR")
+    );
+}
+
+#[test]
+fn a_source_without_the_config_dir_token_needs_no_binder() {
+    let source = SOURCE.replace("${CONFIG_DIR}/settings.json", "${HOME}/.demo.json");
+    let parsed = KnowledgeFile::parse(&file(&[&source])).expect("no binder is needed");
+    assert_eq!(parsed.items().len(), 1);
 }
 
 #[test]
