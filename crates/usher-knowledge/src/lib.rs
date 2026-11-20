@@ -20,7 +20,8 @@ mod build_keys;
 
 pub use schema::{
     Binding, Class, Date, Item, KnowledgeFile, KnowledgeVersion, LaunchVariable, Layer, Platform,
-    ReadRule, Reference, ReferenceKind, SourceFact, SourceLayer, VersionFrom, VersionRule,
+    ReadRule, Reference, ReferenceKind, SeatFact, SeatPart, SeatRead, SourceFact, SourceLayer,
+    VersionFrom, VersionRule,
 };
 pub use support::{Capability, SupportReport};
 pub use trust::TrustedKeys;

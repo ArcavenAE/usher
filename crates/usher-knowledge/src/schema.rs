@@ -19,7 +19,7 @@ use crate::version::{Version, VersionRange};
 const EMBEDDED: &str = include_str!("../knowledge/harness-knowledge.toml");
 
 /// The only schema version this build reads.
-const SUPPORTED_SCHEMA: u32 = 3;
+const SUPPORTED_SCHEMA: u32 = 4;
 
 const STEP: &str = "load harness knowledge";
 const NEXT: &str =
@@ -69,6 +69,8 @@ pub enum Class {
     NeverCall,
     /// Claims whose sources disagree (fast).
     Disputed,
+    /// The parts of the seat around a harness (slow).
+    Seat,
 }
 
 impl Class {
@@ -83,6 +85,7 @@ impl Class {
             "hazards" => Some(Class::Hazards),
             "never-call" => Some(Class::NeverCall),
             "disputed" => Some(Class::Disputed),
+            "seat" => Some(Class::Seat),
             _ => None,
         }
     }
@@ -90,7 +93,11 @@ impl Class {
     /// The layer this class belongs to.
     pub fn layer(self) -> Layer {
         match self {
-            Class::Layers | Class::Paths | Class::Sources | Class::CredentialStores => Layer::Slow,
+            Class::Layers
+            | Class::Paths
+            | Class::Sources
+            | Class::CredentialStores
+            | Class::Seat => Layer::Slow,
             Class::Keys | Class::Defaults | Class::Hazards | Class::NeverCall | Class::Disputed => {
                 Layer::Fast
             }
@@ -212,13 +219,24 @@ impl ReadRule {
 }
 
 /// The tokens a source path may contain; each resolves per launch environment.
-const PATH_TOKENS: [&str; 5] = [
+const PATH_TOKENS: [&str; 6] = [
     "${HOME}",
     "${CONFIG_DIR}",
+    "${GLOBAL_STATE_DIR}",
     "${REPO}",
     "${LAUNCH_DIR}",
     "${USER}",
 ];
+
+/// The tokens a launch variable may bind.
+const BINDABLE_TOKENS: [&str; 2] = ["${CONFIG_DIR}", "${GLOBAL_STATE_DIR}"];
+
+/// The only tokens a binder's default may use.
+const DEFAULT_TOKENS: [&str; 2] = ["${HOME}", "${USER}"];
+
+/// Keys knowledge marks as credentials: no key path may start at or pass through one,
+/// and one may be named only in the `keys` of a `keys-present` read, at top level.
+const CREDENTIAL_KEYS: [&str; 1] = ["oauthAccount"];
 
 /// What harness knowledge says about one settings source.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -277,6 +295,123 @@ impl SourceFact {
     }
 }
 
+/// Which part of the seat around a harness an item describes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SeatPart {
+    /// MCP server registrations.
+    Mcp,
+    /// Installed packs.
+    Packs,
+    /// Client config for fleet tools.
+    FleetClient,
+    /// The backend and auth route.
+    AuthRoute,
+    /// The toolchain declaration.
+    Toolchain,
+}
+
+/// How much of a seat part may be read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SeatRead {
+    /// A file or directory exists.
+    Presence,
+    /// The entry names of one directory, one level deep.
+    Listing,
+    /// Key names at the listed key paths of a JSON file.
+    Names,
+    /// The presence of the listed environment variables.
+    Env,
+    /// Whether a JSON file's top-level object has each listed key, nothing under it read.
+    KeysPresent,
+}
+
+/// What harness knowledge says about one part of the seat.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeatFact {
+    part: SeatPart,
+    read: SeatRead,
+    path: Option<String>,
+    key_paths: Vec<String>,
+    keys: Vec<String>,
+    variables: Vec<String>,
+    platforms: Option<Vec<Platform>>,
+}
+
+impl SeatPart {
+    fn parse(name: &str) -> Option<Self> {
+        match name {
+            "mcp" => Some(SeatPart::Mcp),
+            "packs" => Some(SeatPart::Packs),
+            "fleet-client" => Some(SeatPart::FleetClient),
+            "auth-route" => Some(SeatPart::AuthRoute),
+            "toolchain" => Some(SeatPart::Toolchain),
+            _ => None,
+        }
+    }
+}
+
+impl SeatRead {
+    fn parse(name: &str) -> Option<Self> {
+        match name {
+            "presence" => Some(SeatRead::Presence),
+            "listing" => Some(SeatRead::Listing),
+            "names" => Some(SeatRead::Names),
+            "env" => Some(SeatRead::Env),
+            "keys-present" => Some(SeatRead::KeysPresent),
+            _ => None,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            SeatRead::Presence => "presence",
+            SeatRead::Listing => "listing",
+            SeatRead::Names => "names",
+            SeatRead::Env => "env",
+            SeatRead::KeysPresent => "keys-present",
+        }
+    }
+}
+
+impl SeatFact {
+    /// The part of the seat.
+    pub fn part(&self) -> SeatPart {
+        self.part
+    }
+
+    /// How much may be read.
+    pub fn read(&self) -> SeatRead {
+        self.read
+    }
+
+    /// The path pattern; absent for an environment read.
+    pub fn path(&self) -> Option<&str> {
+        self.path.as_deref()
+    }
+
+    /// The key paths whose names are read, `*` standing for one level.
+    pub fn key_paths(&self) -> &[String] {
+        &self.key_paths
+    }
+
+    /// The top-level keys whose membership is read.
+    pub fn keys(&self) -> &[String] {
+        &self.keys
+    }
+
+    /// The environment variables whose presence is read.
+    pub fn variables(&self) -> &[String] {
+        &self.variables
+    }
+
+    /// The platforms the item applies on; `None` means every platform.
+    pub fn platforms(&self) -> Option<&[Platform]> {
+        self.platforms.as_deref()
+    }
+}
+
 /// One fact about a harness, with its source and the date it was last verified.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
@@ -292,6 +427,7 @@ pub struct Item {
     keys: Vec<String>,
     version_from: Option<VersionFrom>,
     variable: Option<LaunchVariable>,
+    seat: Option<SeatFact>,
 }
 
 /// How a harness version is read from disk without running the harness.
@@ -395,6 +531,11 @@ impl Item {
     /// The setting names a `keys` item lists, empty for every other class.
     pub fn keys(&self) -> &[String] {
         &self.keys
+    }
+
+    /// The seat fact, for an item of class `seat`.
+    pub fn seat(&self) -> Option<&SeatFact> {
+        self.seat.as_ref()
     }
 
     /// The settings-source fact, for an item of class `sources`.
@@ -856,8 +997,6 @@ fn parse_platforms(
     Ok(Some(platforms))
 }
 
-const CONFIG_DIR_TOKEN: &str = "${CONFIG_DIR}";
-
 fn parse_variable(table: &dyn TableLike, owner: &str) -> Result<LaunchVariable, UsherError> {
     let variable = table
         .get("variable")
@@ -885,10 +1024,13 @@ fn parse_variable(table: &dyn TableLike, owner: &str) -> Result<LaunchVariable, 
         None => None,
         Some(_) => {
             let token = text_field(variable, "binds", &owner)?;
-            if token != CONFIG_DIR_TOKEN {
+            if !BINDABLE_TOKENS.contains(&token) {
                 return Err(fail(
                     format!("{owner}: binds"),
-                    format!("`{token}` cannot be bound; only {CONFIG_DIR_TOKEN} can"),
+                    format!(
+                        "`{token}` cannot be bound; only {} can",
+                        BINDABLE_TOKENS.join(" and ")
+                    ),
                 ));
             }
             Some(token.to_string())
@@ -915,17 +1057,223 @@ fn parse_variable(table: &dyn TableLike, owner: &str) -> Result<LaunchVariable, 
     }
     if let Some(default) = &default {
         check_path(default, &owner, "default", &[])?;
-        if default.contains(CONFIG_DIR_TOKEN) {
-            return Err(fail(
-                format!("{owner}: default"),
-                format!("`{default}` names {CONFIG_DIR_TOKEN}, the token it is the default of"),
-            ));
+        for token in PATH_TOKENS {
+            if default.contains(token) && !DEFAULT_TOKENS.contains(&token) {
+                return Err(fail(
+                    format!("{owner}: default"),
+                    format!(
+                        "`{default}` uses {token}; a default may use only {}",
+                        DEFAULT_TOKENS.join(" and ")
+                    ),
+                ));
+            }
         }
     }
     Ok(LaunchVariable {
         name: name.to_string(),
         binds,
         default,
+    })
+}
+
+/// A key path is names joined by dots; `*` stands for exactly one whole level. No path
+/// may start at or pass through a credential key, and a leading `*` could reach one.
+fn check_key_path(path: &str, owner: &str) -> Result<(), UsherError> {
+    let bad = |why: String| fail(format!("{owner}: key_paths"), format!("`{path}` {why}"));
+    if path.is_empty() {
+        return Err(fail(
+            format!("{owner}: key_paths"),
+            "a key path is empty".to_string(),
+        ));
+    }
+    for (index, segment) in path.split('.').enumerate() {
+        let plain = !segment.is_empty()
+            && segment
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+        if segment != "*" && !plain {
+            return Err(bad(
+                "is not names joined by dots; `*` must be a whole level on its own".to_string(),
+            ));
+        }
+        if CREDENTIAL_KEYS.contains(&segment) {
+            return Err(bad(format!(
+                "starts at or passes through the credential key `{segment}`"
+            )));
+        }
+        if index == 0 && segment == "*" {
+            return Err(bad(
+                "starts with `*`, which could reach a credential key".to_string()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn string_list(
+    seat: &dyn TableLike,
+    key: &str,
+    owner: &str,
+) -> Result<Option<Vec<String>>, UsherError> {
+    let Some(entry) = seat.get(key) else {
+        return Ok(None);
+    };
+    let list = entry.as_array().ok_or_else(|| {
+        fail(
+            format!("{owner}: {key}"),
+            format!("`{key}` must be a list of strings"),
+        )
+    })?;
+    let mut values = Vec::new();
+    for value in list {
+        let text = value.as_str().ok_or_else(|| {
+            fail(
+                format!("{owner}: {key}"),
+                format!("every entry of `{key}` must be a string"),
+            )
+        })?;
+        values.push(text.to_string());
+    }
+    Ok(Some(values))
+}
+
+fn parse_seat(table: &dyn TableLike, owner: &str) -> Result<SeatFact, UsherError> {
+    let seat = table
+        .get("seat")
+        .and_then(TomlItem::as_table_like)
+        .ok_or_else(|| {
+            fail(
+                format!("{owner}: seat"),
+                "an item of class `seat` needs a `seat` table (part, path, read)",
+            )
+        })?;
+    let owner = format!("{owner} seat");
+    reject_unknown_keys(
+        seat,
+        &[
+            "part",
+            "path",
+            "read",
+            "key_paths",
+            "keys",
+            "variables",
+            "platforms",
+        ],
+        &owner,
+    )?;
+    let part_name = text_field(seat, "part", &owner)?;
+    let part = SeatPart::parse(part_name).ok_or_else(|| {
+        fail(
+            format!("{owner}: part"),
+            format!("`{part_name}` is not one of mcp, packs, fleet-client, auth-route, toolchain"),
+        )
+    })?;
+    let read_name = text_field(seat, "read", &owner)?;
+    let read = SeatRead::parse(read_name).ok_or_else(|| {
+        fail(
+            format!("{owner}: read"),
+            format!("`{read_name}` is not one of presence, listing, names, env, keys-present"),
+        )
+    })?;
+    let path = match (read, seat.get("path")) {
+        (SeatRead::Env, Some(_)) => {
+            return Err(fail(
+                format!("{owner}: path"),
+                "a read of `env` has no `path`; it reads environment variables",
+            ));
+        }
+        (SeatRead::Env, None) => None,
+        (_, None) => {
+            return Err(fail(
+                format!("{owner}: path"),
+                format!("a read of `{}` needs a `path`", read.name()),
+            ));
+        }
+        (_, Some(_)) => {
+            let path = text_field(seat, "path", &owner)?;
+            check_path(path, &owner, "path", &[])?;
+            Some(path.to_string())
+        }
+    };
+    // Each list belongs to one read rule and to no other.
+    for (key, belongs) in [
+        ("key_paths", SeatRead::Names),
+        ("keys", SeatRead::KeysPresent),
+        ("variables", SeatRead::Env),
+    ] {
+        if seat.contains_key(key) && read != belongs {
+            return Err(fail(
+                format!("{owner}: {key}"),
+                format!(
+                    "`{key}` belongs to read `{}`, not `{}`",
+                    belongs.name(),
+                    read.name()
+                ),
+            ));
+        }
+    }
+    let list = |key: &str, belongs: SeatRead| -> Result<Vec<String>, UsherError> {
+        if read != belongs {
+            return Ok(Vec::new());
+        }
+        let values = string_list(seat, key, &owner)?.unwrap_or_default();
+        if values.is_empty() {
+            return Err(fail(
+                format!("{owner}: {key}"),
+                format!(
+                    "a read of `{}` needs a non-empty `{key}` list",
+                    belongs.name()
+                ),
+            ));
+        }
+        Ok(values)
+    };
+    let key_paths = list("key_paths", SeatRead::Names)?;
+    for path in &key_paths {
+        check_key_path(path, &owner)?;
+    }
+    let keys = list("keys", SeatRead::KeysPresent)?;
+    for (index, key) in keys.iter().enumerate() {
+        let plain = !key.is_empty()
+            && key
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+        if !plain {
+            return Err(fail(
+                format!("{owner}: keys"),
+                format!("`{key}` is not a plain top-level key name: no dot, no `*`, not empty"),
+            ));
+        }
+        if keys[..index].contains(key) {
+            return Err(fail(
+                format!("{owner}: keys"),
+                format!("`{key}` is listed twice"),
+            ));
+        }
+    }
+    let variables = list("variables", SeatRead::Env)?;
+    for name in &variables {
+        let mut chars = name.chars();
+        let ok = chars.next().is_some_and(|c| c.is_ascii_uppercase())
+            && chars.all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
+        if !ok {
+            return Err(fail(
+                format!("{owner}: variables"),
+                format!(
+                    "`{name}` is not a variable name: upper-case letters, digits and underscores, starting with a letter"
+                ),
+            ));
+        }
+    }
+    let platforms = parse_platforms(seat, &owner)?;
+    Ok(SeatFact {
+        part,
+        read,
+        path,
+        key_paths,
+        keys,
+        variables,
+        platforms,
     })
 }
 
@@ -947,6 +1295,7 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
             "keys",
             "version_from",
             "variable",
+            "seat",
         ],
         &owner,
     )?;
@@ -1011,6 +1360,16 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
     } else {
         None
     };
+    let seat = if class == Class::Seat {
+        Some(parse_seat(table, &owner)?)
+    } else if table.contains_key("seat") {
+        return Err(fail(
+            format!("{owner}: seat"),
+            format!("only items of class `seat` carry a `seat` table, not `{class_name}`"),
+        ));
+    } else {
+        None
+    };
     Ok(Item {
         id: id.to_string(),
         harness: harness.to_string(),
@@ -1024,12 +1383,13 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
         keys,
         version_from,
         variable,
+        seat,
     })
 }
 
-/// Cross-item checks on launch variables: no two items of a harness name the same
-/// variable or bind the same token over versions that overlap, and every source that
-/// uses the config-directory token has a binder for exactly its versions.
+/// Cross-item checks on launch variables: no two items of a harness bind the same token
+/// over versions that overlap (one variable may bind two tokens), and every source or
+/// seat path that uses a bindable token has a binder of it over the same versions.
 fn check_variables(items: &[Item]) -> Result<(), UsherError> {
     let binders: Vec<(&Item, &LaunchVariable)> = items
         .iter()
@@ -1040,18 +1400,11 @@ fn check_variables(items: &[Item]) -> Result<(), UsherError> {
             if first.harness != second.harness || !first.versions.overlaps(&second.versions) {
                 continue;
             }
-            let clash = if one.name == two.name {
-                Some(format!("the variable `{}`", one.name))
-            } else if one.binds.is_some() && one.binds == two.binds {
-                Some(format!("the token `{}`", CONFIG_DIR_TOKEN))
-            } else {
-                None
-            };
-            if let Some(clash) = clash {
+            if let (Some(token), true) = (&one.binds, one.binds == two.binds) {
                 return Err(fail(
                     format!("item `{}`", second.id),
                     format!(
-                        "items `{}` and `{}` both name {clash} over versions that overlap",
+                        "items `{}` and `{}` both bind the token `{token}` over versions that overlap",
                         first.id, second.id
                     ),
                 ));
@@ -1059,21 +1412,64 @@ fn check_variables(items: &[Item]) -> Result<(), UsherError> {
         }
     }
     for item in items {
-        let Some(source) = &item.source else { continue };
-        if !source.path.contains(CONFIG_DIR_TOKEN) {
+        let path = match (&item.source, &item.seat) {
+            (Some(source), _) => Some((source.path.as_str(), "source")),
+            (None, Some(seat)) => seat.path.as_deref().map(|path| (path, "seat")),
+            _ => None,
+        };
+        let Some((path, what)) = path else { continue };
+        for token in BINDABLE_TOKENS {
+            if !path.contains(token) {
+                continue;
+            }
+            let bound = binders.iter().any(|(binder, variable)| {
+                binder.harness == item.harness
+                    && variable.binds.as_deref() == Some(token)
+                    && binder.versions.same_versions(&item.versions)
+            });
+            if !bound {
+                return Err(fail(
+                    format!("item `{}`", item.id),
+                    format!(
+                        "the {what} path uses {token}, and no `paths` item of harness `{}` binds it over the same versions as this item",
+                        item.harness
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A file a `keys-present` item reads must be one a `sources` item or a `names` seat item
+/// of the same harness already names, over versions that overlap. Only those make it a
+/// known JSON file; a `keys-present` read reads membership and confers no such standing.
+fn check_anchors(items: &[Item]) -> Result<(), UsherError> {
+    for item in items {
+        let Some(seat) = &item.seat else { continue };
+        if seat.read != SeatRead::KeysPresent {
             continue;
         }
-        let bound = binders.iter().any(|(binder, variable)| {
-            binder.harness == item.harness
-                && variable.binds.as_deref() == Some(CONFIG_DIR_TOKEN)
-                && binder.versions.same_versions(&item.versions)
+        let Some(path) = seat.path.as_deref() else {
+            continue;
+        };
+        let anchored = items.iter().any(|other| {
+            other.id != item.id
+                && other.harness == item.harness
+                && other.versions.overlaps(&item.versions)
+                && (other
+                    .source
+                    .as_ref()
+                    .is_some_and(|source| source.path == path)
+                    || other.seat.as_ref().is_some_and(|fact| {
+                        fact.read == SeatRead::Names && fact.path.as_deref() == Some(path)
+                    }))
         });
-        if !bound {
+        if !anchored {
             return Err(fail(
-                format!("item `{}`", item.id),
+                format!("item `{}`: path", item.id),
                 format!(
-                    "the source path uses {CONFIG_DIR_TOKEN}, and no `paths` item of harness `{}` binds it over the same versions as this item",
-                    item.harness
+                    "no sources or names item names `{path}`; name that file with a `sources` item or a `names` seat item of the same harness over overlapping versions"
                 ),
             ));
         }
@@ -1159,6 +1555,7 @@ impl KnowledgeFile {
             items.push(item);
         }
         check_variables(&items)?;
+        check_anchors(&items)?;
         let mut support = Vec::new();
         for (index, table) in tables(&doc, "support")?.into_iter().enumerate() {
             support.push(parse_support(table, index + 1)?);
@@ -1189,18 +1586,18 @@ impl KnowledgeFile {
     }
 
     /// The launch variable names harness knowledge lists for `harness` across every
-    /// version range, sorted and without repeats. Every caller keys an environment from
-    /// this one lookup (AD-17), so the key does not move with the harness version.
+    /// version range, sorted and without repeats, for the variables that bind a path
+    /// token. A variable that moves no path is never part of a key. Every caller keys an
+    /// environment from this one lookup (AD-17), so the key does not move with the
+    /// harness version.
     pub fn launch_variables(&self, harness: &str) -> Vec<&str> {
         let mut names: Vec<&str> = self
             .items
             .iter()
             .filter(|item| item.harness == harness)
-            .filter_map(|item| {
-                item.variable
-                    .as_ref()
-                    .map(|variable| variable.name.as_str())
-            })
+            .filter_map(|item| item.variable.as_ref())
+            .filter(|variable| variable.binds.is_some())
+            .map(|variable| variable.name.as_str())
             .collect();
         names.sort_unstable();
         names.dedup();
@@ -1256,7 +1653,7 @@ mod tests {
     use super::*;
 
     const VALID: &str = r#"
-schema_version = 3
+schema_version = 4
 sequence = 7
 
 [[item]]
@@ -1390,7 +1787,7 @@ capabilities = ["inventory", "map"]
             &VALID.replace("sequence = 7", "sequence = \"seven\""),
             "sequence",
         );
-        rejects(&VALID.replace("schema_version = 3\n", ""), "schema_version");
+        rejects(&VALID.replace("schema_version = 4\n", ""), "schema_version");
     }
 
     #[test]
@@ -1400,15 +1797,15 @@ capabilities = ["inventory", "map"]
 
     #[test]
     fn items_must_be_tables() {
-        rejects("schema_version = 3\nsequence = 1\nitem = 3\n", "[[item]]");
+        rejects("schema_version = 4\nsequence = 1\nitem = 3\n", "[[item]]");
     }
 
     #[test]
     fn the_file_reports_its_version() {
         let file = KnowledgeFile::parse(VALID).expect("valid");
         assert_eq!(file.version().sequence(), 7);
-        assert_eq!(file.version().schema_version(), 3);
-        assert_eq!(file.version().to_string(), "knowledge v7 (schema 3)");
+        assert_eq!(file.version().schema_version(), 4);
+        assert_eq!(file.version().to_string(), "knowledge v7 (schema 4)");
     }
 
     #[test]
@@ -1431,7 +1828,7 @@ capabilities = ["inventory", "map"]
         assert!(lines.contains(&"demo 1.5.0: apply unsupported".to_string()));
         assert_eq!(
             lines.last().map(String::as_str),
-            Some("knowledge v7 (schema 3)")
+            Some("knowledge v7 (schema 4)")
         );
     }
 
