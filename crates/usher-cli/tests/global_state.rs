@@ -198,3 +198,58 @@ fn a_relative_variable_stores_the_unplaceable_item_with_no_flag_and_its_reason()
     assert!(row.names.is_empty() && row.members.is_empty());
     assert_eq!(row.note.as_deref(), Some(REASON));
 }
+
+#[test]
+fn the_not_checked_lines_name_the_variable_and_never_its_value() {
+    let rig = Rig::new();
+    rig.global_in_home();
+    let out = rig.run(&rig.env(Some("relative/dir")));
+    let seat = out
+        .lines()
+        .find(|l| l.ends_with(&format!("(knowledge item {ACCOUNT_ITEM})")))
+        .unwrap_or_else(|| panic!("no seat line for the account item in:\n{out}"));
+    let source = out
+        .lines()
+        .find(|l| l.starts_with("not checked: global state"))
+        .unwrap_or_else(|| panic!("no not-checked source line in:\n{out}"));
+    for line in [seat, source] {
+        assert!(line.contains("CLAUDE_CONFIG_DIR"), "{line}");
+        assert!(!line.contains("relative/dir"), "{line}");
+    }
+}
+
+#[test]
+fn no_seat_column_holds_the_relative_value() {
+    let rig = Rig::new();
+    rig.global_in_home();
+    rig.run(&rig.env(Some("relative/dir")));
+    let store = Store::open(&rig.env(None).state_dir).expect("the store opens");
+    let runs = store.runs().expect("runs");
+    let rows = store.seat_of(runs.last().expect("a run").id).expect("rows");
+    assert!(
+        rows.iter().any(|row| row.item_id == ACCOUNT_ITEM),
+        "the unplaceable item has a row to inspect: {rows:?}"
+    );
+    assert!(!format!("{rows:?}").contains("relative/dir"), "{rows:?}");
+}
+
+/// The control that pins the narrowing both ways: the environment key is identity, so it
+/// keeps the value of a set relocation variable, and an unset variable is another key.
+#[test]
+fn the_environment_key_still_holds_the_relocation_variable_and_its_value() {
+    let rig = Rig::new();
+    rig.run(&rig.env(Some("relative/dir")));
+    rig.run(&rig.env(None));
+    let store = Store::open(&rig.env(None).state_dir).expect("the store opens");
+    let runs = store.runs().expect("runs");
+    assert_eq!(runs.len(), 2);
+    assert!(
+        runs[0]
+            .environment_key
+            .ends_with("?CLAUDE_CONFIG_DIR=relative/dir"),
+        "{}",
+        runs[0].environment_key
+    );
+    assert!(!runs[1].environment_key.contains("CLAUDE_CONFIG_DIR"));
+    assert_ne!(runs[0].environment_key, runs[1].environment_key);
+}
