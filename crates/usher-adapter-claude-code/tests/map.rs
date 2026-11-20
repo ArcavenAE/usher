@@ -113,6 +113,17 @@ last_verified = 2026-11-20
 settings_key = { key = "fx.token", merge = "scalar", sensitive = true, scopes = ["any"] }
 
 [[item]]
+id = "claude-code.fx-secrets"
+harness = "claude-code"
+layer = "fast"
+class = "settings-keys"
+versions = ">=2.1.317, <3.0.0"
+summary = "A sensitive list that the user and managed files may set."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/secrets" }
+last_verified = 2026-11-20
+settings_key = { key = "fx.secrets", merge = "list-merge", sensitive = true, scopes = ["user", "managed"] }
+
+[[item]]
 id = "claude-code.fx-secret"
 harness = "claude-code"
 layer = "fast"
@@ -1321,4 +1332,42 @@ fn the_classifier_item_needs_an_auto_mode_list_entry_in_effect() {
         classifier(&[("user", r#"{"autoMode": {"allow": ["rule"]}}"#)]),
         "an array in effect names the item"
     );
+}
+
+// ---- a sensitive list ------------------------------------------------------------------
+
+/// Lists concatenate, so each in-scope entry of a sensitive list is in effect, with its
+/// position, no value, and the sensitive note. No "also set in" note goes on an entry,
+/// because that note would compare secret values.
+#[test]
+fn each_entry_of_a_sensitive_list_is_in_effect_with_no_value() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.system.join("etc/claude-code/managed-settings.json"),
+        r#"{"fx": {"secrets": ["canary-same"]}}"#,
+    );
+    rig.write(
+        &rig.user_file(),
+        r#"{"fx": {"secrets": ["canary-same", "canary-other"]}}"#,
+    );
+    let map = rig.fixture_map();
+    let rows = readings(&map, "fx.secrets");
+    let shape: Vec<(&str, Option<u32>, ReadingStatus)> = rows
+        .iter()
+        .map(|r| (r.layer.as_str(), r.entry_index, r.status))
+        .collect();
+    assert_eq!(
+        shape,
+        [
+            ("managed", Some(0), ReadingStatus::InEffect),
+            ("user", Some(0), ReadingStatus::InEffect),
+            ("user", Some(1), ReadingStatus::InEffect),
+        ],
+        "{rows:?}"
+    );
+    for row in rows {
+        assert_eq!(row.value, None, "{row:?}");
+        assert_eq!(row.note.as_deref(), Some("value not read (sensitive)"));
+    }
+    assert!(!format!("{map:?}").contains("canary"));
 }
