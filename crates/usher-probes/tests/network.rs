@@ -3,7 +3,7 @@
 
 use usher_probes::{
     fragment::Network,
-    network::{host_state, profile},
+    network::{host_state, profile, profile_with_ports},
 };
 
 // Meaning change: this was the_profile_denies_the_network_first_then_allows_localhost.
@@ -37,6 +37,38 @@ fn the_profile_has_one_network_deny_and_no_local_ip_allow_of_every_network() {
     assert!(
         !text.contains("(allow network* (local ip"),
         "a local-ip allow of every network operation lets other hosts through:\n{text}"
+    );
+}
+
+#[test]
+fn a_declared_port_is_allowed_on_localhost_and_nothing_else_is() {
+    assert_eq!(
+        profile_with_ports(&[]),
+        profile(),
+        "no declared port means the plain profile"
+    );
+    let text = profile_with_ports(&[8080, 9090]);
+    let deny = text.find("(deny network*)").expect("a network deny");
+    for port in [8080, 9090] {
+        for rule in [
+            format!(r#"(allow network* (remote ip "localhost:{port}"))"#),
+            format!(r#"(allow network-bind (local ip "localhost:{port}"))"#),
+            format!(r#"(allow network-inbound (local ip "localhost:{port}"))"#),
+        ] {
+            let at = text
+                .find(&rule)
+                .unwrap_or_else(|| panic!("missing {rule}:\n{text}"));
+            assert!(deny < at, "the deny must come first:\n{text}");
+        }
+    }
+    assert_eq!(text.matches("(deny network*)").count(), 1, "{text}");
+    assert!(
+        !text.contains("localhost:*"),
+        "a wildcard port is allowed:\n{text}"
+    );
+    assert!(
+        !text.contains("localhost:7070"),
+        "an undeclared port is allowed:\n{text}"
     );
 }
 
