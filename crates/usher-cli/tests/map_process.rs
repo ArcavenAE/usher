@@ -14,6 +14,8 @@ const OVERRIDE_VALUE: &str = "canary-override-value-in-the-process";
 const FILE_VALUE: &str = "canary-model-in-the-file";
 
 /// Run by the test below as a child process with the variable in its environment.
+///
+/// Provisional: the row text rests on the row layout, which is not final.
 #[test]
 #[ignore = "run only by an_override_variable_is_present_and_its_value_is_held_nowhere, as a child process"]
 fn child_runs_the_map_over_the_process_environment() {
@@ -40,21 +42,45 @@ fn child_runs_the_map_over_the_process_environment() {
         .lines()
         .find(|l| l.contains("overridden by environment"))
         .unwrap_or_else(|| panic!("no overridden line in:\n{out}"));
+    let status = line
+        .find("overridden by environment")
+        .expect("the status words");
+    let layer = line.find("(user: ").expect("the layer and file");
+    let note = line
+        .find("; ANTHROPIC_MODEL present")
+        .expect("the note names the variable");
     assert!(
-        line.contains("(ANTHROPIC_MODEL present); value not read"),
-        "{line}"
+        status < layer && layer < note,
+        "fields are out of order: {line}"
     );
+    assert!(
+        line.trim_start()
+            .starts_with("model  overridden by environment  (user: "),
+        "the row has no value field: {line}"
+    );
+    assert!(!line.contains("value not read"), "{line}");
     assert!(!out.contains(OVERRIDE_VALUE), "the value is printed");
     assert!(!out.contains(FILE_VALUE), "the file value is printed");
-    for entry in fs::read_dir(&env.state_dir).expect("the state directory") {
-        let bytes = fs::read(entry.expect("an entry").path()).expect("a file");
-        for canary in [OVERRIDE_VALUE, FILE_VALUE] {
-            assert!(
-                !bytes.windows(canary.len()).any(|w| w == canary.as_bytes()),
-                "`{canary}` is stored"
-            );
+    let mut pending = vec![env.state_dir.clone()];
+    let mut files = 0;
+    while let Some(dir) = pending.pop() {
+        for entry in fs::read_dir(&dir).expect("a state directory") {
+            let path = entry.expect("an entry").path();
+            if path.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            files += 1;
+            let bytes = fs::read(&path).expect("a file");
+            for canary in [OVERRIDE_VALUE, FILE_VALUE] {
+                assert!(
+                    !bytes.windows(canary.len()).any(|w| w == canary.as_bytes()),
+                    "`{canary}` is stored in {path:?}"
+                );
+            }
         }
     }
+    assert!(files > 0, "the walk found no stored file");
     println!("CHILD_OK");
 }
 
@@ -90,9 +116,19 @@ fn an_override_variable_is_present_and_its_value_is_held_nowhere() {
         .output()
         .expect("the child runs");
     let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
         out.status.success() && stdout.contains("CHILD_OK"),
-        "the child failed:\n{stdout}\n{}",
-        String::from_utf8_lossy(&out.stderr)
+        "the child failed:\n{stdout}\n{stderr}"
     );
+    for canary in [OVERRIDE_VALUE, FILE_VALUE] {
+        assert!(
+            !stdout.contains(canary),
+            "`{canary}` is on the child's stdout"
+        );
+        assert!(
+            !stderr.contains(canary),
+            "`{canary}` is on the child's stderr"
+        );
+    }
 }
