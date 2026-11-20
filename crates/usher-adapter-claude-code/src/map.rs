@@ -509,10 +509,10 @@ fn decide(
                         rows.push(row(
                             segments.clone(),
                             occurrence.layer,
-                            ReadingStatus::ValueNotRead,
+                            ReadingStatus::InEffect,
                             Some(position),
                             None,
-                            Some(SENSITIVE_CHILD.to_string()),
+                            Some("value not read (sensitive)".to_string()),
                         ));
                         continue;
                     }
