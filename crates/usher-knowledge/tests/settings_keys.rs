@@ -8,7 +8,7 @@
 //! rule text; those two are provisional until the operator rules. The mechanism tested
 //! here does not depend on either.
 
-use usher_knowledge::{Class, KnowledgeFile, Layer, MergeKind, SourceLayer};
+use usher_knowledge::{Class, KnowledgeFile, Layer, MergeKind, ReferenceKind, Scopes, SourceLayer};
 
 const FILE: &str = r#"
 schema_version = 5
@@ -34,7 +34,7 @@ versions = ">=1.0.0, <2.0.0"
 summary = "The model; one layer wins."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/model" }
 last_verified = 2026-11-20
-settings_key = { key = "model", merge = "scalar", sensitive = false, overrides = { variable = "DEMO_MODEL" } }
+settings_key = { key = "model", merge = "scalar", sensitive = false, scopes = ["any"], overrides = { variable = "DEMO_MODEL" } }
 
 [[item]]
 id = "demo.key-allow"
@@ -45,7 +45,7 @@ versions = ">=1.0.0, <2.0.0"
 summary = "Allow rules; every layer adds entries."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/permissions" }
 last_verified = 2026-11-20
-settings_key = { key = "permissions.allow", merge = "list-merge", sensitive = false }
+settings_key = { key = "permissions.allow", merge = "list-merge", sensitive = false, scopes = ["any"] }
 
 [[item]]
 id = "demo.key-env"
@@ -56,7 +56,7 @@ versions = ">=1.0.0, <2.0.0"
 summary = "The env table; objects combine, values are never read."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/env" }
 last_verified = 2026-11-20
-settings_key = { key = "env", merge = "object-merge", sensitive = true }
+settings_key = { key = "env", merge = "object-merge", sensitive = true, scopes = ["any"] }
 
 [[item]]
 id = "demo.key-picker"
@@ -67,7 +67,7 @@ versions = ">=1.0.0, <2.0.0"
 summary = "A key the harness merges by its own rule."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/picker" }
 last_verified = 2026-11-20
-settings_key = { key = "modelPicker", merge = "own-rule", sensitive = false }
+settings_key = { key = "modelPicker", merge = "own-rule", sensitive = false, scopes = ["any"] }
 
 [[item]]
 id = "demo.key-auto"
@@ -82,9 +82,8 @@ settings_key = { key = "autoMode.allow", merge = "list-merge", sensitive = false
 "#;
 
 const STACK: &str = r#"stack = ["managed", "command-line", "local", "project", "user"]"#;
-const MODEL: &str = r#"settings_key = { key = "model", merge = "scalar", sensitive = false, overrides = { variable = "DEMO_MODEL" } }"#;
-const ALLOW: &str =
-    r#"settings_key = { key = "permissions.allow", merge = "list-merge", sensitive = false }"#;
+const MODEL: &str = r#"settings_key = { key = "model", merge = "scalar", sensitive = false, scopes = ["any"], overrides = { variable = "DEMO_MODEL" } }"#;
+const ALLOW: &str = r#"settings_key = { key = "permissions.allow", merge = "list-merge", sensitive = false, scopes = ["any"] }"#;
 
 fn rejects(text: &str, needles: &[&str]) {
     let err = KnowledgeFile::parse(text).expect_err("the check must fail");
@@ -122,7 +121,7 @@ fn a_schema_5_file_carries_settings_keys_with_merge_kind_sensitivity_and_overrid
     assert!(!fact.sensitive());
     let over = fact.overrides().expect("an override");
     assert_eq!(over.variable(), "DEMO_MODEL");
-    assert_eq!(fact.scopes(), None);
+    assert_eq!(fact.scopes(), &Scopes::Any);
     let allow = items[2].settings_key().expect("allow");
     assert_eq!(
         (allow.key(), allow.merge()),
@@ -138,7 +137,7 @@ fn a_schema_5_file_carries_settings_keys_with_merge_kind_sensitivity_and_overrid
     assert_eq!(auto.key(), "autoMode.allow");
     assert_eq!(
         auto.scopes(),
-        Some(&[SourceLayer::User, SourceLayer::Managed][..])
+        &Scopes::Layers(vec![SourceLayer::User, SourceLayer::Managed])
     );
     assert!(items[0].settings_key().is_none());
 }
@@ -169,8 +168,10 @@ fn the_embedded_file_is_schema_5() {
     assert_eq!(file.version().schema_version(), 5);
 }
 
+/// A control, not a red for new code: the class-to-layer mapping is the existing layer
+/// check, so once schema 5 is accepted this passes against the stub too.
 #[test]
-fn a_settings_key_item_of_the_slow_layer_is_refused() {
+fn a_settings_key_item_of_the_slow_layer_is_refused_control() {
     let text = with(
         "layer = \"fast\"\nclass = \"settings-keys\"\nversions = \">=1.0.0, <2.0.0\"\nsummary = \"The model;",
         "layer = \"slow\"\nclass = \"settings-keys\"\nversions = \">=1.0.0, <2.0.0\"\nsummary = \"The model;",
@@ -208,36 +209,36 @@ fn key_merge_and_sensitive_must_be_named_and_known() {
     );
     rejects(
         &with(
-            r#"merge = "list-merge", sensitive = false }"#,
-            r#"merge = "union", sensitive = false }"#,
+            r#"merge = "list-merge", sensitive = false, scopes = ["any"] }"#,
+            r#"merge = "union", sensitive = false, scopes = ["any"] }"#,
         ),
         &["demo.key-allow", "merge", "union"],
     );
     rejects(
         &with(
-            r#"merge = "list-merge", sensitive = false }"#,
-            r#"sensitive = false }"#,
+            r#"merge = "list-merge", sensitive = false, scopes = ["any"] }"#,
+            r#"sensitive = false, scopes = ["any"] }"#,
         ),
         &["demo.key-allow", "merge"],
     );
     rejects(
         &with(
-            r#"merge = "list-merge", sensitive = false }"#,
-            r#"merge = "list-merge" }"#,
+            r#"merge = "list-merge", sensitive = false, scopes = ["any"] }"#,
+            r#"merge = "list-merge", scopes = ["any"] }"#,
         ),
         &["demo.key-allow", "sensitive"],
     );
     rejects(
         &with(
-            r#"merge = "list-merge", sensitive = false }"#,
-            r#"merge = "list-merge", sensitive = "no" }"#,
+            r#"merge = "list-merge", sensitive = false, scopes = ["any"] }"#,
+            r#"merge = "list-merge", sensitive = "no", scopes = ["any"] }"#,
         ),
         &["demo.key-allow", "sensitive"],
     );
     rejects(
         &with(
-            r#"merge = "list-merge", sensitive = false }"#,
-            r#"merge = "list-merge", sensitive = false, colour = "red" }"#,
+            r#"merge = "list-merge", sensitive = false, scopes = ["any"] }"#,
+            r#"merge = "list-merge", sensitive = false, scopes = ["any"], colour = "red" }"#,
         ),
         &["demo.key-allow", "colour"],
     );
@@ -251,14 +252,14 @@ fn a_key_path_is_names_joined_by_dots_and_a_star_is_one_whole_level() {
         let text = with(
             ALLOW,
             &format!(
-                r#"settings_key = {{ key = "{bad}", merge = "list-merge", sensitive = false }}"#
+                r#"settings_key = {{ key = "{bad}", merge = "list-merge", sensitive = false, scopes = ["any"] }}"#
             ),
         );
         rejects(&text, &["demo.key-allow", "key", bad]);
     }
     accepts(&with(
         ALLOW,
-        r#"settings_key = { key = "permissions.additionalDirectories", merge = "list-merge", sensitive = false }"#,
+        r#"settings_key = { key = "permissions.additionalDirectories", merge = "list-merge", sensitive = false, scopes = ["any"] }"#,
     ));
 }
 
@@ -271,13 +272,15 @@ fn no_settings_key_reaches_the_account_key() {
     ] {
         let text = with(
             ALLOW,
-            &format!(r#"settings_key = {{ key = "{bad}", merge = "scalar", sensitive = false }}"#),
+            &format!(
+                r#"settings_key = {{ key = "{bad}", merge = "scalar", sensitive = false, scopes = ["any"] }}"#
+            ),
         );
         rejects(&text, &["demo.key-allow", "key", bad]);
     }
     accepts(&with(
         ALLOW,
-        r#"settings_key = { key = "oauthAccountNote", merge = "scalar", sensitive = false }"#,
+        r#"settings_key = { key = "oauthAccountNote", merge = "scalar", sensitive = false, scopes = ["any"] }"#,
     ));
 }
 
@@ -289,14 +292,14 @@ fn an_override_names_an_upper_case_variable_and_nothing_else() {
         let text = with(
             MODEL,
             &format!(
-                r#"settings_key = {{ key = "model", merge = "scalar", sensitive = false, overrides = {{ variable = "{bad}" }} }}"#
+                r#"settings_key = {{ key = "model", merge = "scalar", sensitive = false, scopes = ["any"], overrides = {{ variable = "{bad}" }} }}"#
             ),
         );
         rejects(&text, &["demo.key-mode", "overrides", "variable"]);
     }
     let missing_variable = with(
         MODEL,
-        r#"settings_key = { key = "model", merge = "scalar", sensitive = false, overrides = {} }"#,
+        r#"settings_key = { key = "model", merge = "scalar", sensitive = false, scopes = ["any"], overrides = {} }"#,
     );
     rejects(
         &missing_variable,
@@ -304,22 +307,38 @@ fn an_override_names_an_upper_case_variable_and_nothing_else() {
     );
     let extra_key = with(
         MODEL,
-        r#"settings_key = { key = "model", merge = "scalar", sensitive = false, overrides = { variable = "DEMO_MODEL", key = "model" } }"#,
+        r#"settings_key = { key = "model", merge = "scalar", sensitive = false, scopes = ["any"], overrides = { variable = "DEMO_MODEL", key = "model" } }"#,
     );
     rejects(&extra_key, &["demo.key-mode", "overrides", "key"]);
 }
 
+/// Red repair of the first version, where scopes were optional and unset meant any file.
+/// A key with no cited scope is not decided, so the seed cannot claim the widest scope
+/// quietly: `scopes` is required, either exactly ["any"] or a set of file layers.
 #[test]
-fn scopes_name_known_layers_once_each_and_are_not_empty() {
+fn scopes_are_required_and_are_any_alone_or_a_set_of_file_layers() {
     let base = r#"settings_key = { key = "permissions.allow", merge = "list-merge", sensitive = false, scopes = SCOPES }"#;
     let put = |scopes: &str| with(ALLOW, &base.replace("SCOPES", scopes));
+    accepts(&put(r#"["any"]"#));
     accepts(&put(r#"["user", "managed"]"#));
-    accepts(&put(r#"["user", "project", "local", "managed"]"#));
+    accepts(&put(r#"["user", "local", "managed"]"#));
+    accepts(&put(r#"["managed", "user", "project", "local"]"#));
+    let without = with(
+        ALLOW,
+        r#"settings_key = { key = "permissions.allow", merge = "list-merge", sensitive = false }"#,
+    );
+    rejects(&without, &["demo.key-allow", "scopes"]);
     for bad in [
         r#"[]"#,
         r#"["user", "user"]"#,
+        r#"["any", "any"]"#,
         r#"["user", "plugin"]"#,
+        r#"["global-state"]"#,
+        r#"["server-managed-cache"]"#,
+        r#"["any", "user"]"#,
+        r#"["user", "any"]"#,
         r#""user""#,
+        r#""any""#,
     ] {
         rejects(&put(bad), &["demo.key-allow", "scopes"]);
     }
@@ -327,12 +346,16 @@ fn scopes_name_known_layers_once_each_and_are_not_empty() {
         &put(r#"["user", "plugin"]"#),
         &["demo.key-allow", "scopes", "plugin"],
     );
+    rejects(
+        &put(r#"["any", "user"]"#),
+        &["demo.key-allow", "scopes", "any"],
+    );
 }
 
 #[test]
 fn two_items_for_one_key_over_overlapping_versions_are_refused_naming_both() {
     let dup = format!(
-        "{FILE}\n[[item]]\nid = \"demo.key-allow-again\"\nharness = \"demo\"\nlayer = \"fast\"\nclass = \"settings-keys\"\nversions = \">=1.5.0, <2.0.0\"\nsummary = \"Again.\"\nreference = {{ kind = \"vendor-docs\", locator = \"https://example.test/docs/again\" }}\nlast_verified = 2026-11-20\nsettings_key = {{ key = \"permissions.allow\", merge = \"list-merge\", sensitive = false }}\n"
+        "{FILE}\n[[item]]\nid = \"demo.key-allow-again\"\nharness = \"demo\"\nlayer = \"fast\"\nclass = \"settings-keys\"\nversions = \">=1.5.0, <2.0.0\"\nsummary = \"Again.\"\nreference = {{ kind = \"vendor-docs\", locator = \"https://example.test/docs/again\" }}\nlast_verified = 2026-11-20\nsettings_key = {{ key = \"permissions.allow\", merge = \"list-merge\", sensitive = false, scopes = [\"any\"] }}\n"
     );
     rejects(
         &dup,
@@ -343,12 +366,12 @@ fn two_items_for_one_key_over_overlapping_versions_are_refused_naming_both() {
         ],
     );
     let apart = format!(
-        "{}\n[[item]]\nid = \"demo.key-allow-v2\"\nharness = \"demo\"\nlayer = \"fast\"\nclass = \"settings-keys\"\nversions = \">=2.0.0, <3.0.0\"\nsummary = \"Next major.\"\nreference = {{ kind = \"vendor-docs\", locator = \"https://example.test/docs/v2\" }}\nlast_verified = 2026-11-20\nsettings_key = {{ key = \"permissions.allow\", merge = \"list-merge\", sensitive = false }}\n",
+        "{}\n[[item]]\nid = \"demo.key-allow-v2\"\nharness = \"demo\"\nlayer = \"fast\"\nclass = \"settings-keys\"\nversions = \">=2.0.0, <3.0.0\"\nsummary = \"Next major.\"\nreference = {{ kind = \"vendor-docs\", locator = \"https://example.test/docs/v2\" }}\nlast_verified = 2026-11-20\nsettings_key = {{ key = \"permissions.allow\", merge = \"list-merge\", sensitive = false, scopes = [\"any\"] }}\n",
         FILE
     );
     accepts(&apart);
     let other_harness = format!(
-        "{FILE}\n[[item]]\nid = \"other.key-allow\"\nharness = \"other\"\nlayer = \"fast\"\nclass = \"settings-keys\"\nversions = \">=1.0.0, <2.0.0\"\nsummary = \"Another harness.\"\nreference = {{ kind = \"vendor-docs\", locator = \"https://example.test/docs/other\" }}\nlast_verified = 2026-11-20\nsettings_key = {{ key = \"permissions.allow\", merge = \"list-merge\", sensitive = false }}\n"
+        "{FILE}\n[[item]]\nid = \"other.key-allow\"\nharness = \"other\"\nlayer = \"fast\"\nclass = \"settings-keys\"\nversions = \">=1.0.0, <2.0.0\"\nsummary = \"Another harness.\"\nreference = {{ kind = \"vendor-docs\", locator = \"https://example.test/docs/other\" }}\nlast_verified = 2026-11-20\nsettings_key = {{ key = \"permissions.allow\", merge = \"list-merge\", sensitive = false, scopes = [\"any\"] }}\n"
     );
     accepts(&other_harness);
 }
@@ -398,7 +421,11 @@ fn the_embedded_file_carries_the_vendors_stack_with_a_citation() {
         item.stack(),
         ["managed", "command-line", "local", "project", "user"]
     );
-    assert!(item.reference().locator().contains("settings"));
+    assert_eq!(item.reference().kind(), ReferenceKind::VendorDocs);
+    assert_eq!(
+        item.reference().locator(),
+        "https://code.claude.com/docs/en/settings"
+    );
 }
 
 fn seeded(key: &str) -> usher_knowledge::SettingsKeyFact {
@@ -453,15 +480,37 @@ fn the_seed_marks_env_sensitive() {
     assert!(env.sensitive());
 }
 
+/// The default readable-key list, exactly. It stays provisional until the operator rules
+/// on which values a person sees first.
+const SEEDED_KEYS: [&str; 18] = [
+    "autoMode.allow",
+    "autoMode.classifyAllShell",
+    "autoMode.environment",
+    "autoMode.hard_deny",
+    "autoMode.soft_deny",
+    "availableModels",
+    "env",
+    "fallbackModel",
+    "managedSourcesBehavior",
+    "model",
+    "modelPicker",
+    "modelSettings",
+    "permissions.allow",
+    "permissions.ask",
+    "permissions.defaultMode",
+    "permissions.deny",
+    "policyHelper",
+    "wslInheritsWindowsSettings",
+];
+
 #[test]
-fn every_seeded_settings_key_is_cited_and_appears_once_per_version() {
+fn every_seeded_settings_key_is_cited_and_the_set_is_exactly_the_default_list() {
     let file = KnowledgeFile::embedded().expect("the embedded file");
     let keyed: Vec<_> = file
         .items()
         .iter()
         .filter(|item| item.class() == Class::SettingsKeys)
         .collect();
-    assert!(keyed.len() >= 18, "{} settings-key items", keyed.len());
     for item in &keyed {
         assert!(!item.reference().locator().is_empty(), "{}", item.id());
         assert_eq!(item.layer(), Layer::Fast, "{}", item.id());
@@ -472,9 +521,7 @@ fn every_seeded_settings_key_is_cited_and_appears_once_per_version() {
         .map(|fact| fact.key())
         .collect();
     keys.sort_unstable();
-    let before = keys.len();
-    keys.dedup();
-    assert_eq!(before, keys.len(), "a key is listed twice");
+    assert_eq!(keys, SEEDED_KEYS);
 }
 
 #[test]
@@ -508,7 +555,7 @@ fn the_seed_gives_each_auto_mode_array_the_user_and_managed_scopes() {
     ] {
         assert_eq!(
             seeded(key).scopes(),
-            Some(&[SourceLayer::User, SourceLayer::Managed][..]),
+            &Scopes::Layers(vec![SourceLayer::User, SourceLayer::Managed]),
             "{key}"
         );
     }
@@ -539,7 +586,7 @@ fn the_seed_has_no_whole_auto_mode_item() {
 #[test]
 fn the_seed_says_anthropic_model_overrides_model_in_any_file() {
     let model = seeded("model");
-    assert_eq!(model.scopes(), None);
+    assert_eq!(model.scopes(), &Scopes::Any);
     let over = model.overrides().expect("model is overridden");
     assert_eq!(over.variable(), "ANTHROPIC_MODEL");
 }

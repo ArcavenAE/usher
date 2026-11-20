@@ -445,6 +445,16 @@ impl EnvOverride {
     }
 }
 
+/// The layers whose files may set a settings key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Scopes {
+    /// Any settings file.
+    Any,
+    /// Only the named layers.
+    Layers(Vec<SourceLayer>),
+}
+
 /// What harness knowledge says about one settings key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsKeyFact {
@@ -452,7 +462,7 @@ pub struct SettingsKeyFact {
     merge: MergeKind,
     sensitive: bool,
     overrides: Option<EnvOverride>,
-    scopes: Option<Vec<SourceLayer>>,
+    scopes: Scopes,
 }
 
 impl SettingsKeyFact {
@@ -471,9 +481,9 @@ impl SettingsKeyFact {
         self.sensitive
     }
 
-    /// The layers whose files may set the key; `None` means any file.
-    pub fn scopes(&self) -> Option<&[SourceLayer]> {
-        self.scopes.as_deref()
+    /// The layers whose files may set the key.
+    pub fn scopes(&self) -> &Scopes {
+        &self.scopes
     }
 
     /// The environment variable that overrides the key, if knowledge names one.
