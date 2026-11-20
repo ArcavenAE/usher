@@ -331,15 +331,16 @@ fn network_rs_holds_no_spawn_and_one_added_back_fails() {
     );
 }
 
-// Q8: the exec needle is a call form, and the scan reads code, not comments.
+// Q8: the exec needle is a call form. Meaning change (Q9): the scan reads raw
+// source text and no longer strips comments, so the cases that relied on a
+// comment being skipped are gone; the ones below do not depend on that.
 #[test]
-fn exec_is_a_call_form_and_comments_are_not_scanned() {
+fn exec_is_a_call_form_and_a_word_or_a_constant_is_not() {
     for flagged in [
         "fn f() { exec(\"x\"); }",
         "fn f() { execvp(\"x\", &[]); }",
         "fn f() { libc::execve(p, a, e); }",
         "fn f() { Command::new(\"x\"); } // a trailing comment does not hide it",
-        "// a comment line\nfn f() { Command::new(\"x\"); }",
     ] {
         assert!(
             !find_launch_bypasses(flagged).is_empty(),
@@ -348,10 +349,6 @@ fn exec_is_a_call_form_and_comments_are_not_scanned() {
     }
     for clean in [
         "const SANDBOX_EXEC: &str = \"/usr/bin/sandbox-exec\";",
-        "// runs under sandbox-exec(1), which is not exec( here",
-        "/// The sandbox-exec tool; Command::new is not called.",
-        "//! Module doc: std::process, exec( and execvp stay in prose.",
-        "fn f() { launcher.run(\"x\", &[]); } // calls exec( through the launcher",
         "fn executes_now() { let executed = 1; }",
     ] {
         assert!(
