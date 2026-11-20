@@ -822,3 +822,80 @@ fn the_test_seam_method_is_compiled_only_under_its_feature() {
         "call_described must sit directly under its cfg"
     );
 }
+
+const QUERYING: Descriptor = Descriptor {
+    method: Method::Get,
+    host: FILES_HOST,
+    path: "/{file}",
+    purpose: "a test GET with a listed query field",
+    class: Class::PersonStarted,
+    fields: &[
+        UA,
+        Field {
+            name: "q",
+            place: Place::Query,
+            meaning: "a listed query field",
+        },
+        Field {
+            name: "file",
+            place: Place::Path,
+            meaning: "which file",
+        },
+    ],
+    redirect_hosts: &[ASSETS_HOST],
+};
+
+const BODIED_GET: Descriptor = Descriptor {
+    method: Method::Get,
+    host: FILES_HOST,
+    path: "/{file}",
+    purpose: "a test GET with a listed body field",
+    class: Class::PersonStarted,
+    fields: &[
+        UA,
+        Field {
+            name: "b",
+            place: Place::Body,
+            meaning: "a listed body field",
+        },
+        Field {
+            name: "file",
+            place: Place::Path,
+            meaning: "which file",
+        },
+    ],
+    redirect_hosts: &[ASSETS_HOST],
+};
+
+#[test]
+fn a_follow_carries_no_query_and_no_body_field_to_the_second_host() {
+    for (descriptor, name) in [(&QUERYING, "q"), (&BODIED_GET, "b")] {
+        let transport = RecordingTransport::new()
+            .answering_redirect(format!("https://{ASSETS_HOST}/moved"))
+            .answering_ok("moved body");
+        port(&transport)
+            .call_described(
+                descriptor,
+                described_request()
+                    .with("file", "k.toml")
+                    .with(name, "private"),
+            )
+            .expect("the follow goes through");
+        let sent = transport.sent();
+        assert_eq!(sent.len(), 2, "{name}");
+        let first = if name == "q" {
+            &sent[0].query
+        } else {
+            &sent[0].body
+        };
+        assert_eq!(
+            first,
+            &vec![(name.to_string(), "private".to_string())],
+            "the first request carries the listed {name} field"
+        );
+        assert!(
+            sent[1].query.is_empty() && sent[1].body.is_empty(),
+            "{name}: the follow carried a query or body field"
+        );
+    }
+}
