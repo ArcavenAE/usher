@@ -149,3 +149,40 @@ fn a_version_must_have_the_shape_of_a_version() {
         );
     }
 }
+
+#[test]
+fn a_version_is_three_numbers_and_an_optional_known_prerelease_word() {
+    let today = date(2026, 11, 20);
+    for accepted in [
+        "2.1.329",
+        "0.160.1",
+        "1.59.1",
+        "0.161.0-alpha.3",
+        "1.0.0-rc.1",
+        "1.0.0-beta",
+    ] {
+        assert!(
+            Fragment::new(accepted, Outcome::Passed, today, Network::Denied).is_ok(),
+            "`{accepted}` must be accepted"
+        );
+    }
+    for refused in [
+        "1.2.3-alex",
+        "1.2.3-sk-abc",
+        "1.2.3-",
+        "1.2.3-rc.x",
+        "1.2.3-rc1",
+        "01.2.3",
+        "1.2",
+    ] {
+        assert!(
+            Fragment::new(refused, Outcome::Passed, today, Network::Denied).is_err(),
+            "`{refused}` must be refused"
+        );
+    }
+    assert_eq!(
+        bare_version("codex-cli 0.161.0-alpha.3").as_deref(),
+        Some("0.161.0-alpha.3")
+    );
+    assert_eq!(bare_version("fakeh 1.2.3-alex"), None);
+}
