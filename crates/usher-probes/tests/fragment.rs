@@ -60,6 +60,7 @@ fn a_version_that_carries_a_path_a_space_or_a_quote_is_refused() {
 fn a_date_that_does_not_exist_is_refused() {
     assert!(Date::new(2026, 13, 1).is_none(), "month 13");
     assert!(Date::new(2026, 0, 1).is_none(), "month 0");
+    assert!(Date::new(2026, 11, 0).is_none(), "day 0");
     assert!(Date::new(2026, 2, 30).is_none(), "30 February");
     assert!(
         Date::new(2023, 2, 29).is_none(),
