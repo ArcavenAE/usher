@@ -69,6 +69,8 @@ pub enum Class {
     NeverCall,
     /// Claims whose sources disagree (fast).
     Disputed,
+    /// The parts of the seat around a harness (slow).
+    Seat,
 }
 
 impl Class {
@@ -90,7 +92,11 @@ impl Class {
     /// The layer this class belongs to.
     pub fn layer(self) -> Layer {
         match self {
-            Class::Layers | Class::Paths | Class::Sources | Class::CredentialStores => Layer::Slow,
+            Class::Layers
+            | Class::Paths
+            | Class::Sources
+            | Class::CredentialStores
+            | Class::Seat => Layer::Slow,
             Class::Keys | Class::Defaults | Class::Hazards | Class::NeverCall | Class::Disputed => {
                 Layer::Fast
             }
@@ -277,6 +283,79 @@ impl SourceFact {
     }
 }
 
+/// Which part of the seat around a harness an item describes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SeatPart {
+    /// MCP server registrations.
+    Mcp,
+    /// Installed packs.
+    Packs,
+    /// Client config for fleet tools.
+    FleetClient,
+    /// The backend and auth route.
+    AuthRoute,
+    /// The toolchain declaration.
+    Toolchain,
+}
+
+/// How much of a seat part may be read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SeatRead {
+    /// A file or directory exists.
+    Presence,
+    /// The entry names of one directory, one level deep.
+    Listing,
+    /// Key names at the listed key paths of a JSON file.
+    Names,
+    /// The presence of the listed environment variables.
+    Env,
+}
+
+/// What harness knowledge says about one part of the seat.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeatFact {
+    part: SeatPart,
+    read: SeatRead,
+    path: Option<String>,
+    key_paths: Vec<String>,
+    variables: Vec<String>,
+    platforms: Option<Vec<Platform>>,
+}
+
+impl SeatFact {
+    /// The part of the seat.
+    pub fn part(&self) -> SeatPart {
+        self.part
+    }
+
+    /// How much may be read.
+    pub fn read(&self) -> SeatRead {
+        self.read
+    }
+
+    /// The path pattern; absent for an environment read.
+    pub fn path(&self) -> Option<&str> {
+        self.path.as_deref()
+    }
+
+    /// The key paths whose names are read, `*` standing for one level.
+    pub fn key_paths(&self) -> &[String] {
+        &self.key_paths
+    }
+
+    /// The environment variables whose presence is read.
+    pub fn variables(&self) -> &[String] {
+        &self.variables
+    }
+
+    /// The platforms the item applies on; `None` means every platform.
+    pub fn platforms(&self) -> Option<&[Platform]> {
+        self.platforms.as_deref()
+    }
+}
+
 /// One fact about a harness, with its source and the date it was last verified.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
@@ -395,6 +474,11 @@ impl Item {
     /// The setting names a `keys` item lists, empty for every other class.
     pub fn keys(&self) -> &[String] {
         &self.keys
+    }
+
+    /// The seat fact, for an item of class `seat`.
+    pub fn seat(&self) -> Option<&SeatFact> {
+        None
     }
 
     /// The settings-source fact, for an item of class `sources`.
