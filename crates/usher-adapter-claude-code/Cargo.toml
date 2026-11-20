@@ -13,6 +13,7 @@ serde_json.workspace = true
 
 [dev-dependencies]
 usher-testkit.workspace = true
+usher-knowledge = { workspace = true, features = ["test-keys"] }
 
 [lints]
 workspace = true

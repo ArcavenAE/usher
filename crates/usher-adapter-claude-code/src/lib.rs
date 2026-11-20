@@ -11,7 +11,7 @@ pub mod version;
 pub use version::{VersionReading, read_version};
 
 use usher_core::{LaunchContext, SourceLister, SourceListing, SystemRoot, UsherError};
-use usher_knowledge::KnowledgeFile;
+use usher_knowledge::{KnowledgeFile, Platform};
 
 /// The Claude Code adapter: lists the settings sources knowledge names for the
 /// harness, under the host's system root.
@@ -19,21 +19,24 @@ use usher_knowledge::KnowledgeFile;
 pub struct ClaudeCodeAdapter {
     knowledge: KnowledgeFile,
     system_root: SystemRoot,
+    platform: Platform,
 }
 
 impl ClaudeCodeAdapter {
-    /// An adapter over `knowledge`. Production passes [`SystemRoot::host`].
-    pub fn new(knowledge: KnowledgeFile, system_root: SystemRoot) -> Self {
+    /// An adapter over `knowledge`. Production passes [`SystemRoot::host`] and the
+    /// build's own platform; only tests pass others.
+    pub fn new(knowledge: KnowledgeFile, system_root: SystemRoot, platform: Platform) -> Self {
         ClaudeCodeAdapter {
             knowledge,
             system_root,
+            platform,
         }
     }
 }
 
 impl SourceLister for ClaudeCodeAdapter {
     fn list_sources(&self, context: &LaunchContext) -> Result<SourceListing, UsherError> {
-        let _ = (&self.knowledge, &self.system_root, context);
+        let _ = (&self.knowledge, &self.system_root, &self.platform, context);
         Ok(SourceListing {
             harness: String::new(),
             harness_version: None,

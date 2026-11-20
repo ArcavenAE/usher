@@ -38,8 +38,12 @@ pub enum SourceStatus {
         /// The source that wins.
         by: PathBuf,
     },
-    /// The knowledge says the version does not read a source in this place.
-    Unread,
+    /// The version does not read it, and why: the knowledge item that says so, or that
+    /// a first-wins source delivers no policy key.
+    Unread {
+        /// The text the row prints inside its parentheses.
+        reason: String,
+    },
     /// Usher cannot place it, and says why.
     Unknown {
         /// Why the status is unknown.

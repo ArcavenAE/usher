@@ -8,11 +8,10 @@ use usher_adapter_claude_code::ClaudeCodeAdapter;
 use usher_core::{
     KeyNames, LaunchContext, SourceLister, SourceListing, SourceStatus, SystemRoot, environment_key,
 };
-use usher_knowledge::KnowledgeFile;
+use usher_knowledge::{KnowledgeFile, Platform};
 use usher_testkit::ScratchHome;
 
 const VERSION: &str = "2.1.317";
-const MAC_MANAGED: &str = "Library/Application Support/ClaudeCode/managed-settings.json";
 const LINUX_MANAGED: &str = "etc/claude-code/managed-settings.json";
 
 struct Rig {
@@ -51,9 +50,13 @@ impl Rig {
 
     fn list(&self, context: &LaunchContext) -> SourceListing {
         let knowledge = KnowledgeFile::embedded().expect("the embedded file parses");
-        ClaudeCodeAdapter::new(knowledge, SystemRoot::at(self.system.clone()))
-            .list_sources(context)
-            .expect("a listing")
+        ClaudeCodeAdapter::new(
+            knowledge,
+            SystemRoot::at(self.system.clone()),
+            Platform::Linux,
+        )
+        .list_sources(context)
+        .expect("a listing")
     }
 
     fn write(&self, path: &Path, text: &str) -> PathBuf {
@@ -73,15 +76,6 @@ impl Rig {
 
 fn layers(listing: &SourceListing) -> Vec<&str> {
     listing.sources.iter().map(|s| s.layer.as_str()).collect()
-}
-
-fn status_of<'a>(listing: &'a SourceListing, path: &Path) -> &'a SourceStatus {
-    &listing
-        .sources
-        .iter()
-        .find(|s| s.path == path)
-        .unwrap_or_else(|| panic!("{} is not listed", path.display()))
-        .status
 }
 
 #[test]
@@ -141,7 +135,7 @@ fn an_invalid_file_is_listed_with_a_reason_and_nothing_aborts() {
 fn present_sources_are_listed_highest_layer_first() {
     let rig = Rig::new();
     rig.user("{}");
-    rig.managed(MAC_MANAGED, r#"{"permissions":{}}"#);
+    rig.managed(LINUX_MANAGED, r#"{"permissions":{}}"#);
     rig.write(&rig.repo.join(".claude/settings.json"), "{}");
     rig.write(&rig.repo.join(".claude/settings.local.json"), "{}");
     let listing = rig.list(&rig.context(Some(VERSION), true));
@@ -217,7 +211,7 @@ fn a_relative_config_directory_is_not_checked_and_says_why() {
 fn an_unknown_version_reads_every_status_unknown_and_says_so() {
     let rig = Rig::new();
     rig.user("{}");
-    rig.managed(MAC_MANAGED, r#"{"permissions":{}}"#);
+    rig.managed(LINUX_MANAGED, r#"{"permissions":{}}"#);
     let listing = rig.list(&rig.context(None, true));
     assert_eq!(listing.harness_version, None);
     assert_eq!(listing.sources.len(), 2, "{:?}", listing.sources);
@@ -229,38 +223,4 @@ fn an_unknown_version_reads_every_status_unknown_and_says_so() {
             other => panic!("{}: expected unknown, got {other:?}", source.layer),
         }
     }
-}
-
-#[test]
-fn managed_sources_are_first_wins_and_the_loser_names_the_winner() {
-    let rig = Rig::new();
-    let winner = rig.managed(MAC_MANAGED, r#"{"permissions":{}}"#);
-    let loser = rig.managed(LINUX_MANAGED, r#"{"model":"x"}"#);
-    let user = rig.user("{}");
-    let listing = rig.list(&rig.context(Some(VERSION), true));
-    assert_eq!(status_of(&listing, &winner), &SourceStatus::InEffect);
-    assert_eq!(
-        status_of(&listing, &loser),
-        &SourceStatus::Shadowed { by: winner }
-    );
-    assert_eq!(status_of(&listing, &user), &SourceStatus::InEffect);
-}
-
-#[test]
-fn a_managed_file_holding_only_control_keys_leaves_the_next_source_in_effect() {
-    let rig = Rig::new();
-    let control_only = rig.managed(
-        MAC_MANAGED,
-        r#"{"policyHelper":"h","managedSourcesBehavior":"x"}"#,
-    );
-    let policy = rig.managed(LINUX_MANAGED, r#"{"permissions":{}}"#);
-    let user = rig.user("{}");
-    let listing = rig.list(&rig.context(Some(VERSION), true));
-    assert_eq!(status_of(&listing, &policy), &SourceStatus::InEffect);
-    assert_eq!(status_of(&listing, &user), &SourceStatus::InEffect);
-    assert_eq!(
-        status_of(&listing, &control_only),
-        &SourceStatus::InEffect,
-        "a control-only file is read, is never shadowed, and does not win by itself"
-    );
 }
