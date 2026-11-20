@@ -4,9 +4,8 @@
 //! item carries the vendor's cross-layer order, highest first, so precedence is data and
 //! never a constant in code. Public API only.
 //!
-//! Reds written to the architect's defaults for the readable-key list and for permission
-//! rule text; those two are provisional until the operator rules. The mechanism tested
-//! here does not depend on either.
+//! The default readable-key list and the handling of permission rule text are provisional
+//! until they are decided. The mechanism tested here does not depend on either.
 
 use usher_knowledge::{Class, KnowledgeFile, Layer, MergeKind, ReferenceKind, Scopes, SourceLayer};
 
