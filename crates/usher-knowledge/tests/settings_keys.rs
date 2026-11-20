@@ -163,6 +163,22 @@ fn a_schema_4_file_is_refused_naming_both_schemas() {
 }
 
 #[test]
+fn the_embedded_file_parses_with_literal_key_paths_only() {
+    let file = KnowledgeFile::embedded().expect("the seed parses under schema 5");
+    for item in file.items() {
+        if let Some(fact) = item.settings_key() {
+            assert!(!fact.key().contains('*'), "{}", item.id());
+        }
+    }
+    assert!(
+        file.items()
+            .iter()
+            .any(|item| item.settings_key().is_some()),
+        "the seed lists settings keys, so this check is not empty"
+    );
+}
+
+#[test]
 fn the_embedded_file_is_schema_5() {
     let file = KnowledgeFile::embedded().expect("the embedded file");
     assert_eq!(file.version().schema_version(), 5);
@@ -244,10 +260,13 @@ fn key_merge_and_sensitive_must_be_named_and_known() {
     );
 }
 
+/// A settings key is a literal path: a name, or names joined by single dots. No `*`
+/// appears anywhere in schema 5, so a child the seed does not list is never matched by
+/// a pattern. The seat key-path wildcard rule is separate.
 #[test]
-fn a_key_path_is_names_joined_by_dots_and_a_star_is_one_whole_level() {
+fn a_key_path_is_names_joined_by_dots_and_no_star_appears() {
     for bad in [
-        "", "a..b", ".a", "a.", "mod*", "a.*x", "**", "a.**.b", "a.?",
+        "", "a..b", ".a", "a.", "mod*", "a.*x", "**", "a.**.b", "a.?", "*", "*.x", "a.*", "a.*.b",
     ] {
         let text = with(
             ALLOW,
