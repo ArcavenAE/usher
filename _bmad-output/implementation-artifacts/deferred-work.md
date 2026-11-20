@@ -75,3 +75,9 @@
 - source_spec: `_bmad-output/planning-artifacts/epics.md`
   summary: the settings reference says that for conversations the VS Code extension starts, Claude Code reads only user, managed and `--settings` values. That launch context is not mapped yet, so the map's layers for it are not stated.
   evidence: the settings reference entry for `permissions.defaultMode`; story 1.9 maps the launch directories and is where the extension's launch context belongs.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the first change that copies a real codex home with the copy in `usher-probes` must create the copy root with mode 0700 and delete it on drop, and pin both with tests, because the copy holds whatever tokens `config.toml` carries for its lifetime.
+  evidence: the probe crate's copy function makes a directory under the scratch root with the default mode; probes never copy a real home, so nothing exercises it yet. The first caller is the codex map story.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the same change must close the gap between checking a file and opening it. It should take the entry's metadata without following a link and require a regular file, open it, take the open file's metadata and require the same device and inode, then copy from the open file. A swap between the check and the open then fails. This needs only the standard library.
+  evidence: `CodexCopy::create` checks the entry type and then copies by path, so a file replaced by a link between the two would be followed. No probe copies a real home, so the window is not reachable from probes.
