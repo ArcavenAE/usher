@@ -720,6 +720,11 @@ fn no_env_child_is_in_effect_or_shadowed_in_any_layer() {
         "{:?}",
         map.readings
     );
+    assert!(
+        rows.iter().all(|r| r.value.is_none()),
+        "no env child holds a value: {rows:?}"
+    );
+    assert!(!format!("{map:?}").contains("canary"), "{map:?}");
 }
 
 // ---- a whole source the version does not read ------------------------------------------
