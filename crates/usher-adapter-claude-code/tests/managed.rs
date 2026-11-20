@@ -657,3 +657,83 @@ fn a_layer_that_is_not_always_present_does_not_drop_out_when_it_cannot_be_checke
     assert!(listing.sources.is_empty(), "{:?}", listing.sources);
     assert!(!format!("{listing:?}").contains(SECRET));
 }
+
+/// A managed first-wins candidate that cannot be checked might deliver, so it leaves its
+/// rank and everything below undecided, as an unreadable file does. It is listed only as
+/// not checked.
+#[test]
+fn a_first_wins_candidate_that_cannot_be_checked_leaves_the_lower_ranks_undecided() {
+    let rig = Rig::new();
+    let knowledge = fixture_with(&item(
+        "demo.locked-top",
+        "/locked/top.json",
+        1,
+        Some(r#"["linux"]"#),
+    ));
+    let hidden = rig.file("locked/top.json", SECRET);
+    let _locked = Locked::new(hidden.parent().expect("a parent").to_path_buf());
+    if fs::metadata(&hidden).is_ok() {
+        usher_testkit::skip(
+            "a_first_wins_candidate_that_cannot_be_checked_leaves_the_lower_ranks_undecided",
+            "this process can look through a mode 000 directory, so there is nothing to test",
+        );
+        return;
+    }
+    let top = rig.file(TOP, POLICY);
+    let middle = rig.file(MIDDLE, POLICY);
+    let listing = rig.list_with(&knowledge);
+    assert_eq!(listing.sources.len(), 2, "{:?}", listing.sources);
+    let cause = format!(
+        "first-wins not decided: {} could not be checked",
+        hidden.display()
+    );
+    for path in [&top, &middle] {
+        assert_eq!(
+            status_of(&listing, path),
+            &SourceStatus::Unknown {
+                reason: cause.clone()
+            },
+            "{}",
+            path.display()
+        );
+    }
+    assert!(
+        listing.not_checked.iter().any(|n| n.layer == "managed"),
+        "{:?}",
+        listing.not_checked
+    );
+    assert!(!format!("{listing:?}").contains(SECRET));
+}
+
+#[test]
+fn a_first_wins_candidate_that_cannot_be_checked_below_a_winner_changes_nothing_above_it() {
+    let rig = Rig::new();
+    let knowledge = fixture_with(&item(
+        "demo.locked-below",
+        "/locked/below.json",
+        5,
+        Some(r#"["linux"]"#),
+    ));
+    let hidden = rig.file("locked/below.json", SECRET);
+    let _locked = Locked::new(hidden.parent().expect("a parent").to_path_buf());
+    if fs::metadata(&hidden).is_ok() {
+        usher_testkit::skip(
+            "a_first_wins_candidate_that_cannot_be_checked_below_a_winner_changes_nothing_above_it",
+            "this process can look through a mode 000 directory, so there is nothing to test",
+        );
+        return;
+    }
+    let top = rig.file(TOP, POLICY);
+    let low = rig.file(LOW, POLICY);
+    let listing = rig.list_with(&knowledge);
+    assert_eq!(status_of(&listing, &top), &SourceStatus::InEffect);
+    assert_eq!(
+        status_of(&listing, &low),
+        &SourceStatus::Shadowed { by: top }
+    );
+    assert!(
+        listing.not_checked.iter().any(|n| n.layer == "managed"),
+        "{:?}",
+        listing.not_checked
+    );
+}
