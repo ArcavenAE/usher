@@ -93,6 +93,15 @@ fn an_anchor_that_covers_only_one_of_the_items_platforms_is_refused_naming_platf
 }
 
 #[test]
+fn an_anchor_over_the_same_versions_in_another_term_order_is_accepted() {
+    let anchor = names("<2.0.0, >=1.0.0", "");
+    let ask = keys(">=1.0.0, <2.0.0", "");
+    if let Err(err) = parse(&anchor, &ask) {
+        panic!("expected a valid file: {err}");
+    }
+}
+
+#[test]
 fn an_anchor_with_equal_versions_and_no_platforms_is_accepted() {
     let anchor = names(">=1.0.0, <2.0.0", "");
     let ask = keys(">=1.0.0, <2.0.0", "");
