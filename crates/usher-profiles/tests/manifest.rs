@@ -390,3 +390,35 @@ fn an_mcp_note_is_accepted_whether_or_not_the_manifest_holds_the_server() {
     let uncovered = format!("{VALID}\n[notes]\n\"codex:model\" = \"why\"\n");
     names_field(&refusal(&uncovered), "codex:model");
 }
+
+/// A note key as a TOML basic-string key, so `\` and `"` in `raw` reach the
+/// parser as the characters they are.
+fn note_with_key(raw: &str) -> String {
+    let escaped = raw.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("{VALID}\n[notes]\n\"{escaped}\" = \"why\"\n")
+}
+
+#[test]
+fn a_quoted_segment_is_a_json_string_and_is_quoted_only_when_it_has_to_be() {
+    let good = "claude-code:a.\"b.c\"";
+    assert_eq!(must_parse(&note_with_key(good)).notes()[0].key(), good);
+    let spaced = "claude-code:env.\"my var\"";
+    assert_eq!(must_parse(&note_with_key(spaced)).notes()[0].key(), spaced);
+
+    // (key, the segment the error must name)
+    let bad = [
+        ("claude-code:a.\"b\"", "\"b\""),
+        ("claude-code:a.\"b", "\"b"),
+        ("claude-code:a.\"\"", "\"\""),
+        ("claude-code:a.\"b\\u0001\"", "\"b\\u0001\""),
+    ];
+    for (key, segment) in bad {
+        let err = refusal(&note_with_key(key));
+        assert!(
+            err.check().contains(segment) || err.status().contains(segment),
+            "the error does not name the segment {segment}: {} / {}",
+            err.check(),
+            err.status()
+        );
+    }
+}
