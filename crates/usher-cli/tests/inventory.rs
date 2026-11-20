@@ -671,7 +671,7 @@ versions = ">=3.0.0, <4.0.0"
 summary = "A variable a later range reads."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/env" }
 last_verified = 2026-11-20
-variable = { name = "CLAUDE_OTHER_DIR" }
+variable = { name = "CLAUDE_OTHER_DIR", binds = "${CONFIG_DIR}", default = "${HOME}/.other" }
 "#,
     );
     inventory_with(&env, SystemRoot::at(rig.system.clone()), &knowledge).expect("an inventory");
@@ -717,7 +717,7 @@ versions = ">=3.0.0, <4.0.0"
 summary = "A variable a later range reads."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/env" }
 last_verified = 2026-11-20
-variable = { name = "CLAUDE_OTHER_DIR" }
+variable = { name = "CLAUDE_OTHER_DIR", binds = "${CONFIG_DIR}", default = "${HOME}/.other" }
 "#
     ));
     inventory_with(&env, SystemRoot::at(rig.system.clone()), &knowledge).expect("an inventory");

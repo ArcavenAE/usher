@@ -458,7 +458,7 @@ impl Store {
     /// caller, so a test can check the owner wiring without changing an owner.
     pub fn open_with_owner(state_dir: &Path, expected_uid: u32) -> Result<Self, UsherError> {
         prepare_state_dir(state_dir)?;
-        let owner = fs::metadata(state_dir)
+        let owner = fs::symlink_metadata(state_dir)
             .map_err(|err| {
                 fail(
                     "check the state directory",
