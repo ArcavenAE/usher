@@ -1206,3 +1206,27 @@ fn a_refused_redirect_path_on_a_listed_host_is_not_echoed() {
         .expect_err("a path with a space must fail");
     assert!(!err.to_string().contains("secret"), "{err}");
 }
+
+// ---- the call's name ----
+
+#[test]
+fn every_descriptor_name_is_unique_kebab_case_and_the_variants_own() {
+    assert!(!ALL.is_empty(), "ALL names no call");
+    let mut seen = BTreeSet::new();
+    for egress in ALL {
+        let name = descriptor(*egress).name;
+        assert_eq!(
+            name,
+            every_variant_named(*egress),
+            "the name is the variant's kebab form"
+        );
+        assert!(
+            (1..=64).contains(&name.len())
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+            "name `{name}` is not 1 to 64 of [a-z0-9-]"
+        );
+        assert!(seen.insert(name), "name `{name}` is used twice");
+    }
+}
