@@ -98,15 +98,15 @@ pub fn map_with(
 
     let mut out = render(knowledge.current(), &observed.listing, &observed.reading);
     out.push_str("\n\n");
-    if let Ok(target) = std::fs::canonicalize(dir) {
-        if target != dir {
-            let _ = writeln!(
-                out,
-                "settings of {} (the directory resolves to {})",
-                dir.display(),
-                target.display()
-            );
-        }
+    if let Ok(target) = std::fs::canonicalize(dir)
+        && target != dir
+    {
+        let _ = writeln!(
+            out,
+            "settings of {} (the directory resolves to {})",
+            dir.display(),
+            target.display()
+        );
     }
     out.push_str(&settings_block(&map));
     Ok(out.trim_end().to_string())
