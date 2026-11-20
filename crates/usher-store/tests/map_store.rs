@@ -573,3 +573,186 @@ fn a_null_value_stays_null_and_is_never_an_empty_string() {
     assert_eq!(rows[0].entry_index, None);
     assert_eq!(rows[0].note, None);
 }
+
+const TOKENS: [&str; 8] = [
+    "in_effect",
+    "shadowed",
+    "unread",
+    "not_decided",
+    "overridden_by_environment",
+    "value_not_read",
+    "not_checked",
+    "unknown",
+];
+
+/// A fresh store and a version 2 store migrated to version 3, to be held to one schema.
+fn fresh_and_migrated() -> (ScratchHome, PathBuf, ScratchHome, PathBuf) {
+    let fresh = ScratchHome::new().expect("scratch");
+    let fresh_dir = state_dir(&fresh);
+    drop(Store::open(&fresh_dir).expect("a fresh store"));
+    let old = ScratchHome::new().expect("scratch");
+    let old_dir = version_two(&old, "");
+    drop(Store::open(&old_dir).expect("migrated"));
+    (fresh, fresh_dir, old, old_dir)
+}
+
+fn raw_insert(dir: &Path, status: &str, value: &str) -> rusqlite::Result<usize> {
+    let conn = raw(dir);
+    conn.execute_batch("PRAGMA foreign_keys = OFF;")
+        .expect("pragma");
+    conn.execute(
+        &format!(
+            "INSERT INTO map_setting (run_id, harness, launch_dir, key, layer, source_path, method, status, value_text) VALUES (1, 'claude-code', '/d', 'model', 'user', '/p', 'rebuilt', '{status}', {value})"
+        ),
+        [],
+    )
+}
+
+#[test]
+fn each_of_the_eight_status_tokens_round_trips() {
+    let (_scratch, mut store) = open_fresh();
+    let readings: Vec<SettingRecord<'_>> = TOKENS
+        .iter()
+        .map(|token| setting("model", "user", token))
+        .collect();
+    let id = store
+        .record_map(&run(), &[], &[], &readings)
+        .expect("every token is accepted");
+    let stored: Vec<String> = store
+        .settings_of(id)
+        .expect("readings")
+        .into_iter()
+        .map(|r| r.status)
+        .collect();
+    assert_eq!(stored, TOKENS);
+}
+
+#[test]
+fn a_status_outside_the_eight_is_refused_by_the_table_on_a_fresh_and_a_migrated_store() {
+    let (_f, fresh, _o, old) = fresh_and_migrated();
+    for dir in [&fresh, &old] {
+        for bad in ["in effect", "In_Effect", "", "unreadable", "not decided"] {
+            let err = raw_insert(dir, bad, "NULL").expect_err(bad);
+            assert!(
+                err.to_string().to_lowercase().contains("constraint"),
+                "`{bad}`: {err}"
+            );
+        }
+        for token in TOKENS.iter().filter(|t| **t != "value_not_read") {
+            raw_insert(dir, token, "NULL").unwrap_or_else(|e| panic!("`{token}`: {e}"));
+        }
+    }
+}
+
+#[test]
+fn a_status_outside_the_eight_is_refused_through_the_api_naming_it_and_nothing_is_stored() {
+    let (_scratch, mut store) = open_fresh();
+    let bad = setting("model", "user", "in effect");
+    let err = store
+        .record_map(
+            &run(),
+            &[],
+            &[],
+            &[setting("env", "user", "in_effect"), bad],
+        )
+        .expect_err("a status outside the set is refused before the table sees it");
+    let shown = err.to_string();
+    assert!(
+        shown.contains("status") && shown.contains("in effect"),
+        "{shown}"
+    );
+    assert!(!err.step().is_empty() && !err.next_action().is_empty());
+    assert!(
+        store.runs().expect("runs").is_empty(),
+        "the run was not inserted"
+    );
+}
+
+#[test]
+fn a_value_not_read_row_with_a_value_is_refused_through_the_api_and_by_the_table() {
+    let (_scratch, mut store) = open_fresh();
+    let leaking = SettingRecord {
+        value_text: Some("a-value"),
+        ..setting("env", "user", "value_not_read")
+    };
+    let err = store
+        .record_map(&run(), &[], &[], &[leaking])
+        .expect_err("a row that says it did not read the value cannot hold one");
+    assert!(err.to_string().contains("value_not_read"), "{err}");
+    assert!(store.runs().expect("runs").is_empty());
+    let (_f, fresh, _o, old) = fresh_and_migrated();
+    for dir in [&fresh, &old] {
+        let err = raw_insert(dir, "value_not_read", "'a-value'").expect_err("a value");
+        assert!(
+            err.to_string().to_lowercase().contains("constraint"),
+            "{err}"
+        );
+        raw_insert(dir, "value_not_read", "NULL").expect("a NULL value is the row's own shape");
+    }
+}
+
+#[test]
+fn the_verb_check_holds_on_a_migrated_store_as_on_a_fresh_one() {
+    let (_f, fresh, _o, old) = fresh_and_migrated();
+    for dir in [&fresh, &old] {
+        let err = raw(dir)
+            .execute(
+                "INSERT INTO inventory_run (recorded_at, harness, knowledge_schema, knowledge_sequence, environment_key, verb) VALUES ('2026-11-20T12:00:00Z', 'h', 5, 5, 'k', 'explain')",
+                [],
+            )
+            .expect_err("an unknown verb is refused");
+        assert!(
+            err.to_string().to_lowercase().contains("constraint"),
+            "{err}"
+        );
+        let id: i64 = raw(dir)
+            .query_row(
+                "INSERT INTO inventory_run (recorded_at, harness, knowledge_schema, knowledge_sequence, environment_key) VALUES ('2026-11-20T12:00:00Z', 'h', 5, 5, 'k') RETURNING id",
+                [],
+                |r| r.get(0),
+            )
+            .expect("a run with no verb");
+        let verb: String = raw(dir)
+            .query_row("SELECT verb FROM inventory_run WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .expect("verb");
+        assert_eq!(verb, "inventory", "the default is the same on both");
+    }
+}
+
+#[test]
+fn a_migrated_store_has_the_schema_of_a_fresh_one_for_the_map_table_and_its_triggers() {
+    let (_f, fresh, _o, old) = fresh_and_migrated();
+    let sql = |dir: &Path| -> Vec<(String, String)> {
+        let conn = raw(dir);
+        let mut stmt = conn
+            .prepare(
+                "SELECT name, sql FROM sqlite_master WHERE name LIKE 'map_setting%' ORDER BY name",
+            )
+            .expect("prepare");
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .expect("query")
+            .collect::<Result<_, _>>()
+            .expect("rows")
+    };
+    let squash = |rows: Vec<(String, String)>| -> Vec<(String, String)> {
+        rows.into_iter()
+            .map(|(n, s)| (n, s.split_whitespace().collect::<Vec<_>>().join(" ")))
+            .collect()
+    };
+    let a = squash(sql(&fresh));
+    assert!(a.len() >= 3, "the table and two triggers: {a:?}");
+    assert_eq!(a, squash(sql(&old)));
+    let verb = |dir: &Path| -> (String, i64, Option<String>) {
+        raw(dir)
+            .query_row(
+                "SELECT type, \"notnull\", dflt_value FROM pragma_table_xinfo('inventory_run') WHERE name = 'verb'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .expect("a verb column")
+    };
+    assert_eq!(verb(&fresh), verb(&old));
+    assert_eq!(verb(&old).1, 1, "NOT NULL");
+}
