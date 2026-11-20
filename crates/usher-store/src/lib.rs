@@ -711,15 +711,7 @@ fn account_of(uid: u32) -> Result<nix::unistd::User, UsherError> {
 /// The account home of the user with this uid, from the account database and never from
 /// `$HOME`.
 pub fn account_home_of(uid: u32) -> Result<PathBuf, UsherError> {
-    let home = account_of(uid)?.dir;
-    if home.is_absolute() {
-        Ok(home)
-    } else {
-        Err(account_error(format!(
-            "the account database gives `{}` for uid {uid}, which is not an absolute path",
-            home.display()
-        )))
-    }
+    require_absolute_home(uid, &account_of(uid)?.dir)
 }
 
 /// The account name of the current user, from the account database.
@@ -729,8 +721,14 @@ pub fn account_name() -> Result<String, UsherError> {
 
 /// Refuses an account home that is not an absolute path, naming the uid and the path.
 pub fn require_absolute_home(uid: u32, home: &Path) -> Result<PathBuf, UsherError> {
-    let _ = uid;
-    Ok(home.to_path_buf())
+    if home.is_absolute() {
+        Ok(home.to_path_buf())
+    } else {
+        Err(account_error(format!(
+            "the account database gives `{}` for uid {uid}, which is not an absolute path",
+            home.display()
+        )))
+    }
 }
 
 /// The account home of the current user.
