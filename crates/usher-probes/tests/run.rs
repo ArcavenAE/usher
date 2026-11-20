@@ -7,6 +7,7 @@ use std::cell::RefCell;
 
 use common::fake_harness;
 use usher_probes::{
+    codex_home::probe_home,
     fragment::{Date, Network},
     run::{Spec, run, run_or_panic},
 };
@@ -211,4 +212,51 @@ fn run_or_panic_returns_the_fragment_when_the_probe_ran() {
         |_| Ok(true),
     );
     assert!(fragment.render().contains(r#"version = "1.2.3""#));
+}
+
+#[test]
+fn a_codex_probe_home_holds_only_the_files_the_probe_wrote() {
+    let scratch = ScratchHome::new().expect("scratch home");
+    // Anything already in the scratch codex home must not leak into the probe.
+    std::fs::create_dir_all(scratch.codex_home().join("sessions")).expect("stray dirs");
+    std::fs::write(scratch.codex_home().join("auth.json"), "{}").expect("stray auth");
+    std::fs::write(scratch.codex_home().join("history.jsonl"), "{}").expect("stray history");
+
+    let home =
+        probe_home(&scratch, &[("config.toml", "model = \"demo\"\n")]).expect("a probe home");
+    let mut names: Vec<String> = std::fs::read_dir(&home)
+        .expect("probe home dir")
+        .map(|entry| {
+            entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    names.sort();
+    assert_eq!(names, ["config.toml"]);
+    assert_eq!(
+        std::fs::read_to_string(home.join("config.toml")).expect("written config"),
+        "model = \"demo\"\n"
+    );
+    assert!(
+        home.starts_with(scratch.root()),
+        "the probe home is outside the scratch root"
+    );
+}
+
+#[test]
+fn a_probe_home_refuses_credentials_and_names_that_leave_the_directory() {
+    let scratch = ScratchHome::new().expect("scratch home");
+    assert!(
+        probe_home(&scratch, &[("config.toml", "x = 1\n")]).is_ok(),
+        "control: a plain config file is accepted"
+    );
+    for name in ["auth.json", "../escape.toml", "sub/config.toml", ""] {
+        assert!(
+            probe_home(&scratch, &[(name, "x = 1\n")]).is_err(),
+            "`{name}` must be refused"
+        );
+    }
 }

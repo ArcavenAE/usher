@@ -79,3 +79,32 @@ fn a_missing_source_is_an_error_naming_not_found() {
     let err = CodexCopy::create(&missing, &scratch).expect_err("no source, no copy");
     assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
 }
+
+#[test]
+fn a_symlinked_toml_file_is_not_copied_and_no_directory_is_entered() {
+    let scratch = ScratchHome::new().expect("scratch home");
+    let source = source_home(&scratch);
+    // A symlink to a file outside the source, one to a file inside it, and a
+    // directory whose name ends in .toml: none is followed or copied.
+    let outside = scratch.root().join("outside.toml");
+    fs::write(&outside, "secret = true\n").expect("outside file");
+    std::os::unix::fs::symlink(&outside, source.join("linked-out.toml")).expect("symlink out");
+    std::os::unix::fs::symlink(source.join("config.toml"), source.join("linked-in.toml"))
+        .expect("symlink in");
+    fs::create_dir_all(source.join("dir.toml")).expect("a directory named like a toml file");
+    fs::write(source.join("dir.toml").join("inner.toml"), "y = 2\n").expect("inner file");
+
+    let copy = CodexCopy::create(&source, &scratch).expect("a copy");
+    let mut names: Vec<String> = fs::read_dir(copy.path())
+        .expect("copy dir")
+        .map(|entry| {
+            entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    names.sort();
+    assert_eq!(names, ["config.toml", "extra.toml"]);
+}
