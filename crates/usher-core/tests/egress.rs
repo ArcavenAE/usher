@@ -759,3 +759,34 @@ fn a_redirect_on_a_non_get_call_is_refused_naming_the_status_with_one_send() {
         assert_eq!(transport.sent().len(), 1, "{status}: the port followed");
     }
 }
+
+#[test]
+fn a_get_with_an_extra_listed_header_follows_with_the_user_agent_only() {
+    let transport = RecordingTransport::new()
+        .answering_redirect(format!("https://{ASSETS_HOST}/moved"))
+        .answering_ok("moved body");
+    port(&transport)
+        .call_described(
+            &EXTRA_HEADER,
+            described_request()
+                .with("file", "k.toml")
+                .with("x-note", "private"),
+        )
+        .expect("the follow goes through");
+    let sent = transport.sent();
+    assert_eq!(sent.len(), 2);
+    assert_eq!(
+        sent[0].headers,
+        vec![
+            ("user-agent".to_string(), "usher".to_string()),
+            ("x-note".to_string(), "private".to_string())
+        ],
+        "the first request carries the listed header"
+    );
+    assert_eq!(
+        sent[1].headers,
+        vec![("user-agent".to_string(), "usher".to_string())],
+        "the follow carries the user agent and nothing else"
+    );
+    assert!(sent[1].query.is_empty() && sent[1].body.is_empty());
+}
