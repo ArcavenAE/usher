@@ -7,6 +7,8 @@
 
 #![forbid(unsafe_code)]
 
+mod display;
 mod manifest;
 
+pub use display::display_name;
 pub use manifest::{HarnessCover, Manifest, McpServer, Note, Tool};
