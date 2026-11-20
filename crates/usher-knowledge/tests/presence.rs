@@ -228,10 +228,12 @@ fn the_embedded_seed_marks_user_project_and_local_always_present_and_the_rest_no
         let Some(source) = item.source() else {
             continue;
         };
+        // The starting-directory copy of the local file is a leftover from older versions
+        // and may be absent, so it is the one local item that is not always present.
         let expected = matches!(
             source.layer(),
             SourceLayer::User | SourceLayer::Project | SourceLayer::Local
-        );
+        ) && item.id() != "claude-code.source-local-settings-starting-dir";
         assert_eq!(
             source.always_present(),
             expected,

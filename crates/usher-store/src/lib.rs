@@ -15,7 +15,7 @@ use usher_core::UsherError;
 const DB_FILE: &str = "usher.db";
 
 /// The schema version this build writes and reads.
-const USER_VERSION: i64 = 1;
+const USER_VERSION: i64 = 2;
 
 /// How long a connection waits on a locked database.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -59,6 +59,26 @@ CREATE TRIGGER inventory_source_no_delete BEFORE DELETE ON inventory_source
 BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
 ";
 
+/// Version 2: the seat lines of a run. One row per seat item: its part, whether the file or
+/// directory exists (null for an environment read and for an item that could not be
+/// checked), the names found as JSON arrays of path segments, the (name, present) pairs of
+/// an environment or keys-present read, and the reason an item could not be checked.
+const SEAT_SCHEMA: &str = "
+CREATE TABLE inventory_seat (
+    run_id INTEGER NOT NULL REFERENCES inventory_run(id),
+    part TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    present INTEGER CHECK (present IS NULL OR present IN (0, 1)),
+    names TEXT NOT NULL,
+    members TEXT NOT NULL,
+    note TEXT
+);
+CREATE TRIGGER inventory_seat_no_update BEFORE UPDATE ON inventory_seat
+BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
+CREATE TRIGGER inventory_seat_no_delete BEFORE DELETE ON inventory_seat
+BEGIN SELECT RAISE(ABORT, 'inventory rows are insert-only'); END;
+";
+
 /// The settings a connection to the store runs with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoreSettings {
@@ -70,6 +90,44 @@ pub struct StoreSettings {
     pub busy_timeout_ms: i64,
     /// `PRAGMA foreign_keys`: 1 is on.
     pub foreign_keys: i64,
+}
+
+/// One seat line to record: the item, the part, whether the file or directory exists,
+/// and the names found, each as its path of segments. Membership only: a value is not
+/// a field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeatRecord<'a> {
+    /// The part of the seat.
+    pub part: &'a str,
+    /// The id of the knowledge item behind the line.
+    pub item_id: &'a str,
+    /// Whether the file or directory exists; none for an environment read.
+    pub present: Option<bool>,
+    /// The names found, each a path of segments from the root.
+    pub names: &'a [Vec<String>],
+    /// For an environment or keys-present read, each listed member and whether it is
+    /// present, absent ones included.
+    pub members: &'a [(String, bool)],
+    /// Why the item could not be checked, as text that never holds a variable's value.
+    pub note: Option<&'a str>,
+}
+
+/// One seat line as stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeatRow {
+    /// The part of the seat.
+    pub part: String,
+    /// The id of the knowledge item behind the line.
+    pub item_id: String,
+    /// Whether the file or directory exists; none for an environment read.
+    pub present: Option<bool>,
+    /// The names found, each a path of segments from the root.
+    pub names: Vec<Vec<String>>,
+    /// For an environment or keys-present read, each listed member and whether it is
+    /// present, absent ones included.
+    pub members: Vec<(String, bool)>,
+    /// Why the item could not be checked, as text that never holds a variable's value.
+    pub note: Option<String>,
 }
 
 /// One inventory run: when it ran and what it assumed.
@@ -359,26 +417,50 @@ fn check_time(field: &str, text: &str) -> Result<(), UsherError> {
     }
 }
 
+/// One stored seat row before its JSON columns are read: part, item id, present flag,
+/// names, members and note.
+type RawSeat = (String, String, Option<i64>, String, String, Option<String>);
+
+/// One string as JSON text, escaped.
+fn json_string(text: &str) -> String {
+    let mut out = String::from("\"");
+    for ch in text.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 /// A JSON array of strings, compact, for the key names.
 fn json_names(names: &[&str]) -> String {
-    let mut out = String::from("[");
-    for (i, name) in names.iter().enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push('"');
-        for ch in name.chars() {
-            match ch {
-                '"' => out.push_str("\\\""),
-                '\\' => out.push_str("\\\\"),
-                c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-                c => out.push(c),
-            }
-        }
-        out.push('"');
-    }
-    out.push(']');
-    out
+    let items: Vec<String> = names.iter().map(|name| json_string(name)).collect();
+    format!("[{}]", items.join(","))
+}
+
+/// A JSON array of arrays of path segments, for the names a seat read found.
+fn json_paths(paths: &[Vec<String>]) -> String {
+    let items: Vec<String> = paths
+        .iter()
+        .map(|path| {
+            let segments: Vec<&str> = path.iter().map(String::as_str).collect();
+            json_names(&segments)
+        })
+        .collect();
+    format!("[{}]", items.join(","))
+}
+
+/// A JSON array of [name, present] pairs.
+fn json_members(members: &[(String, bool)]) -> String {
+    let items: Vec<String> = members
+        .iter()
+        .map(|(name, present)| format!("[{},{present}]", json_string(name)))
+        .collect();
+    format!("[{}]", items.join(","))
 }
 
 /// The version and the number of schema rows, read in one statement so both come from the
@@ -425,7 +507,9 @@ fn create_schema(conn: &Connection, db_path: &Path) -> Result<(), UsherError> {
         if rows > 0 {
             return Ok(false);
         }
-        conn.execute_batch(&format!("{SCHEMA}PRAGMA user_version = {USER_VERSION};"))?;
+        conn.execute_batch(&format!(
+            "{SCHEMA}{SEAT_SCHEMA}PRAGMA user_version = {USER_VERSION};"
+        ))?;
         Ok(true)
     })();
     match result {
@@ -438,6 +522,35 @@ fn create_schema(conn: &Connection, db_path: &Path) -> Result<(), UsherError> {
         }
         Err(err) => {
             // As above: the connection is dropped with the error, so a failed ROLLBACK changes nothing.
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(step(&err))
+        }
+    }
+}
+
+/// Moves a version 1 store to version 2 in one transaction under the write lock: the seat
+/// table and its triggers are created and the version is set, or nothing changes. The
+/// version is read again inside the lock, so two opens at once both succeed and the second
+/// finds version 2.
+fn migrate_to_current(conn: &Connection) -> Result<(), UsherError> {
+    let step = |err: &rusqlite::Error| db_error("move the inventory tables to version 2", err);
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|err| step(&err))?;
+    let result = (|| -> Result<(), rusqlite::Error> {
+        let now: i64 = conn.query_row("SELECT user_version FROM pragma_user_version", [], |r| {
+            r.get(0)
+        })?;
+        if now == 1 {
+            conn.execute_batch(&format!(
+                "{SEAT_SCHEMA}PRAGMA user_version = {USER_VERSION};"
+            ))?;
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => conn.execute_batch("COMMIT").map_err(|err| step(&err)),
+        Err(err) => {
+            // The connection is dropped with the error, so a failed ROLLBACK changes nothing.
             let _ = conn.execute_batch("ROLLBACK");
             Err(step(&err))
         }
@@ -509,6 +622,8 @@ impl Store {
             .map_err(|err| db_error("turn on foreign keys", &err))?;
         if version == 0 {
             create_schema(&conn, &db_path)?;
+        } else if version < USER_VERSION {
+            migrate_to_current(&conn)?;
         }
         Ok(Self { conn })
     }
@@ -532,12 +647,108 @@ impl Store {
         })
     }
 
+    /// Inserts one run, its sources and its seat lines in one transaction; returns the run
+    /// id. A run with a bad field inserts nothing.
+    pub fn record_inventory_with_seat(
+        &mut self,
+        run: &RunRecord<'_>,
+        sources: &[SourceRecord<'_>],
+        seat: &[SeatRecord<'_>],
+    ) -> Result<i64, UsherError> {
+        self.insert_run(run, sources, seat)
+    }
+
+    /// The seat lines one run recorded, in the order they were recorded.
+    pub fn seat_of(&self, run_id: i64) -> Result<Vec<SeatRow>, UsherError> {
+        let fail = |err: &rusqlite::Error| db_error("read the seat lines", err);
+        let mut stmt = self
+            .conn
+            .prepare("SELECT part, item_id, present, names, members, note FROM inventory_seat WHERE run_id = ?1 ORDER BY rowid")
+            .map_err(|err| fail(&err))?;
+        let raw: Vec<RawSeat> = stmt
+            .query_map([run_id], |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            })
+            .map_err(|err| fail(&err))?
+            .collect::<Result<_, _>>()
+            .map_err(|err| fail(&err))?;
+        let mut out = Vec::new();
+        for (part, item_id, present, names, members, note) in raw {
+            out.push(SeatRow {
+                part,
+                item_id,
+                present: present.map(|flag| flag == 1),
+                names: self.read_paths(&names)?,
+                members: self.read_members(&members)?,
+                note,
+            });
+        }
+        Ok(out)
+    }
+
+    fn read_paths(&self, text: &str) -> Result<Vec<Vec<String>>, UsherError> {
+        let fail = |err: &rusqlite::Error| db_error("read the seat names", err);
+        let mut outer = self
+            .conn
+            .prepare("SELECT value FROM json_each(?1) ORDER BY key")
+            .map_err(|err| fail(&err))?;
+        let paths: Vec<String> = outer
+            .query_map([text], |r| r.get(0))
+            .map_err(|err| fail(&err))?
+            .collect::<Result<_, _>>()
+            .map_err(|err| fail(&err))?;
+        let mut inner = self
+            .conn
+            .prepare("SELECT value FROM json_each(?1) ORDER BY key")
+            .map_err(|err| fail(&err))?;
+        paths
+            .iter()
+            .map(|path| {
+                inner
+                    .query_map([path], |r| r.get(0))
+                    .map_err(|err| fail(&err))?
+                    .collect::<Result<Vec<String>, _>>()
+                    .map_err(|err| fail(&err))
+            })
+            .collect()
+    }
+
+    fn read_members(&self, text: &str) -> Result<Vec<(String, bool)>, UsherError> {
+        let fail = |err: &rusqlite::Error| db_error("read the seat members", err);
+        let mut stmt = self
+            .conn
+            .prepare("SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?1) ORDER BY key")
+            .map_err(|err| fail(&err))?;
+        stmt.query_map([text], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? == 1))
+        })
+        .map_err(|err| fail(&err))?
+        .collect::<Result<_, _>>()
+        .map_err(|err| fail(&err))
+    }
+
     /// Inserts one run and its sources; returns the run id. A run with a bad field inserts
     /// nothing.
     pub fn record_inventory(
         &mut self,
         run: &RunRecord<'_>,
         sources: &[SourceRecord<'_>],
+    ) -> Result<i64, UsherError> {
+        self.insert_run(run, sources, &[])
+    }
+
+    fn insert_run(
+        &mut self,
+        run: &RunRecord<'_>,
+        sources: &[SourceRecord<'_>],
+        seat: &[SeatRecord<'_>],
     ) -> Result<i64, UsherError> {
         check_time("recorded_at", run.recorded_at)?;
         for source in sources {
@@ -577,6 +788,21 @@ impl Store {
                 ],
             )
             .map_err(|err| db_error("insert an inventory source", &err))?;
+        }
+        for line in seat {
+            tx.execute(
+                "INSERT INTO inventory_seat (run_id, part, item_id, present, names, members, note) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    run_id,
+                    line.part,
+                    line.item_id,
+                    line.present.map(i64::from),
+                    json_paths(line.names),
+                    json_members(line.members),
+                    line.note
+                ],
+            )
+            .map_err(|err| db_error("insert a seat line", &err))?;
         }
         tx.commit()
             .map_err(|err| db_error("commit the inventory insert", &err))?;

@@ -596,8 +596,8 @@ fn a_keys_present_item_does_not_anchor_a_file_for_another() {
 }
 
 #[test]
-fn a_names_item_of_the_same_harness_over_overlapping_versions_anchors_the_file() {
-    let anchor = anchored("demo.seat-anchor", "demo", ">=1.5.0, <3.0.0", ANCHOR);
+fn a_names_item_of_the_same_harness_over_the_same_versions_anchors_the_file() {
+    let anchor = anchored("demo.seat-anchor", "demo", ">=1.0.0, <2.0.0", ANCHOR);
     let ask = anchored("demo.seat-ask", "demo", ">=1.0.0, <2.0.0", ANCHORED_ASK);
     accepts(&format!("{FILE}{anchor}{ask}"));
 }

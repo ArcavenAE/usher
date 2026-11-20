@@ -75,15 +75,37 @@ last_verified = 2026-11-15
 source = { path = "${REPO}/.claude/settings.local.json", layer = "local", read = "read", rank = 1, always_present = true }
 
 [[item]]
+id = "claude-code.source-local-settings-starting-dir"
+harness = "claude-code"
+layer = "slow"
+class = "sources"
+versions = ">=2.1.317, <3.0.0"
+summary = "A local settings file in the directory the session starts in. The vendor's settings page says: \"Before v2.1.211, Claude Code kept the file in the starting directory. It still reads a file an earlier version left there alongside the root file; where both set the same key, the root's value applies\". Listed only when its path differs from the root file's."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
+last_verified = 2026-11-20
+source = { path = "${LAUNCH_DIR}/.claude/settings.local.json", layer = "local", read = "read", rank = 1, always_present = false }
+
+[[item]]
 id = "claude-code.source-global-state"
 harness = "claude-code"
 layer = "slow"
 class = "sources"
 versions = ">=2.1.317, <3.0.0"
-summary = "The file Claude Code writes for itself: account details, MCP server configurations, per-project state. Whether CLAUDE_CONFIG_DIR relocates it is not stated on the settings page."
-reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings" }
-last_verified = 2026-11-15
-source = { path = "${HOME}/.claude.json", layer = "global-state", read = "read", rank = 1, always_present = false }
+summary = "The file Claude Code writes for itself: account details, MCP server configurations, per-project state. The vendor's directory page says: \"If you set CLAUDE_CONFIG_DIR, every ~/.claude path on this page lives under that directory instead. The same applies to .claude.json, which otherwise sits at ~/.claude.json\"."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/claude-directory" }
+last_verified = 2026-11-20
+source = { path = "${GLOBAL_STATE_DIR}/.claude.json", layer = "global-state", read = "read", rank = 1, always_present = false }
+
+[[item]]
+id = "claude-code.global-state-dir-variable"
+harness = "claude-code"
+layer = "slow"
+class = "paths"
+versions = ">=2.1.317, <3.0.0"
+summary = "CLAUDE_CONFIG_DIR also relocates the global state file. The vendor's directory page says: \"If you set CLAUDE_CONFIG_DIR, every ~/.claude path on this page lives under that directory instead. The same applies to .claude.json, which otherwise sits at ~/.claude.json\". Unset or empty, the file sits in the home directory."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/claude-directory" }
+last_verified = 2026-11-20
+variable = { name = "CLAUDE_CONFIG_DIR", binds = "${GLOBAL_STATE_DIR}", default = "${HOME}" }
 
 [[item]]
 id = "claude-code.source-server-managed-cache"
@@ -91,7 +113,7 @@ harness = "claude-code"
 layer = "slow"
 class = "sources"
 versions = ">=2.1.317, <3.0.0"
-summary = "The cache of server-managed settings, written to ~/.claude/remote-settings.json. Whether CLAUDE_CONFIG_DIR relocates it is not stated; the path uses the config-directory token on the reading that ~/.claude names that folder."
+summary = "The cache of server-managed settings, written to ~/.claude/remote-settings.json. The vendor's directory page says: \"If you set CLAUDE_CONFIG_DIR, every ~/.claude path on this page lives under that directory instead. The same applies to .claude.json, which otherwise sits at ~/.claude.json\"; the path uses the config-directory token on the reading that ~/.claude names that folder."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/server-managed-settings" }
 last_verified = 2026-11-15
 source = { path = "${CONFIG_DIR}/remote-settings.json", layer = "server-managed-cache", read = "read", rank = 1, always_present = false }
@@ -138,6 +160,28 @@ summary = "GOOSE_PATH_ROOT, when absolute, relocates goose config, data and stat
 reference = { kind = "source", locator = "https://raw.githubusercontent.com/aaif-goose/goose/main/crates/goose/src/config/paths.rs" }
 last_verified = 2026-11-02
 [[item]]
+id = "claude-code.seat-mcp-launch-dir"
+harness = "claude-code"
+layer = "slow"
+class = "seat"
+versions = ">=2.1.317, <3.0.0"
+summary = "The MCP server names registered in the project's .mcp.json at the directory the session starts in, and the names of each server's env and headers entries; no value is read. The vendor's MCP page says to add the entry under mcpServers in .mcp.json at the project root, and does not say how the root is found after a launch in a subdirectory, so both places are listed and neither is claimed."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/mcp" }
+last_verified = 2026-11-20
+seat = { part = "mcp", path = "${LAUNCH_DIR}/.mcp.json", read = "names", key_paths = ["mcpServers.*", "mcpServers.*.env", "mcpServers.*.headers"] }
+
+[[item]]
+id = "claude-code.seat-mcp-repo-root"
+harness = "claude-code"
+layer = "slow"
+class = "seat"
+versions = ">=2.1.317, <3.0.0"
+summary = "The MCP server names registered in the project's .mcp.json at the repository root, and the names of each server's env and headers entries; no value is read. The vendor's MCP page says to add the entry under mcpServers in .mcp.json at the project root, and does not say how the root is found after a launch in a subdirectory, so both places are listed and neither is claimed."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/mcp" }
+last_verified = 2026-11-20
+seat = { part = "mcp", path = "${REPO}/.mcp.json", read = "names", key_paths = ["mcpServers.*", "mcpServers.*.env", "mcpServers.*.headers"] }
+
+[[item]]
 id = "claude-code.seat-auth-env"
 harness = "claude-code"
 layer = "slow"
@@ -157,7 +201,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "Whether the global state file has a top-level oauthAccount key, which marks a subscription login. The vendor page says the file holds account details; the key name itself was observed on one host on 2026-11-20 and is not documented. Only membership is read, never the value or anything under it. Applies to a fleet seat."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/claude-directory" }
 last_verified = 2026-11-20
-seat = { part = "auth-route", path = "${HOME}/.claude.json", read = "keys-present", keys = ["oauthAccount"] }
+seat = { part = "auth-route", path = "${GLOBAL_STATE_DIR}/.claude.json", read = "keys-present", keys = ["oauthAccount"] }
 
 
 [[item]]

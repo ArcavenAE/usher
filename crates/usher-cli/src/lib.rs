@@ -66,6 +66,12 @@ impl LaunchEnvironment {
         Ok(LaunchEnvironment { values })
     }
 
+    /// Records that `name` is set, without keeping its value: the stored text is a fixed
+    /// marker, so a variable that only the seat reads is known to be set and never read.
+    pub(crate) fn mark_set(&mut self, name: &str) {
+        self.values.insert(name.to_string(), "set".to_string());
+    }
+
     /// The value of `name`, when it was kept.
     pub fn get(&self, name: &str) -> Option<&str> {
         self.values.get(name).map(String::as_str)
