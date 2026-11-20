@@ -137,7 +137,90 @@ mod tests {
         let text = key(&[("CLAUDE_CONFIG_DIR", Some("/c")), ("CODEX_HOME", None)]).to_string();
         assert_eq!(
             text,
-            "host-1/alex/claude-code//Users/alex/work/repo?CLAUDE_CONFIG_DIR=/c&CODEX_HOME=-"
+            "host-1/alex/claude-code//Users/alex/work/repo?CLAUDE_CONFIG_DIR=/c&CODEX_HOME"
+        );
+    }
+
+    /// The text form is what the store keys on, so two unequal keys must never share it.
+    #[test]
+    fn unequal_keys_never_share_a_text_form() {
+        let unset = key(&[("CODEX_HOME", None)]);
+        let dash = key(&[("CODEX_HOME", Some("-"))]);
+        let empty = key(&[("CODEX_HOME", Some(""))]);
+        assert_ne!(unset, dash);
+        assert_ne!(unset.to_string(), dash.to_string(), "unset against a dash");
+        assert_ne!(unset.to_string(), empty.to_string(), "unset against empty");
+        assert_ne!(empty.to_string(), dash.to_string(), "empty against a dash");
+
+        let one = key(&[("CODEX_HOME", Some("/x&CLAUDE_CONFIG_DIR=/c"))]);
+        let two = key(&[
+            ("CLAUDE_CONFIG_DIR", Some("/c")),
+            ("CODEX_HOME", Some("/x")),
+        ]);
+        assert_ne!(one, two);
+        assert_ne!(
+            one.to_string(),
+            two.to_string(),
+            "a value holding & and = against two variables"
+        );
+        let percent = key(&[("CODEX_HOME", Some("%26"))]);
+        let ampersand = key(&[("CODEX_HOME", Some("&"))]);
+        assert_ne!(
+            percent.to_string(),
+            ampersand.to_string(),
+            "an escape sequence against the character it escapes"
+        );
+    }
+
+    /// AD-17 prevents one environment keyed several ways.
+    #[test]
+    fn one_directory_spelled_two_ways_is_one_key_and_one_text_form() {
+        let spell = |dir: &str| {
+            environment_key("h", "u", "claude-code", Path::new(dir), &[]).expect("absolute")
+        };
+        let plain = spell("/a/b");
+        for other in ["/a/b/", "/a/./b", "/a//b", "/a/b/."] {
+            let other = spell(other);
+            assert_eq!(plain, other, "{other}");
+            assert_eq!(plain.to_string(), other.to_string(), "{other}");
+        }
+        assert_eq!(plain.directory(), Path::new("/a/b"));
+    }
+
+    /// A `..` segment names a parent only once symlinks are resolved, which is the
+    /// caller's step, so the key refuses it instead of guessing.
+    #[test]
+    fn a_directory_with_a_parent_segment_is_refused() {
+        let err = environment_key("h", "u", "claude-code", Path::new("/a/../b"), &[])
+            .expect_err("`..` is resolved by the caller, not guessed here");
+        assert_eq!(err.step(), "key an environment");
+        assert!(err.status().contains(".."), "status: {}", err.status());
+    }
+
+    /// The caller passes the variables harness knowledge names for the harness; the
+    /// key holds exactly those, and does not filter further.
+    #[test]
+    fn the_key_holds_exactly_the_variables_it_is_given() {
+        let key = key(&[("CLAUDE_CONFIG_DIR", Some("/c")), ("PATH", Some("/bin"))]);
+        let names: Vec<&str> = key.launch().iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["CLAUDE_CONFIG_DIR", "PATH"]);
+    }
+
+    #[test]
+    fn a_variable_named_twice_is_refused() {
+        let err = environment_key(
+            "h",
+            "u",
+            "claude-code",
+            Path::new("/a"),
+            &[("CODEX_HOME", Some("/x")), ("CODEX_HOME", None)],
+        )
+        .expect_err("two values for one name have no one meaning");
+        assert_eq!(err.step(), "key an environment");
+        assert!(
+            err.status().contains("CODEX_HOME"),
+            "status: {}",
+            err.status()
         );
     }
 }
