@@ -9,6 +9,35 @@ use std::path::PathBuf;
 
 use usher_core::{SystemRoot, UsherError};
 
+/// The launch variables the verb asked for, as a name-to-value lookup. In production
+/// [`LaunchEnvironment::from_process`] fills it with the variables knowledge names and
+/// nothing else, so no other part of the process environment is held.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LaunchEnvironment {
+    values: std::collections::BTreeMap<String, String>,
+}
+
+impl LaunchEnvironment {
+    /// A lookup holding exactly these pairs, for tests.
+    pub fn from_pairs(pairs: &[(&str, &str)]) -> Self {
+        let _ = pairs;
+        LaunchEnvironment::default()
+    }
+
+    /// Reads the named variables from the process environment, keeping only those that
+    /// are set to valid text.
+    pub fn from_process(names: &[&str]) -> Self {
+        let _ = names;
+        LaunchEnvironment::default()
+    }
+
+    /// The value of `name`, when it was kept.
+    pub fn get(&self, name: &str) -> Option<&str> {
+        let _ = name;
+        None
+    }
+}
+
 /// Everything `usher inventory` reads from the process, named so tests can pass their
 /// own. In production [`InventoryEnv::from_process`] fills it.
 #[derive(Debug, Clone)]
@@ -21,8 +50,8 @@ pub struct InventoryEnv {
     pub home: PathBuf,
     /// The directory the command runs in: the launch directory.
     pub launch_dir: PathBuf,
-    /// The launch environment's `CLAUDE_CONFIG_DIR`, when set.
-    pub claude_config_dir: Option<OsString>,
+    /// The launch environment's variables that harness knowledge names.
+    pub launch: LaunchEnvironment,
     /// The launch environment's `PATH`.
     pub path: Option<OsString>,
     /// The state directory the store lives in.

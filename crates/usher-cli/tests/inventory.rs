@@ -6,7 +6,8 @@ use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 
 use usher_cli::{
-    InventoryEnv, inventory, inventory_platform, inventory_system_root, inventory_with, run,
+    InventoryEnv, LaunchEnvironment, inventory, inventory_platform, inventory_system_root,
+    inventory_with, run,
 };
 use usher_core::SystemRoot;
 use usher_knowledge::{Knowledge, KnowledgeFile, Platform, TrustedKeys};
@@ -41,7 +42,7 @@ impl Rig {
             user: "alex".to_string(),
             home: self.scratch.home().to_path_buf(),
             launch_dir: self.repo.clone(),
-            claude_config_dir: None,
+            launch: LaunchEnvironment::default(),
             path: Some(self.scratch.home().join(".local/bin").into_os_string()),
             state_dir: self.scratch.home().join(".local/state/usher"),
             now: NOW.to_string(),
@@ -275,7 +276,7 @@ fn a_relative_claude_config_dir_is_not_checked_and_says_so() {
     let rig = Rig::new();
     rig.install("2.1.317");
     let mut env = rig.env();
-    env.claude_config_dir = Some("relative/claude".into());
+    env.launch = LaunchEnvironment::from_pairs(&[("CLAUDE_CONFIG_DIR", "relative/claude")]);
     let out = rig.run(&env);
     assert!(
         out.contains("not checked: user settings (CLAUDE_CONFIG_DIR is not absolute)"),
@@ -289,7 +290,10 @@ fn an_absolute_claude_config_dir_moves_the_user_layer() {
     rig.install("2.1.317");
     let moved = rig.write(&rig.scratch.root().join("cfg/settings.json"), "{}");
     let mut env = rig.env();
-    env.claude_config_dir = Some(rig.scratch.root().join("cfg").into_os_string());
+    env.launch = LaunchEnvironment::from_pairs(&[(
+        "CLAUDE_CONFIG_DIR",
+        &rig.scratch.root().join("cfg").display().to_string(),
+    )]);
     let out = rig.run(&env);
     assert!(out.contains(&moved.display().to_string()), "{out}");
     let elsewhere = rig.scratch.home().join(".claude/settings.json");
@@ -302,7 +306,7 @@ fn an_empty_claude_config_dir_means_the_default() {
     rig.install("2.1.317");
     let user = rig.user("{}");
     let mut env = rig.env();
-    env.claude_config_dir = Some("".into());
+    env.launch = LaunchEnvironment::from_pairs(&[("CLAUDE_CONFIG_DIR", "")]);
     let out = rig.run(&env);
     assert!(out.contains(&user.display().to_string()), "{out}");
 }
@@ -479,10 +483,11 @@ fn a_set_claude_config_dir_keys_the_environment_with_its_value_and_an_empty_one_
     rig.install("2.1.317");
     let cfg = rig.scratch.root().join("cfg");
     let mut env = rig.env();
-    env.claude_config_dir = Some(cfg.clone().into_os_string());
+    env.launch =
+        LaunchEnvironment::from_pairs(&[("CLAUDE_CONFIG_DIR", &cfg.display().to_string())]);
     rig.run(&env);
     let mut empty_env = rig.env();
-    empty_env.claude_config_dir = Some("".into());
+    empty_env.launch = LaunchEnvironment::from_pairs(&[("CLAUDE_CONFIG_DIR", "")]);
     rig.run(&empty_env);
     let store = Store::open(&env.state_dir).expect("the store opens");
     let runs = store.runs().expect("runs");
@@ -591,7 +596,8 @@ fn a_known_and_an_unknown_version_run_in_one_environment_record_the_same_key() {
     let rig = Rig::new();
     let cfg = rig.scratch.root().join("cfg");
     let mut env = rig.env();
-    env.claude_config_dir = Some(cfg.clone().into_os_string());
+    env.launch =
+        LaunchEnvironment::from_pairs(&[("CLAUDE_CONFIG_DIR", &cfg.display().to_string())]);
     rig.install("2.1.317");
     rig.run(&env);
     fs::remove_file(rig.scratch.home().join(".local/bin/claude")).expect("remove the launcher");
@@ -655,4 +661,76 @@ variable = { name = "CLAUDE_OTHER_DIR" }
     assert_eq!(runs.len(), 2);
     assert_eq!(runs[0].environment_key, runs[1].environment_key);
     assert_ne!(runs[0].knowledge_sequence, runs[1].knowledge_sequence);
+}
+
+/// The verb asks the launch environment for every name knowledge lists, across all
+/// ranges, so a variable that only a later range names still enters the key of a run at a
+/// known version. A CLI that kept its own list of one name could not tell.
+#[test]
+fn a_variable_named_only_by_another_range_enters_the_key_of_a_known_version_run() {
+    let rig = Rig::new();
+    rig.install("2.1.317");
+    let mut env = rig.env();
+    env.launch = LaunchEnvironment::from_pairs(&[("CLAUDE_OTHER_DIR", "/elsewhere")]);
+    let knowledge = signed(
+        r#"
+schema_version = 3
+sequence = 99
+
+[[item]]
+id = "claude-code.config-dir-variable"
+harness = "claude-code"
+layer = "slow"
+class = "paths"
+versions = ">=2.1.317, <3.0.0"
+summary = "CLAUDE_CONFIG_DIR relocates the user config home."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/env" }
+last_verified = 2026-11-20
+variable = { name = "CLAUDE_CONFIG_DIR", binds = "${CONFIG_DIR}", default = "${HOME}/.claude" }
+
+[[item]]
+id = "claude-code.other-variable"
+harness = "claude-code"
+layer = "slow"
+class = "paths"
+versions = ">=3.0.0, <4.0.0"
+summary = "A variable a later range reads."
+reference = { kind = "vendor-docs", locator = "https://example.test/docs/env" }
+last_verified = 2026-11-20
+variable = { name = "CLAUDE_OTHER_DIR" }
+"#,
+    );
+    inventory_with(&env, SystemRoot::at(rig.system.clone()), &knowledge).expect("an inventory");
+    let store = Store::open(&env.state_dir).expect("the store opens");
+    let runs = store.runs().expect("runs");
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].harness_version.as_deref(), Some("2.1.317"));
+    assert_eq!(
+        runs[0].environment_key,
+        format!(
+            "host-1/alex/claude-code/{}?CLAUDE_OTHER_DIR=/elsewhere",
+            rig.repo.display()
+        )
+    );
+}
+
+#[test]
+fn from_process_keeps_only_the_named_variables_that_are_set() {
+    // CARGO_PKG_NAME is set by cargo for every test process; PATH is set but not asked for.
+    let launch = LaunchEnvironment::from_process(&["CARGO_PKG_NAME", "USHER_SURELY_NOT_SET_1"]);
+    assert_eq!(launch.get("CARGO_PKG_NAME"), Some("usher-cli"));
+    assert_eq!(launch.get("USHER_SURELY_NOT_SET_1"), None);
+    assert_eq!(
+        launch.get("PATH"),
+        None,
+        "a variable nobody asked for is not held"
+    );
+}
+
+#[test]
+fn from_pairs_holds_exactly_the_pairs_it_is_given() {
+    let launch = LaunchEnvironment::from_pairs(&[("A", "1"), ("B", "")]);
+    assert_eq!(launch.get("A"), Some("1"));
+    assert_eq!(launch.get("B"), Some(""));
+    assert_eq!(launch.get("C"), None);
 }
