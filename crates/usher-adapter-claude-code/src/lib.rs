@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+mod paths;
 pub mod version;
 
 pub use version::{VersionReading, read_version};

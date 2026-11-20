@@ -6,9 +6,14 @@
 //! component; the last component is the version.
 
 use std::ffi::OsStr;
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
+use std::{env, fs};
 
-use usher_core::LaunchContext;
-use usher_knowledge::VersionFrom;
+use usher_core::{LaunchContext, SystemRoot};
+use usher_knowledge::{Version, VersionFrom};
+
+use crate::paths::{normalize, resolve};
 
 /// What the reader found.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,9 +34,143 @@ pub fn read_version(
     context: &LaunchContext,
     path_var: Option<&OsStr>,
 ) -> VersionReading {
-    let _ = (from, context, path_var);
-    VersionReading::Unknown {
-        reason: String::new(),
+    match read(from, context, path_var) {
+        Ok(version) => VersionReading::Known(version),
+        Err(reason) => VersionReading::Unknown { reason },
+    }
+}
+
+fn read(
+    from: &VersionFrom,
+    context: &LaunchContext,
+    path_var: Option<&OsStr>,
+) -> Result<String, String> {
+    let host = SystemRoot::host();
+    let launcher = resolve(
+        from.launcher(),
+        context,
+        &host,
+        "the config directory variable",
+    )
+    .map_err(|why| format!("the launcher path cannot be placed: {why}"))?;
+    let meta = fs::symlink_metadata(&launcher)
+        .map_err(|why| format!("the launcher {} cannot be read: {why}", launcher.display()))?;
+    if !meta.file_type().is_symlink() {
+        return Err(format!(
+            "the launcher {} is not a symlink",
+            launcher.display()
+        ));
+    }
+    let raw = fs::read_link(&launcher)
+        .map_err(|why| format!("the launcher {} cannot be read: {why}", launcher.display()))?;
+    let target = if raw.is_absolute() {
+        raw
+    } else {
+        launcher.parent().unwrap_or(Path::new("/")).join(raw)
+    };
+    let target = normalize(&target);
+
+    let (layout_dir, _) = from
+        .layout()
+        .rsplit_once('/')
+        .ok_or_else(|| "the knowledge layout has no directory".to_string())?;
+    let layout_dir = resolve(layout_dir, context, &host, "the config directory variable")
+        .map_err(|why| format!("the layout cannot be placed: {why}"))?;
+    let layout_dir = normalize(&layout_dir);
+    let mismatch = || {
+        format!(
+            "the launcher target {} does not match the layout {}",
+            target.display(),
+            from.layout()
+        )
+    };
+    if target.parent() != Some(layout_dir.as_path()) {
+        return Err(mismatch());
+    }
+    let last = target
+        .file_name()
+        .and_then(OsStr::to_str)
+        .ok_or_else(mismatch)?;
+    let version = Version::parse(last).map_err(|_| {
+        format!(
+            "the last component `{last}` of {} is not a version",
+            target.display()
+        )
+    })?;
+
+    match fs::metadata(&target) {
+        Ok(meta) if meta.is_file() => {}
+        Ok(_) => {
+            return Err(format!(
+                "the launcher target {} is not a file",
+                target.display()
+            ));
+        }
+        Err(why) => {
+            return Err(format!(
+                "the launcher link is dangling: {} cannot be read: {why}",
+                target.display()
+            ));
+        }
+    }
+    check_path_claude(&launcher, context, path_var)?;
+    Ok(version.to_string())
+}
+
+/// The first `claude` on `PATH` that `sh` would run: a regular file with an execute bit,
+/// found by the same walk. An empty entry is the launch directory and a relative one is
+/// joined to it. It must be the launcher, either by path or as a link straight to it.
+fn check_path_claude(
+    launcher: &Path,
+    context: &LaunchContext,
+    path_var: Option<&OsStr>,
+) -> Result<(), String> {
+    let name = launcher.file_name().unwrap_or(OsStr::new("claude"));
+    let launch_dir = context.key.directory();
+    let hit = path_var
+        .into_iter()
+        .flat_map(env::split_paths)
+        .map(|entry| {
+            if entry.as_os_str().is_empty() {
+                launch_dir.to_path_buf()
+            } else if entry.is_relative() {
+                launch_dir.join(entry)
+            } else {
+                entry
+            }
+        })
+        .map(|dir| dir.join(name))
+        .find(|candidate| {
+            fs::metadata(candidate)
+                .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+                .unwrap_or(false)
+        });
+    let Some(hit) = hit else {
+        return Err(format!(
+            "{} is not on PATH, so it is not known to be the claude that runs",
+            name.to_string_lossy()
+        ));
+    };
+    let is_launcher = hit == launcher
+        || fs::read_link(&hit)
+            .map(|raw| {
+                let absolute = if raw.is_absolute() {
+                    raw
+                } else {
+                    hit.parent().unwrap_or(Path::new("/")).join(raw)
+                };
+                normalize(&absolute) == launcher
+            })
+            .unwrap_or(false);
+    if is_launcher {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} on PATH is {}, which is not the native launcher {}",
+            name.to_string_lossy(),
+            hit.display(),
+            launcher.display()
+        ))
     }
 }
 
