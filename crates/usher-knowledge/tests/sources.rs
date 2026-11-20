@@ -4,7 +4,7 @@
 use usher_knowledge::{Class, KnowledgeFile, Layer, ReadRule, SourceLayer, Version};
 
 const FILE: &str = r#"
-schema_version = 4
+schema_version = 5
 sequence = 9
 
 [[item]]
@@ -49,8 +49,8 @@ fn with_source(source: &str) -> String {
 
 #[test]
 fn a_sources_item_parses_with_path_layer_read_rule_and_rank() {
-    let file = KnowledgeFile::parse(FILE).expect("a valid schema 4 file");
-    assert_eq!(file.version().schema_version(), 4);
+    let file = KnowledgeFile::parse(FILE).expect("a valid schema 5 file");
+    assert_eq!(file.version().schema_version(), 5);
     let item = &file.items()[0];
     assert_eq!(item.class(), Class::Sources);
     assert_eq!(item.layer(), Layer::Slow);
@@ -94,10 +94,10 @@ fn every_layer_and_read_rule_name_is_accepted() {
 
 #[test]
 fn schema_one_is_refused_and_schema_three_is_read() {
-    let one = FILE.replace("schema_version = 4", "schema_version = 1");
-    rejects(&one, &["schema 1 is not supported", "reads schema 4"]);
+    let one = FILE.replace("schema_version = 5", "schema_version = 1");
+    rejects(&one, &["schema 1 is not supported", "reads schema 5"]);
     let two_without_sources = r#"
-schema_version = 4
+schema_version = 5
 sequence = 1
 "#;
     KnowledgeFile::parse(two_without_sources).expect("schema 4 with no items is valid");
@@ -247,7 +247,7 @@ variable = { name = "DEMO_CONFIG_DIR", binds = "${CONFIG_DIR}", default = "${HOM
 #[test]
 fn the_embedded_file_is_schema_three_and_lists_every_claude_code_source() {
     let file = KnowledgeFile::embedded().expect("the embedded file passes the check");
-    assert_eq!(file.version().schema_version(), 4);
+    assert_eq!(file.version().schema_version(), 5);
     assert!(
         file.version().sequence() >= 3,
         "the new items raise the sequence"

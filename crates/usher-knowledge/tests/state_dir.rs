@@ -48,7 +48,7 @@ const STATE_VARIABLE: &str =
     r#"variable = { name = "DEMO_HOME", binds = "${GLOBAL_STATE_DIR}", default = "${HOME}" }"#;
 
 fn file(items: &[&str]) -> String {
-    format!("schema_version = 4\nsequence = 9\n{}", items.concat())
+    format!("schema_version = 5\nsequence = 9\n{}", items.concat())
 }
 
 fn rejects(text: &str, needles: &[&str]) {
@@ -249,7 +249,7 @@ fn defaults_that_use_home_and_user_parse_and_so_do_the_seeds() {
     );
     KnowledgeFile::parse(&file(&[&config, STATE, SOURCE])).expect("HOME and USER are allowed");
     let seed = KnowledgeFile::embedded().expect("the embedded file");
-    assert_eq!(seed.version().schema_version(), 4);
+    assert_eq!(seed.version().schema_version(), 5);
     for item in seed.items() {
         let Some(variable) = item.variable() else {
             continue;
@@ -321,7 +321,7 @@ fn a_variable_bound_over_two_ranges_is_keyed_once_and_an_unbound_one_not_at_all(
 #[test]
 fn the_embedded_key_names_the_config_variable_once() {
     let seed = KnowledgeFile::embedded().expect("the embedded file");
-    assert_eq!(seed.version().schema_version(), 4);
+    assert_eq!(seed.version().schema_version(), 5);
     assert_eq!(seed.launch_variables("claude-code"), ["CLAUDE_CONFIG_DIR"]);
 }
 

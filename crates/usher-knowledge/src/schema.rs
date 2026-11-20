@@ -19,7 +19,7 @@ use crate::version::{Version, VersionRange};
 const EMBEDDED: &str = include_str!("../knowledge/harness-knowledge.toml");
 
 /// The only schema version this build reads.
-const SUPPORTED_SCHEMA: u32 = 4;
+const SUPPORTED_SCHEMA: u32 = 5;
 
 const STEP: &str = "load harness knowledge";
 const NEXT: &str =
@@ -71,6 +71,8 @@ pub enum Class {
     Disputed,
     /// The parts of the seat around a harness (slow).
     Seat,
+    /// The settings keys a harness reads, with how each merges across layers (fast).
+    SettingsKeys,
 }
 
 impl Class {
@@ -86,6 +88,7 @@ impl Class {
             "never-call" => Some(Class::NeverCall),
             "disputed" => Some(Class::Disputed),
             "seat" => Some(Class::Seat),
+            "settings-keys" => Some(Class::SettingsKeys),
             _ => None,
         }
     }
@@ -98,9 +101,12 @@ impl Class {
             | Class::Sources
             | Class::CredentialStores
             | Class::Seat => Layer::Slow,
-            Class::Keys | Class::Defaults | Class::Hazards | Class::NeverCall | Class::Disputed => {
-                Layer::Fast
-            }
+            Class::Keys
+            | Class::Defaults
+            | Class::Hazards
+            | Class::NeverCall
+            | Class::Disputed
+            | Class::SettingsKeys => Layer::Fast,
         }
     }
 }
@@ -412,6 +418,92 @@ impl SeatFact {
     }
 }
 
+/// How a settings key combines across layers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum MergeKind {
+    /// The highest-ranked layer that sets the key wins.
+    Scalar,
+    /// Every layer's entries are kept, each tied to its layer.
+    ListMerge,
+    /// Objects combine key by key.
+    ObjectMerge,
+    /// The harness gives the key its own rule; usher does not decide it.
+    OwnRule,
+}
+
+impl MergeKind {
+    fn parse(name: &str) -> Option<Self> {
+        match name {
+            "scalar" => Some(MergeKind::Scalar),
+            "list-merge" => Some(MergeKind::ListMerge),
+            "object-merge" => Some(MergeKind::ObjectMerge),
+            "own-rule" => Some(MergeKind::OwnRule),
+            _ => None,
+        }
+    }
+}
+
+/// An environment variable that overrides a settings key when it is set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnvOverride {
+    variable: String,
+}
+
+impl EnvOverride {
+    /// The variable whose presence overrides the key.
+    pub fn variable(&self) -> &str {
+        &self.variable
+    }
+}
+
+/// The layers whose files may set a settings key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Scopes {
+    /// Any settings file.
+    Any,
+    /// Only the named layers.
+    Layers(Vec<SourceLayer>),
+}
+
+/// What harness knowledge says about one settings key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsKeyFact {
+    key: String,
+    merge: MergeKind,
+    sensitive: bool,
+    overrides: Option<EnvOverride>,
+    scopes: Scopes,
+}
+
+impl SettingsKeyFact {
+    /// The key path; `*` stands for one whole level.
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    /// How the key combines across layers.
+    pub fn merge(&self) -> MergeKind {
+        self.merge
+    }
+
+    /// Whether the value is never read or stored, even though the key is listed.
+    pub fn sensitive(&self) -> bool {
+        self.sensitive
+    }
+
+    /// The layers whose files may set the key.
+    pub fn scopes(&self) -> &Scopes {
+        &self.scopes
+    }
+
+    /// The environment variable that overrides the key, if knowledge names one.
+    pub fn overrides(&self) -> Option<&EnvOverride> {
+        self.overrides.as_ref()
+    }
+}
+
 /// One fact about a harness, with its source and the date it was last verified.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
@@ -428,6 +520,8 @@ pub struct Item {
     version_from: Option<VersionFrom>,
     variable: Option<LaunchVariable>,
     seat: Option<SeatFact>,
+    settings_key: Option<SettingsKeyFact>,
+    stack: Vec<String>,
 }
 
 /// How a harness version is read from disk without running the harness.
@@ -531,6 +625,16 @@ impl Item {
     /// The setting names a `keys` item lists, empty for every other class.
     pub fn keys(&self) -> &[String] {
         &self.keys
+    }
+
+    /// The settings-key fact, for an item of class `settings-keys`.
+    pub fn settings_key(&self) -> Option<&SettingsKeyFact> {
+        self.settings_key.as_ref()
+    }
+
+    /// The cross-layer order, highest first, for an item of class `layers`.
+    pub fn stack(&self) -> &[String] {
+        &self.stack
     }
 
     /// The seat fact, for an item of class `seat`.
@@ -1277,6 +1381,220 @@ fn parse_seat(table: &dyn TableLike, owner: &str) -> Result<SeatFact, UsherError
     })
 }
 
+/// The names a settings-key scope may list besides `any`.
+const SCOPE_LAYERS: [(&str, SourceLayer); 4] = [
+    ("managed", SourceLayer::Managed),
+    ("user", SourceLayer::User),
+    ("project", SourceLayer::Project),
+    ("local", SourceLayer::Local),
+];
+
+/// The layer names a cross-layer stack may list: the four settings files and the
+/// command line, which usher cannot observe.
+const STACK_LAYERS: [&str; 5] = ["managed", "command-line", "local", "project", "user"];
+
+fn valid_variable_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(|c| c.is_ascii_uppercase())
+        && chars.all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+}
+
+/// A settings key is one literal path: names joined by single dots, with no wildcard,
+/// and never a credential key at any level.
+fn check_settings_key_path(path: &str, owner: &str) -> Result<(), UsherError> {
+    let bad = |why: String| fail(format!("{owner}: key"), format!("`{path}` {why}"));
+    if path.contains('*') {
+        return Err(bad(
+            "contains a wildcard `*`; a settings key is one literal path".to_string(),
+        ));
+    }
+    for segment in path.split('.') {
+        let plain = !segment.is_empty()
+            && segment
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+        if !plain {
+            return Err(bad("is not names joined by single dots".to_string()));
+        }
+        if CREDENTIAL_KEYS.contains(&segment) {
+            return Err(bad(format!(
+                "starts at or passes through the credential key `{segment}`"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn parse_scopes(table: &dyn TableLike, owner: &str) -> Result<Scopes, UsherError> {
+    let list = table
+        .get("scopes")
+        .and_then(TomlItem::as_array)
+        .ok_or_else(|| {
+            fail(
+                format!("{owner}: scopes"),
+                "`scopes` is required and must be a list: [\"any\"] or a set of managed, user, project and local",
+            )
+        })?;
+    if list.is_empty() {
+        return Err(fail(
+            format!("{owner}: scopes"),
+            "`scopes` is empty; name [\"any\"] or at least one layer",
+        ));
+    }
+    let mut names: Vec<&str> = Vec::new();
+    for entry in list {
+        let name = entry.as_str().ok_or_else(|| {
+            fail(
+                format!("{owner}: scopes"),
+                "every entry of `scopes` must be a string",
+            )
+        })?;
+        if names.contains(&name) {
+            return Err(fail(
+                format!("{owner}: scopes"),
+                format!("`{name}` is listed twice"),
+            ));
+        }
+        names.push(name);
+    }
+    if names.contains(&"any") {
+        return if names.len() == 1 {
+            Ok(Scopes::Any)
+        } else {
+            Err(fail(
+                format!("{owner}: scopes"),
+                "`any` stands alone; it is not combined with a layer",
+            ))
+        };
+    }
+    let mut layers = Vec::new();
+    for name in names {
+        match SCOPE_LAYERS.iter().find(|(known, _)| *known == name) {
+            Some((_, layer)) => layers.push(*layer),
+            None => {
+                return Err(fail(
+                    format!("{owner}: scopes"),
+                    format!("`{name}` is not one of any, managed, user, project, local"),
+                ));
+            }
+        }
+    }
+    Ok(Scopes::Layers(layers))
+}
+
+fn parse_settings_key(table: &dyn TableLike, owner: &str) -> Result<SettingsKeyFact, UsherError> {
+    let fact = table
+        .get("settings_key")
+        .and_then(TomlItem::as_table_like)
+        .ok_or_else(|| {
+            fail(
+                format!("{owner}: settings_key"),
+                "an item of class `settings-keys` needs a `settings_key` table (key, merge, sensitive, scopes)",
+            )
+        })?;
+    let owner = format!("{owner} settings_key");
+    reject_unknown_keys(
+        fact,
+        &["key", "merge", "sensitive", "scopes", "overrides"],
+        &owner,
+    )?;
+    let key = text_field(fact, "key", &owner)?;
+    check_settings_key_path(key, &owner)?;
+    let merge_name = text_field(fact, "merge", &owner)?;
+    let merge = MergeKind::parse(merge_name).ok_or_else(|| {
+        fail(
+            format!("{owner}: merge"),
+            format!("`{merge_name}` is not one of scalar, list-merge, object-merge, own-rule"),
+        )
+    })?;
+    let sensitive = fact
+        .get("sensitive")
+        .and_then(TomlItem::as_bool)
+        .ok_or_else(|| {
+            fail(
+                format!("{owner}: sensitive"),
+                "`sensitive` is required and must be true or false",
+            )
+        })?;
+    let scopes = parse_scopes(fact, &owner)?;
+    let overrides = match fact.get("overrides") {
+        None => None,
+        Some(entry) => {
+            let over = entry.as_table_like().ok_or_else(|| {
+                fail(
+                    format!("{owner}: overrides"),
+                    "`overrides` must be a table with a `variable`",
+                )
+            })?;
+            let owner = format!("{owner} overrides");
+            reject_unknown_keys(over, &["variable"], &owner)?;
+            let variable = text_field(over, "variable", &owner)?;
+            if !valid_variable_name(variable) {
+                return Err(fail(
+                    format!("{owner}: variable"),
+                    format!(
+                        "`{variable}` is not a variable name: upper-case letters, digits and underscores, starting with a letter"
+                    ),
+                ));
+            }
+            Some(EnvOverride {
+                variable: variable.to_string(),
+            })
+        }
+    };
+    Ok(SettingsKeyFact {
+        key: key.to_string(),
+        merge,
+        sensitive,
+        overrides,
+        scopes,
+    })
+}
+
+fn parse_stack(table: &dyn TableLike, owner: &str) -> Result<Vec<String>, UsherError> {
+    let list = table
+        .get("stack")
+        .and_then(TomlItem::as_array)
+        .ok_or_else(|| {
+            fail(
+                format!("{owner}: stack"),
+                "an item of class `layers` needs a `stack` list of layer names, highest first",
+            )
+        })?;
+    if list.is_empty() {
+        return Err(fail(
+            format!("{owner}: stack"),
+            "`stack` is empty; list at least one layer",
+        ));
+    }
+    let mut names: Vec<String> = Vec::new();
+    for entry in list {
+        let name = entry.as_str().ok_or_else(|| {
+            fail(
+                format!("{owner}: stack"),
+                "every entry of `stack` must be a string",
+            )
+        })?;
+        if !STACK_LAYERS.contains(&name) {
+            return Err(fail(
+                format!("{owner}: stack"),
+                format!(
+                    "`{name}` is not a layer; known layers are {}",
+                    STACK_LAYERS.join(", ")
+                ),
+            ));
+        }
+        if names.iter().any(|seen| seen == name) {
+            return Err(fail(
+                format!("{owner}: stack"),
+                format!("`{name}` is listed twice"),
+            ));
+        }
+        names.push(name.to_string());
+    }
+    Ok(names)
+}
+
 fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
     let id = text_field(table, "id", &format!("item #{index}"))?;
     let owner = format!("item `{id}`");
@@ -1296,6 +1614,8 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
             "version_from",
             "variable",
             "seat",
+            "settings_key",
+            "stack",
         ],
         &owner,
     )?;
@@ -1318,6 +1638,14 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
         return Err(fail(
             format!("{owner}: class"),
             format!("class `{class_name}` belongs to the other layer than `{layer_name}`"),
+        ));
+    }
+    if class != Class::SettingsKeys && table.contains_key("settings_key") {
+        return Err(fail(
+            format!("{owner}: settings_key"),
+            format!(
+                "only items of class `settings-keys` carry a `settings_key` table, not `{class_name}`"
+            ),
         ));
     }
     let source = if class == Class::Sources {
@@ -1370,6 +1698,21 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
     } else {
         None
     };
+    let settings_key = if class == Class::SettingsKeys {
+        Some(parse_settings_key(table, &owner)?)
+    } else {
+        None
+    };
+    let stack = if class == Class::Layers {
+        parse_stack(table, &owner)?
+    } else if table.contains_key("stack") {
+        return Err(fail(
+            format!("{owner}: stack"),
+            format!("only items of class `layers` carry a `stack` list, not `{class_name}`"),
+        ));
+    } else {
+        Vec::new()
+    };
     Ok(Item {
         id: id.to_string(),
         harness: harness.to_string(),
@@ -1384,6 +1727,8 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
         version_from,
         variable,
         seat,
+        settings_key,
+        stack,
     })
 }
 
@@ -1433,6 +1778,39 @@ fn check_variables(items: &[Item]) -> Result<(), UsherError> {
                     format!(
                         "the {what} path uses {token}, and no `paths` item of harness `{}` binds it over the same versions as this item",
                         item.harness
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// No two items of one harness state the same settings key, or a cross-layer stack, over
+/// versions that overlap: the reader would have two answers for one version.
+fn check_settings_keys(items: &[Item]) -> Result<(), UsherError> {
+    for (index, first) in items.iter().enumerate() {
+        for second in &items[index + 1..] {
+            if first.harness != second.harness || !first.versions.overlaps(&second.versions) {
+                continue;
+            }
+            if let (Some(one), Some(two)) = (&first.settings_key, &second.settings_key)
+                && one.key == two.key
+            {
+                return Err(fail(
+                    format!("item `{}`", second.id),
+                    format!(
+                        "items `{}` and `{}` both state the settings key `{}` over versions that overlap",
+                        first.id, second.id, one.key
+                    ),
+                ));
+            }
+            if !first.stack.is_empty() && !second.stack.is_empty() {
+                return Err(fail(
+                    format!("item `{}`", second.id),
+                    format!(
+                        "items `{}` and `{}` both state a layer stack over versions that overlap",
+                        first.id, second.id
                     ),
                 ));
             }
@@ -1596,6 +1974,7 @@ impl KnowledgeFile {
         }
         check_variables(&items)?;
         check_anchors(&items)?;
+        check_settings_keys(&items)?;
         let mut support = Vec::new();
         for (index, table) in tables(&doc, "support")?.into_iter().enumerate() {
             support.push(parse_support(table, index + 1)?);
@@ -1699,7 +2078,7 @@ mod tests {
     use super::*;
 
     const VALID: &str = r#"
-schema_version = 4
+schema_version = 5
 sequence = 7
 
 [[item]]
@@ -1711,6 +2090,7 @@ versions = ">=1.2.0, <2.0.0"
 summary = "A fact."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs" }
 last_verified = 2026-11-02
+stack = ["managed", "user"]
 
 [[item]]
 id = "demo.default-model"
@@ -1833,7 +2213,7 @@ capabilities = ["inventory", "map"]
             &VALID.replace("sequence = 7", "sequence = \"seven\""),
             "sequence",
         );
-        rejects(&VALID.replace("schema_version = 4\n", ""), "schema_version");
+        rejects(&VALID.replace("schema_version = 5\n", ""), "schema_version");
     }
 
     #[test]
@@ -1843,15 +2223,15 @@ capabilities = ["inventory", "map"]
 
     #[test]
     fn items_must_be_tables() {
-        rejects("schema_version = 4\nsequence = 1\nitem = 3\n", "[[item]]");
+        rejects("schema_version = 5\nsequence = 1\nitem = 3\n", "[[item]]");
     }
 
     #[test]
     fn the_file_reports_its_version() {
         let file = KnowledgeFile::parse(VALID).expect("valid");
         assert_eq!(file.version().sequence(), 7);
-        assert_eq!(file.version().schema_version(), 4);
-        assert_eq!(file.version().to_string(), "knowledge v7 (schema 4)");
+        assert_eq!(file.version().schema_version(), 5);
+        assert_eq!(file.version().to_string(), "knowledge v7 (schema 5)");
     }
 
     #[test]
@@ -1874,7 +2254,7 @@ capabilities = ["inventory", "map"]
         assert!(lines.contains(&"demo 1.5.0: apply unsupported".to_string()));
         assert_eq!(
             lines.last().map(String::as_str),
-            Some("knowledge v7 (schema 4)")
+            Some("knowledge v7 (schema 5)")
         );
     }
 

@@ -19,9 +19,9 @@ mod version;
 mod build_keys;
 
 pub use schema::{
-    Binding, Class, Date, Item, KnowledgeFile, KnowledgeVersion, LaunchVariable, Layer, Platform,
-    ReadRule, Reference, ReferenceKind, SeatFact, SeatPart, SeatRead, SourceFact, SourceLayer,
-    VersionFrom, VersionRule,
+    Binding, Class, Date, EnvOverride, Item, KnowledgeFile, KnowledgeVersion, LaunchVariable,
+    Layer, MergeKind, Platform, ReadRule, Reference, ReferenceKind, Scopes, SeatFact, SeatPart,
+    SeatRead, SettingsKeyFact, SourceFact, SourceLayer, VersionFrom, VersionRule,
 };
 pub use support::{Capability, SupportReport};
 pub use trust::TrustedKeys;

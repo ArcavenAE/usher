@@ -14,7 +14,7 @@ use usher_store::{SeatRow, Store};
 use usher_testkit::{ScratchHome, Signer};
 
 const FIXTURE: &str = r#"
-schema_version = 4
+schema_version = 5
 sequence = 99
 
 [[item]]
