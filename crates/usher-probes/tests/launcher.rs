@@ -3,13 +3,12 @@
 
 mod common;
 
-use std::{cell::Cell, fs, path::Path};
+use std::cell::Cell;
 
 use common::{fake_harness, hold};
 use usher_probes::{
     fragment::{Date, Network},
     run::{Spec, Unmeasured, run, run_with_host_state},
-    structural::find_launch_bypasses,
 };
 use usher_testkit::ScratchHome;
 
@@ -205,50 +204,4 @@ fn a_port_declared_on_the_spec_is_reached_through_the_launcher_and_another_is_no
         refused.get(),
         "a port the spec did not declare was reachable through the launcher"
     );
-}
-
-/// The probe source files: everything under `src` except the two that own
-/// process starts.
-fn probe_sources() -> Vec<(String, String)> {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let mut files = Vec::new();
-    for entry in fs::read_dir(&dir).expect("the src directory") {
-        let path = entry.expect("an entry").path();
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .expect("a utf-8 file name")
-            .to_string();
-        if name.ends_with(".rs") && name != "run.rs" && name != "network.rs" {
-            files.push((name, fs::read_to_string(&path).expect("a readable source")));
-        }
-    }
-    files
-}
-
-#[test]
-fn no_probe_source_starts_a_process_on_its_own() {
-    // The scan must see a bypass before its silence on the real files means anything.
-    for fixture in [
-        "fn bypass() { std::process::Command::new(\"x\"); }",
-        "use std::process::Command;",
-        "fn bypass(s: &S) { s.scratch.command(\"x\"); }",
-        "let c = Command::new(\"sh\");",
-    ] {
-        assert!(
-            !find_launch_bypasses(fixture).is_empty(),
-            "the scan missed: {fixture}"
-        );
-    }
-    assert!(find_launch_bypasses("fn clean() { launcher.run(\"x\", &[]); }").is_empty());
-
-    let files = probe_sources();
-    assert!(!files.is_empty(), "no probe source was scanned");
-    for (name, text) in files {
-        let hits = find_launch_bypasses(&text);
-        assert!(
-            hits.is_empty(),
-            "{name} starts a process on its own: {hits:?}"
-        );
-    }
 }

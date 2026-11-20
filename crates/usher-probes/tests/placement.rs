@@ -273,3 +273,21 @@ fn all_of_this_crates_src_is_clean_under_the_one_scan() {
         "src starts a process on its own: {found:?}"
     );
 }
+
+// Moved from launcher.rs with the old scan, which read src except run.rs and
+// network.rs for three needles: the fixtures it used are still bypasses.
+#[test]
+fn the_fixtures_of_the_removed_scan_are_still_bypasses() {
+    for fixture in [
+        "fn bypass() { std::process::Command::new(\"x\"); }",
+        "use std::process::Command;",
+        "fn bypass(s: &S) { s.scratch.command(\"x\"); }",
+        "let c = Command::new(\"sh\");",
+    ] {
+        assert!(
+            !find_launch_bypasses(fixture).is_empty(),
+            "the scan missed: {fixture}"
+        );
+    }
+    assert!(find_launch_bypasses("fn clean() { launcher.run(\"x\", &[]); }").is_empty());
+}
