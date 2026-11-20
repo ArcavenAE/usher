@@ -726,3 +726,31 @@ fn the_seed_cites_the_model_entry_of_the_settings_reference() {
         "https://code.claude.com/docs/en/settings-reference#model"
     );
 }
+
+/// The vendor says `auto` and `bypassPermissions` do not take effect from project or
+/// local settings, and does not say what applies instead. Plain scalar precedence would
+/// print a project `auto` as in effect when the harness ignores it, which is a guess. So
+/// the key has its own rule, keeps the any-file scope, and its summary says why.
+#[test]
+fn the_seed_gives_default_mode_its_own_rule_with_the_vendors_sentence() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    let item = file
+        .items()
+        .iter()
+        .find(|item| {
+            item.harness() == "claude-code"
+                && item
+                    .settings_key()
+                    .is_some_and(|fact| fact.key() == "permissions.defaultMode")
+        })
+        .expect("the defaultMode item");
+    let fact = item.settings_key().expect("a settings-key fact");
+    assert_eq!(fact.merge(), MergeKind::OwnRule);
+    assert_eq!(fact.scopes(), &Scopes::Any);
+    assert!(
+        item.summary()
+            .contains("don't take effect from project or local settings"),
+        "{}",
+        item.summary()
+    );
+}
