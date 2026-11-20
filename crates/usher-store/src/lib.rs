@@ -417,26 +417,50 @@ fn check_time(field: &str, text: &str) -> Result<(), UsherError> {
     }
 }
 
+/// One stored seat row before its JSON columns are read: part, item id, present flag,
+/// names, members and note.
+type RawSeat = (String, String, Option<i64>, String, String, Option<String>);
+
+/// One string as JSON text, escaped.
+fn json_string(text: &str) -> String {
+    let mut out = String::from("\"");
+    for ch in text.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 /// A JSON array of strings, compact, for the key names.
 fn json_names(names: &[&str]) -> String {
-    let mut out = String::from("[");
-    for (i, name) in names.iter().enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push('"');
-        for ch in name.chars() {
-            match ch {
-                '"' => out.push_str("\\\""),
-                '\\' => out.push_str("\\\\"),
-                c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-                c => out.push(c),
-            }
-        }
-        out.push('"');
-    }
-    out.push(']');
-    out
+    let items: Vec<String> = names.iter().map(|name| json_string(name)).collect();
+    format!("[{}]", items.join(","))
+}
+
+/// A JSON array of arrays of path segments, for the names a seat read found.
+fn json_paths(paths: &[Vec<String>]) -> String {
+    let items: Vec<String> = paths
+        .iter()
+        .map(|path| {
+            let segments: Vec<&str> = path.iter().map(String::as_str).collect();
+            json_names(&segments)
+        })
+        .collect();
+    format!("[{}]", items.join(","))
+}
+
+/// A JSON array of [name, present] pairs.
+fn json_members(members: &[(String, bool)]) -> String {
+    let items: Vec<String> = members
+        .iter()
+        .map(|(name, present)| format!("[{},{present}]", json_string(name)))
+        .collect();
+    format!("[{}]", items.join(","))
 }
 
 /// The version and the number of schema rows, read in one statement so both come from the
@@ -623,19 +647,91 @@ impl Store {
         })
     }
 
-    /// Inserts one run, its sources and its seat lines; returns the run id.
+    /// Inserts one run, its sources and its seat lines in one transaction; returns the run
+    /// id. A run with a bad field inserts nothing.
     pub fn record_inventory_with_seat(
         &mut self,
         run: &RunRecord<'_>,
         sources: &[SourceRecord<'_>],
-        _seat: &[SeatRecord<'_>],
+        seat: &[SeatRecord<'_>],
     ) -> Result<i64, UsherError> {
-        self.record_inventory(run, sources)
+        self.insert_run(run, sources, seat)
     }
 
     /// The seat lines one run recorded, in the order they were recorded.
-    pub fn seat_of(&self, _run_id: i64) -> Result<Vec<SeatRow>, UsherError> {
-        Ok(Vec::new())
+    pub fn seat_of(&self, run_id: i64) -> Result<Vec<SeatRow>, UsherError> {
+        let fail = |err: &rusqlite::Error| db_error("read the seat lines", err);
+        let mut stmt = self
+            .conn
+            .prepare("SELECT part, item_id, present, names, members, note FROM inventory_seat WHERE run_id = ?1 ORDER BY rowid")
+            .map_err(|err| fail(&err))?;
+        let raw: Vec<RawSeat> = stmt
+            .query_map([run_id], |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            })
+            .map_err(|err| fail(&err))?
+            .collect::<Result<_, _>>()
+            .map_err(|err| fail(&err))?;
+        let mut out = Vec::new();
+        for (part, item_id, present, names, members, note) in raw {
+            out.push(SeatRow {
+                part,
+                item_id,
+                present: present.map(|flag| flag == 1),
+                names: self.read_paths(&names)?,
+                members: self.read_members(&members)?,
+                note,
+            });
+        }
+        Ok(out)
+    }
+
+    fn read_paths(&self, text: &str) -> Result<Vec<Vec<String>>, UsherError> {
+        let fail = |err: &rusqlite::Error| db_error("read the seat names", err);
+        let mut outer = self
+            .conn
+            .prepare("SELECT value FROM json_each(?1) ORDER BY key")
+            .map_err(|err| fail(&err))?;
+        let paths: Vec<String> = outer
+            .query_map([text], |r| r.get(0))
+            .map_err(|err| fail(&err))?
+            .collect::<Result<_, _>>()
+            .map_err(|err| fail(&err))?;
+        let mut inner = self
+            .conn
+            .prepare("SELECT value FROM json_each(?1) ORDER BY key")
+            .map_err(|err| fail(&err))?;
+        paths
+            .iter()
+            .map(|path| {
+                inner
+                    .query_map([path], |r| r.get(0))
+                    .map_err(|err| fail(&err))?
+                    .collect::<Result<Vec<String>, _>>()
+                    .map_err(|err| fail(&err))
+            })
+            .collect()
+    }
+
+    fn read_members(&self, text: &str) -> Result<Vec<(String, bool)>, UsherError> {
+        let fail = |err: &rusqlite::Error| db_error("read the seat members", err);
+        let mut stmt = self
+            .conn
+            .prepare("SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?1) ORDER BY key")
+            .map_err(|err| fail(&err))?;
+        stmt.query_map([text], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? == 1))
+        })
+        .map_err(|err| fail(&err))?
+        .collect::<Result<_, _>>()
+        .map_err(|err| fail(&err))
     }
 
     /// Inserts one run and its sources; returns the run id. A run with a bad field inserts
@@ -644,6 +740,15 @@ impl Store {
         &mut self,
         run: &RunRecord<'_>,
         sources: &[SourceRecord<'_>],
+    ) -> Result<i64, UsherError> {
+        self.insert_run(run, sources, &[])
+    }
+
+    fn insert_run(
+        &mut self,
+        run: &RunRecord<'_>,
+        sources: &[SourceRecord<'_>],
+        seat: &[SeatRecord<'_>],
     ) -> Result<i64, UsherError> {
         check_time("recorded_at", run.recorded_at)?;
         for source in sources {
@@ -683,6 +788,21 @@ impl Store {
                 ],
             )
             .map_err(|err| db_error("insert an inventory source", &err))?;
+        }
+        for line in seat {
+            tx.execute(
+                "INSERT INTO inventory_seat (run_id, part, item_id, present, names, members, note) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    run_id,
+                    line.part,
+                    line.item_id,
+                    line.present.map(i64::from),
+                    json_paths(line.names),
+                    json_members(line.members),
+                    line.note
+                ],
+            )
+            .map_err(|err| db_error("insert a seat line", &err))?;
         }
         tx.commit()
             .map_err(|err| db_error("commit the inventory insert", &err))?;
