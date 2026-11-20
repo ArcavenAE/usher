@@ -1282,3 +1282,16 @@ fn an_empty_value_is_refused_in_every_place_naming_the_place_and_the_field() {
     assert_eq!(err.status(), "path file is empty");
     assert!(transport.sent().is_empty());
 }
+
+#[test]
+fn a_port_or_userinfo_in_a_redirect_host_reads_as_not_a_valid_name() {
+    for host in ["a.invalid:443", "u@a.invalid"] {
+        let err = redirect_error(&format!("https://{host}/x"));
+        let text = err.to_string();
+        assert!(
+            text.contains("a host that is not a valid name"),
+            "{host}: {text}"
+        );
+        assert!(!text.contains(host), "{host}: the host is echoed: {text}");
+    }
+}
