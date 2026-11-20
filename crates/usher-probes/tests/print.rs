@@ -9,7 +9,7 @@ use std::process::{Command, Output};
 use common::fake_harness;
 use usher_probes::{
     fragment::{Date, Network},
-    run::{Spec, run_or_panic},
+    run::{Spec, Unmeasured, run_or_panic},
 };
 use usher_testkit::ScratchHome;
 
@@ -23,12 +23,14 @@ fn child_runs_one_probe() {
         return;
     };
     let scratch = ScratchHome::new().expect("scratch home");
-    let bin = if mode == "ran" {
-        fake_harness(&scratch, "fakeh", "fakeh 1.2.3")
-    } else {
+    // A missing binary is one way not to run; a claim that needs credentials or a
+    // network is the others.
+    let bin = if mode == "missing-binary" {
         let empty = scratch.root().join("empty");
         std::fs::create_dir_all(&empty).expect("empty dir");
         empty
+    } else {
+        fake_harness(&scratch, "fakeh", "fakeh 1.2.3")
     };
     let spec = Spec {
         name: "demo-probe",
@@ -41,7 +43,11 @@ fn child_runs_one_probe() {
         &scratch,
         Date::new(2026, 11, 20).expect("a real date"),
         |_| Ok(()),
-        |_| Ok(true),
+        |_| match mode.to_str() {
+            Some("needs-credentials") => Err(Unmeasured::NeedsCredentials),
+            Some("needs-network") => Err(Unmeasured::NeedsNetwork),
+            _ => Ok(true),
+        },
     );
 }
 
@@ -85,7 +91,7 @@ fn a_probe_that_ran_prints_its_fragment_line() {
 
 #[test]
 fn a_probe_that_did_not_run_prints_no_fragment_line() {
-    let output = run_child("not-run");
+    let output = run_child("missing-binary");
     assert!(
         !output.status.success(),
         "a probe that cannot run must fail the run"
@@ -100,4 +106,19 @@ fn a_probe_that_did_not_run_prints_no_fragment_line() {
         Vec::<String>::new(),
         "a fragment line was printed for a probe that did not run"
     );
+}
+
+#[test]
+fn a_claim_that_needs_credentials_or_a_network_prints_no_fragment_line() {
+    for mode in ["needs-credentials", "needs-network"] {
+        let output = run_child(mode);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success(), "{mode}: the run must fail");
+        assert!(stderr.contains("not run: needs "), "{mode}: {stderr}");
+        assert_eq!(
+            probe_lines(&output),
+            Vec::<String>::new(),
+            "{mode}: a fragment line was printed for a probe that did not run"
+        );
+    }
 }
