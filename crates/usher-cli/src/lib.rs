@@ -45,12 +45,19 @@ pub fn inventory(env: &InventoryEnv, root: SystemRoot) -> Result<String, UsherEr
     Ok(String::new())
 }
 
-/// As [`inventory`], over a given knowledge file, for tests that need a fact the seed does
-/// not hold.
+/// The platform the `inventory` verb reads sources for: the build's own, with WSL as
+/// Linux.
+pub fn inventory_platform() -> usher_knowledge::Platform {
+    usher_knowledge::Platform::Windows
+}
+
+/// As [`inventory`], over a given knowledge, for tests that need a fact the seed does not
+/// hold. A [`usher_knowledge::Knowledge`] is the embedded file or a signed update, so no
+/// unsigned knowledge reaches the verb.
 pub fn inventory_with(
     env: &InventoryEnv,
     root: SystemRoot,
-    knowledge: &usher_knowledge::KnowledgeFile,
+    knowledge: &usher_knowledge::Knowledge,
 ) -> Result<String, UsherError> {
     let _ = (env, root, knowledge);
     Ok(String::new())
