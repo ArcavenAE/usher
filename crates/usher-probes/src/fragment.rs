@@ -125,23 +125,38 @@ impl Network {
     }
 }
 
-/// True for the shape of a version: digits and dots, starting and ending with
-/// a digit and with no empty part, then an optional suffix that starts with a
-/// hyphen (a digit would already belong to the number) and holds only
-/// letters, digits, dots and hyphens.
+/// True for the shape of a version: `<n>.<n>.<n>`, then optionally `-alpha`,
+/// `-beta` or `-rc`, each optionally followed by `.<n>`. A number is one or
+/// more digits with no leading zero unless it is `0`. Nothing else is a
+/// version, so free text such as a user name or a key piece cannot ride in a
+/// suffix. A harness that ships another pre-release form gets this list
+/// extended by a ruling.
 fn has_version_shape(text: &str) -> bool {
-    let number_end = text
-        .find(|c: char| !(c.is_ascii_digit() || c == '.'))
-        .unwrap_or(text.len());
-    let (number, suffix) = text.split_at(number_end);
-    let parts_ok = !number.is_empty() && number.split('.').all(|part| !part.is_empty());
-    let suffix_ok = suffix.is_empty()
-        || (suffix.starts_with('-')
-            && suffix
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
-            && suffix.len() > 1);
-    parts_ok && suffix_ok
+    let (core, suffix) = match text.split_once('-') {
+        Some((core, suffix)) => (core, Some(suffix)),
+        None => (text, None),
+    };
+    let numbers: Vec<&str> = core.split('.').collect();
+    if numbers.len() != 3 || !numbers.iter().all(|part| is_number(part)) {
+        return false;
+    }
+    match suffix {
+        None => true,
+        Some(suffix) => {
+            let (word, count) = match suffix.split_once('.') {
+                Some((word, count)) => (word, Some(count)),
+                None => (suffix, None),
+            };
+            matches!(word, "alpha" | "beta" | "rc") && count.is_none_or(is_number)
+        }
+    }
+}
+
+/// One or more digits, with no leading zero unless the number is `0`.
+fn is_number(text: &str) -> bool {
+    !text.is_empty()
+        && text.bytes().all(|b| b.is_ascii_digit())
+        && (text == "0" || !text.starts_with('0'))
 }
 
 /// The bare version number in the first line a harness prints for
