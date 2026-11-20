@@ -19,7 +19,7 @@ use crate::version::{Version, VersionRange};
 const EMBEDDED: &str = include_str!("../knowledge/harness-knowledge.toml");
 
 /// The only schema version this build reads.
-const SUPPORTED_SCHEMA: u32 = 2;
+const SUPPORTED_SCHEMA: u32 = 3;
 
 const STEP: &str = "load harness knowledge";
 const NEXT: &str =
@@ -227,12 +227,13 @@ pub struct SourceFact {
     layer: SourceLayer,
     read: ReadRule,
     rank: u32,
+    always_present: bool,
 }
 
 impl SourceFact {
     /// Whether the layer always exists on a platform, so its absence is named.
     pub fn always_present(&self) -> bool {
-        false
+        self.always_present
     }
 
     /// The path pattern, in the five path tokens.
@@ -271,6 +272,7 @@ pub struct Item {
     last_verified: Date,
     source: Option<SourceFact>,
     keys: Vec<String>,
+    version_from: Option<VersionFrom>,
 }
 
 /// How a harness version is read from disk without running the harness.
@@ -284,11 +286,18 @@ pub struct VersionFrom {
 /// The rule that turns the launcher into a version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-// Red Gate stub: the schema 3 implementation constructs these and drops the allow.
-#[allow(dead_code)]
 pub enum VersionRule {
     /// Follow the launcher symlink and take the last component of its target.
     SymlinkTargetLastComponent,
+}
+
+impl VersionRule {
+    fn parse(name: &str) -> Option<Self> {
+        match name {
+            "symlink-target-last-component" => Some(VersionRule::SymlinkTargetLastComponent),
+            _ => None,
+        }
+    }
 }
 
 impl VersionFrom {
@@ -311,7 +320,7 @@ impl VersionFrom {
 impl Item {
     /// How to read the harness version from disk, for a `paths` item that says so.
     pub fn version_from(&self) -> Option<&VersionFrom> {
-        None
+        self.version_from.as_ref()
     }
 
     /// The setting names a `keys` item lists, empty for every other class.
@@ -539,12 +548,16 @@ fn parse_range(table: &dyn TableLike, owner: &str) -> Result<VersionRange, Usher
     VersionRange::parse(text).map_err(|why| fail(format!("{owner}: versions"), why))
 }
 
-/// A source path starts with a token or `/`, and holds no token outside the five.
-fn check_source_path(path: &str, owner: &str) -> Result<(), UsherError> {
+/// The placeholder a `version_from` layout holds once, as its last component. It is a
+/// capture marker and not a path token.
+const VERSION_PLACEHOLDER: &str = "${VERSION}";
+
+/// A path starts with a token or `/`, and holds no token outside the five and `extra`.
+fn check_path(path: &str, owner: &str, what: &str, extra: &[&str]) -> Result<(), UsherError> {
     if !(path.starts_with("${") || path.starts_with('/')) {
         return Err(fail(
-            format!("{owner}: source path"),
-            format!("`{path}` must start with a path token or `/`"),
+            format!("{owner}: {what}"),
+            format!("`{path}` must be absolute: start with a path token or `/`"),
         ));
     }
     let mut rest = path;
@@ -552,14 +565,14 @@ fn check_source_path(path: &str, owner: &str) -> Result<(), UsherError> {
         let from = &rest[start..];
         let Some(end) = from.find('}') else {
             return Err(fail(
-                format!("{owner}: source path"),
+                format!("{owner}: {what}"),
                 format!("`{from}` has a token that is never closed"),
             ));
         };
         let token = &from[..=end];
-        if !PATH_TOKENS.contains(&token) {
+        if !PATH_TOKENS.contains(&token) && !extra.contains(&token) {
             return Err(fail(
-                format!("{owner}: source path"),
+                format!("{owner}: {what}"),
                 format!(
                     "`{token}` is not a path token; known tokens are {}",
                     PATH_TOKENS.join(", ")
@@ -569,6 +582,90 @@ fn check_source_path(path: &str, owner: &str) -> Result<(), UsherError> {
         rest = &from[end + 1..];
     }
     Ok(())
+}
+
+/// The layout holds `${VERSION}` exactly once, as the whole last component.
+fn check_layout(layout: &str, owner: &str) -> Result<(), UsherError> {
+    check_path(layout, owner, "layout", &[VERSION_PLACEHOLDER])?;
+    let last_is_placeholder = layout.rsplit('/').next() == Some(VERSION_PLACEHOLDER);
+    if layout.matches(VERSION_PLACEHOLDER).count() != 1 || !last_is_placeholder {
+        return Err(fail(
+            format!("{owner}: layout"),
+            format!(
+                "`{layout}` must hold {VERSION_PLACEHOLDER} exactly once, as its whole last path component"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn parse_version_from(table: &dyn TableLike, owner: &str) -> Result<VersionFrom, UsherError> {
+    let from = table
+        .get("version_from")
+        .and_then(TomlItem::as_table_like)
+        .ok_or_else(|| {
+            fail(
+                format!("{owner}: version_from"),
+                "`version_from` must be a table (launcher, rule, layout)",
+            )
+        })?;
+    let owner = format!("{owner} version_from");
+    reject_unknown_keys(from, &["launcher", "rule", "layout"], &owner)?;
+    let launcher = text_field(from, "launcher", &owner)?;
+    check_path(launcher, &owner, "launcher", &[])?;
+    let rule_name = text_field(from, "rule", &owner)?;
+    let rule = VersionRule::parse(rule_name).ok_or_else(|| {
+        fail(
+            format!("{owner}: rule"),
+            format!("`{rule_name}` is not a version rule; the one known is symlink-target-last-component"),
+        )
+    })?;
+    let layout = text_field(from, "layout", &owner)?;
+    check_layout(layout, &owner)?;
+    Ok(VersionFrom {
+        launcher: launcher.to_string(),
+        rule,
+        layout: layout.to_string(),
+    })
+}
+
+/// The setting names of a `keys` item: a non-empty list of distinct, non-empty strings.
+fn parse_keys(table: &dyn TableLike, owner: &str) -> Result<Vec<String>, UsherError> {
+    let list = table
+        .get("keys")
+        .and_then(TomlItem::as_array)
+        .ok_or_else(|| {
+            fail(
+                format!("{owner}: keys"),
+                "an item of class `keys` needs a `keys` list of setting names",
+            )
+        })?;
+    if list.is_empty() {
+        return Err(fail(
+            format!("{owner}: keys"),
+            "`keys` is empty; list at least one setting name",
+        ));
+    }
+    let mut names: Vec<String> = Vec::new();
+    for entry in list {
+        let name = entry
+            .as_str()
+            .ok_or_else(|| fail(format!("{owner}: keys"), "every key name must be a string"))?;
+        if name.trim().is_empty() || name != name.trim() {
+            return Err(fail(
+                format!("{owner}: keys"),
+                "a key name is empty or padded with spaces",
+            ));
+        }
+        if names.iter().any(|seen| seen == name) {
+            return Err(fail(
+                format!("{owner}: keys"),
+                format!("`{name}` is listed twice"),
+            ));
+        }
+        names.push(name.to_string());
+    }
+    Ok(names)
 }
 
 fn parse_source(table: &dyn TableLike, owner: &str) -> Result<SourceFact, UsherError> {
@@ -582,9 +679,13 @@ fn parse_source(table: &dyn TableLike, owner: &str) -> Result<SourceFact, UsherE
             )
         })?;
     let owner = format!("{owner} source");
-    reject_unknown_keys(source, &["path", "layer", "read", "rank"], &owner)?;
+    reject_unknown_keys(
+        source,
+        &["path", "layer", "read", "rank", "always_present"],
+        &owner,
+    )?;
     let path = text_field(source, "path", &owner)?;
-    check_source_path(path, &owner)?;
+    check_path(path, &owner, "source path", &[])?;
     let layer_name = text_field(source, "layer", &owner)?;
     let layer = SourceLayer::parse(layer_name).ok_or_else(|| {
         fail(
@@ -603,11 +704,21 @@ fn parse_source(table: &dyn TableLike, owner: &str) -> Result<SourceFact, UsherE
     })?;
     let rank = u32::try_from(number_field(source, "rank", &owner)?)
         .map_err(|_| fail(format!("{owner}: rank"), "`rank` is too large"))?;
+    let always_present = source
+        .get("always_present")
+        .and_then(TomlItem::as_bool)
+        .ok_or_else(|| {
+            fail(
+                format!("{owner}: always_present"),
+                "`always_present` is missing or not a boolean (true or false)",
+            )
+        })?;
     Ok(SourceFact {
         path: path.to_string(),
         layer,
         read,
         rank,
+        always_present,
     })
 }
 
@@ -626,6 +737,8 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
             "reference",
             "last_verified",
             "source",
+            "keys",
+            "version_from",
         ],
         &owner,
     )?;
@@ -660,6 +773,26 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
     } else {
         None
     };
+    let keys = if class == Class::Keys {
+        parse_keys(table, &owner)?
+    } else if table.contains_key("keys") {
+        return Err(fail(
+            format!("{owner}: keys"),
+            format!("only items of class `keys` carry a `keys` list, not `{class_name}`"),
+        ));
+    } else {
+        Vec::new()
+    };
+    let version_from = if class == Class::Paths && table.contains_key("version_from") {
+        Some(parse_version_from(table, &owner)?)
+    } else if table.contains_key("version_from") {
+        return Err(fail(
+            format!("{owner}: version_from"),
+            format!("only items of class `paths` carry `version_from`, not `{class_name}`"),
+        ));
+    } else {
+        None
+    };
     Ok(Item {
         id: id.to_string(),
         harness: harness.to_string(),
@@ -670,7 +803,8 @@ fn parse_item(table: &dyn TableLike, index: usize) -> Result<Item, UsherError> {
         reference: parse_reference(table, id)?,
         last_verified: parse_date(table, id)?,
         source,
-        keys: Vec::new(),
+        keys,
+        version_from,
     })
 }
 
@@ -813,7 +947,7 @@ mod tests {
     use super::*;
 
     const VALID: &str = r#"
-schema_version = 2
+schema_version = 3
 sequence = 7
 
 [[item]]
@@ -947,7 +1081,7 @@ capabilities = ["inventory", "map"]
             &VALID.replace("sequence = 7", "sequence = \"seven\""),
             "sequence",
         );
-        rejects(&VALID.replace("schema_version = 2\n", ""), "schema_version");
+        rejects(&VALID.replace("schema_version = 3\n", ""), "schema_version");
     }
 
     #[test]
@@ -957,15 +1091,15 @@ capabilities = ["inventory", "map"]
 
     #[test]
     fn items_must_be_tables() {
-        rejects("schema_version = 2\nsequence = 1\nitem = 3\n", "[[item]]");
+        rejects("schema_version = 3\nsequence = 1\nitem = 3\n", "[[item]]");
     }
 
     #[test]
     fn the_file_reports_its_version() {
         let file = KnowledgeFile::parse(VALID).expect("valid");
         assert_eq!(file.version().sequence(), 7);
-        assert_eq!(file.version().schema_version(), 2);
-        assert_eq!(file.version().to_string(), "knowledge v7 (schema 2)");
+        assert_eq!(file.version().schema_version(), 3);
+        assert_eq!(file.version().to_string(), "knowledge v7 (schema 3)");
     }
 
     #[test]
@@ -988,7 +1122,7 @@ capabilities = ["inventory", "map"]
         assert!(lines.contains(&"demo 1.5.0: apply unsupported".to_string()));
         assert_eq!(
             lines.last().map(String::as_str),
-            Some("knowledge v7 (schema 2)")
+            Some("knowledge v7 (schema 3)")
         );
     }
 

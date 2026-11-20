@@ -1,10 +1,10 @@
-//! Story 1.5, PR A: the `sources` knowledge class (AD-12, AD-6), schema 2, and the
+//! Story 1.5, PR A: the `sources` knowledge class (AD-12, AD-6), schema 3, and the
 //! Claude Code seed entries. Runs against the public API only.
 
 use usher_knowledge::{Class, KnowledgeFile, Layer, ReadRule, SourceLayer, Version};
 
 const FILE: &str = r#"
-schema_version = 2
+schema_version = 3
 sequence = 9
 
 [[item]]
@@ -16,7 +16,7 @@ versions = ">=1.0.0, <2.0.0"
 summary = "The user settings file."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/settings" }
 last_verified = 2026-11-02
-source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", rank = 1 }
+source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", rank = 1, always_present = true }
 "#;
 
 fn rejects(text: &str, needles: &[&str]) {
@@ -31,15 +31,15 @@ fn rejects(text: &str, needles: &[&str]) {
 
 fn with_source(source: &str) -> String {
     FILE.replace(
-        r#"source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", rank = 1 }"#,
+        r#"source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", rank = 1, always_present = true }"#,
         source,
     )
 }
 
 #[test]
 fn a_sources_item_parses_with_path_layer_read_rule_and_rank() {
-    let file = KnowledgeFile::parse(FILE).expect("a valid schema 2 file");
-    assert_eq!(file.version().schema_version(), 2);
+    let file = KnowledgeFile::parse(FILE).expect("a valid schema 3 file");
+    assert_eq!(file.version().schema_version(), 3);
     let item = &file.items()[0];
     assert_eq!(item.class(), Class::Sources);
     assert_eq!(item.layer(), Layer::Slow);
@@ -63,7 +63,7 @@ fn every_layer_and_read_rule_name_is_accepted() {
         ("server-managed-cache", SourceLayer::ServerManagedCache),
     ] {
         let text = with_source(&format!(
-            r#"source = {{ path = "${{HOME}}/x", layer = "{name}", read = "read", rank = 1 }}"#
+            r#"source = {{ path = "${{HOME}}/x", layer = "{name}", read = "read", rank = 1, always_present = true }}"#
         ));
         let file = KnowledgeFile::parse(&text).unwrap_or_else(|e| panic!("layer {name}: {e}"));
         assert_eq!(file.items()[0].source().map(|s| s.layer()), Some(layer));
@@ -74,7 +74,7 @@ fn every_layer_and_read_rule_name_is_accepted() {
         ("first-wins", ReadRule::FirstWins),
     ] {
         let text = with_source(&format!(
-            r#"source = {{ path = "${{HOME}}/x", layer = "managed", read = "{name}", rank = 2 }}"#
+            r#"source = {{ path = "${{HOME}}/x", layer = "managed", read = "{name}", rank = 2, always_present = true }}"#
         ));
         let file = KnowledgeFile::parse(&text).unwrap_or_else(|e| panic!("rule {name}: {e}"));
         assert_eq!(file.items()[0].source().map(|s| s.read()), Some(rule));
@@ -82,20 +82,20 @@ fn every_layer_and_read_rule_name_is_accepted() {
 }
 
 #[test]
-fn schema_one_is_refused_and_schema_two_is_read() {
-    let one = FILE.replace("schema_version = 2", "schema_version = 1");
-    rejects(&one, &["schema 1 is not supported", "reads schema 2"]);
+fn schema_one_is_refused_and_schema_three_is_read() {
+    let one = FILE.replace("schema_version = 3", "schema_version = 1");
+    rejects(&one, &["schema 1 is not supported", "reads schema 3"]);
     let two_without_sources = r#"
-schema_version = 2
+schema_version = 3
 sequence = 1
 "#;
-    KnowledgeFile::parse(two_without_sources).expect("schema 2 with no items is valid");
+    KnowledgeFile::parse(two_without_sources).expect("schema 3 with no items is valid");
 }
 
 #[test]
 fn all_five_path_tokens_are_accepted() {
     let text = with_source(
-        r#"source = { path = "${HOME}/a/${USER}/${CONFIG_DIR}/b/${REPO}/c/${LAUNCH_DIR}/d", layer = "project", read = "read", rank = 1 }"#,
+        r#"source = { path = "${HOME}/a/${USER}/${CONFIG_DIR}/b/${REPO}/c/${LAUNCH_DIR}/d", layer = "project", read = "read", rank = 1, always_present = true }"#,
     );
     KnowledgeFile::parse(&text).expect("the five tokens of the path convention");
 }
@@ -103,7 +103,7 @@ fn all_five_path_tokens_are_accepted() {
 #[test]
 fn an_absolute_path_with_no_token_is_accepted() {
     let text = with_source(
-        r#"source = { path = "/etc/demo/managed.json", layer = "managed", read = "first-wins", rank = 1 }"#,
+        r#"source = { path = "/etc/demo/managed.json", layer = "managed", read = "first-wins", rank = 1, always_present = true }"#,
     );
     KnowledgeFile::parse(&text).expect("an absolute path");
 }
@@ -111,7 +111,7 @@ fn an_absolute_path_with_no_token_is_accepted() {
 #[test]
 fn a_token_outside_the_five_is_refused_naming_the_item_and_the_token() {
     let text = with_source(
-        r#"source = { path = "${TMPDIR}/settings.json", layer = "user", read = "read", rank = 1 }"#,
+        r#"source = { path = "${TMPDIR}/settings.json", layer = "user", read = "read", rank = 1, always_present = true }"#,
     );
     rejects(&text, &["demo.user-settings", "${TMPDIR}"]);
 }
@@ -119,7 +119,7 @@ fn a_token_outside_the_five_is_refused_naming_the_item_and_the_token() {
 #[test]
 fn an_unterminated_token_is_refused() {
     let text = with_source(
-        r#"source = { path = "${HOME/settings.json", layer = "user", read = "read", rank = 1 }"#,
+        r#"source = { path = "${HOME/settings.json", layer = "user", read = "read", rank = 1, always_present = true }"#,
     );
     rejects(&text, &["demo.user-settings", "${HOME"]);
 }
@@ -127,7 +127,7 @@ fn an_unterminated_token_is_refused() {
 #[test]
 fn a_relative_path_is_refused() {
     let text = with_source(
-        r#"source = { path = "settings.json", layer = "user", read = "read", rank = 1 }"#,
+        r#"source = { path = "settings.json", layer = "user", read = "read", rank = 1, always_present = true }"#,
     );
     rejects(&text, &["demo.user-settings", "settings.json"]);
 }
@@ -135,7 +135,7 @@ fn a_relative_path_is_refused() {
 #[test]
 fn a_sources_item_without_a_source_table_is_refused_naming_the_item() {
     let text = FILE.replace(
-        r#"source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", rank = 1 }"#,
+        r#"source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", rank = 1, always_present = true }"#,
         "",
     );
     rejects(&text, &["demo.user-settings", "source"]);
@@ -157,19 +157,19 @@ fn the_sources_class_belongs_to_the_slow_layer() {
 fn an_unknown_layer_read_rule_or_key_is_refused() {
     rejects(
         &with_source(
-            r#"source = { path = "${HOME}/x", layer = "enterprise", read = "read", rank = 1 }"#,
+            r#"source = { path = "${HOME}/x", layer = "enterprise", read = "read", rank = 1, always_present = true }"#,
         ),
         &["demo.user-settings", "enterprise"],
     );
     rejects(
         &with_source(
-            r#"source = { path = "${HOME}/x", layer = "user", read = "sometimes", rank = 1 }"#,
+            r#"source = { path = "${HOME}/x", layer = "user", read = "sometimes", rank = 1, always_present = true }"#,
         ),
         &["demo.user-settings", "sometimes"],
     );
     rejects(
         &with_source(
-            r#"source = { path = "${HOME}/x", layer = "user", read = "read", rank = 1, mode = "0600" }"#,
+            r#"source = { path = "${HOME}/x", layer = "user", read = "read", rank = 1, always_present = true, mode = "0600" }"#,
         ),
         &["demo.user-settings", "mode"],
     );
@@ -178,7 +178,9 @@ fn an_unknown_layer_read_rule_or_key_is_refused() {
 #[test]
 fn a_rank_below_one_or_missing_is_refused() {
     rejects(
-        &with_source(r#"source = { path = "${HOME}/x", layer = "user", read = "read", rank = 0 }"#),
+        &with_source(
+            r#"source = { path = "${HOME}/x", layer = "user", read = "read", rank = 0, always_present = true }"#,
+        ),
         &["demo.user-settings", "rank"],
     );
     rejects(
@@ -205,7 +207,7 @@ versions = ">=1.5.0, <2.0.0"
 summary = "The user settings file, no longer read."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/settings" }
 last_verified = 2026-11-02
-source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "not-read", rank = 1 }
+source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "not-read", rank = 1, always_present = true }
 "#
     );
     let file = KnowledgeFile::parse(&text).expect("one source, two version ranges");
@@ -221,11 +223,11 @@ source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "not-rea
 }
 
 #[test]
-fn the_embedded_file_is_schema_two_and_lists_every_claude_code_source() {
+fn the_embedded_file_is_schema_three_and_lists_every_claude_code_source() {
     let file = KnowledgeFile::embedded().expect("the embedded file passes the check");
-    assert_eq!(file.version().schema_version(), 2);
+    assert_eq!(file.version().schema_version(), 3);
     assert!(
-        file.version().sequence() >= 2,
+        file.version().sequence() >= 3,
         "the new items raise the sequence"
     );
     let installed = Version::parse("2.1.317").expect("a version");
@@ -297,7 +299,7 @@ fn the_embedded_user_config_directory_source_moves_with_claude_config_dir() {
 #[test]
 fn a_path_may_start_at_the_launch_directory() {
     let text = with_source(
-        r#"source = { path = "${LAUNCH_DIR}/.claude/settings.json", layer = "project", read = "read", rank = 1 }"#,
+        r#"source = { path = "${LAUNCH_DIR}/.claude/settings.json", layer = "project", read = "read", rank = 1, always_present = true }"#,
     );
     let file = KnowledgeFile::parse(&text).expect("the fifth path token");
     let source = file.items()[0].source().expect("a source fact");
