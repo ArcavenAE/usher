@@ -1043,3 +1043,46 @@ fn a_version_one_store_has_every_later_trigger_after_it_migrates() {
         );
     }
 }
+
+fn raw_insert_fields(
+    dir: &Path,
+    method: &str,
+    key: &str,
+    layer: &str,
+    entry_index: &str,
+) -> rusqlite::Result<usize> {
+    let conn = raw(dir);
+    conn.execute_batch("PRAGMA foreign_keys = OFF;")
+        .expect("pragma");
+    conn.execute(
+        &format!(
+            "INSERT INTO map_setting (run_id, harness, launch_dir, key, layer, source_path, method, status, entry_index) VALUES (1, 'claude-code', '/d', '{key}', '{layer}', '/p', '{method}', 'in_effect', {entry_index})"
+        ),
+        [],
+    )
+}
+
+/// The method, key, layer and entry index checks hold on the table itself, past the API, on a
+/// fresh store and a migrated one. Each refusal names a constraint, and a good row is accepted
+/// first so the refusals are not from a broken insert.
+#[test]
+fn the_method_key_layer_and_entry_index_checks_refuse_a_raw_insert_on_both_stores() {
+    let (_f, fresh, _o, old) = fresh_and_migrated();
+    for dir in [&fresh, &old] {
+        raw_insert_fields(dir, "rebuilt", "model", "user", "NULL").expect("a good row");
+        raw_insert_fields(dir, "harness-reported", "model", "user", "0").expect("index zero");
+        let bad = [
+            ("method", ("reported", "model", "user", "NULL")),
+            ("empty key", ("rebuilt", "", "user", "NULL")),
+            ("empty layer", ("rebuilt", "model", "", "NULL")),
+            ("negative entry index", ("rebuilt", "model", "user", "-1")),
+        ];
+        for (what, (method, key, layer, index)) in bad {
+            let err = raw_insert_fields(dir, method, key, layer, index).expect_err(what);
+            assert!(
+                err.to_string().to_lowercase().contains("constraint"),
+                "{what}: {err}"
+            );
+        }
+    }
+}
