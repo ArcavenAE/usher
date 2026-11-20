@@ -147,6 +147,8 @@ impl Rig {
         let context = LaunchContext {
             key,
             config_dir: home.join(".claude"),
+            global_state_dir: home.clone(),
+            set_variables: Default::default(),
             home,
             repo: None,
             user: "alex".to_string(),
@@ -608,7 +610,7 @@ fn a_candidate_that_cannot_be_checked_is_never_named_as_no_file() {
         .find(|n| n.layer == "user")
         .unwrap_or_else(|| panic!("the user layer is named as not checked: {listing:?}"));
     assert!(
-        checked.reason.contains("PermissionDenied"),
+        checked.reason.contains("permission denied"),
         "{}",
         checked.reason
     );
@@ -645,7 +647,7 @@ fn a_layer_that_is_not_always_present_does_not_drop_out_when_it_cannot_be_checke
         .find(|n| n.layer == "managed")
         .unwrap_or_else(|| panic!("the managed layer is named as not checked: {listing:?}"));
     assert!(
-        checked.reason.contains("PermissionDenied"),
+        checked.reason.contains("permission denied"),
         "{}",
         checked.reason
     );

@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod paths;
+mod seat;
 pub mod version;
 
 pub use version::{VersionReading, read_version};
@@ -148,6 +149,12 @@ impl SourceLister for ClaudeCodeAdapter {
                 continue;
             }
             match resolve(fact.path(), context, &self.system_root, &variable) {
+                // One file is one source: a second item of the same layer that places
+                // at the same path adds no row.
+                Ok(path)
+                    if candidates
+                        .iter()
+                        .any(|c| c.fact.layer() == fact.layer() && c.path == path) => {}
                 Ok(path) => candidates.push(Candidate {
                     item,
                     fact,
@@ -155,7 +162,10 @@ impl SourceLister for ClaudeCodeAdapter {
                     platform_ok,
                 }),
                 Err(reason) => {
-                    if fact.always_present() && platform_ok {
+                    // Not checked is never silent: a source that cannot be placed is named
+                    // whether or not its layer is always present. That flag governs only
+                    // the no-file line for an absent file.
+                    if platform_ok {
                         not_checked.push(NotCheckedLayer {
                             layer: layer_name(fact.layer()).to_string(),
                             reason,
@@ -182,11 +192,7 @@ impl SourceLister for ClaudeCodeAdapter {
                         }
                         not_checked.push(NotCheckedLayer {
                             layer: layer_name(candidate.fact.layer()).to_string(),
-                            reason: format!(
-                                "{} could not be checked: {:?}",
-                                candidate.path.display(),
-                                error.kind()
-                            ),
+                            reason: format!("{}: {}", candidate.path.display(), error.kind()),
                         });
                     }
                 }
@@ -288,6 +294,14 @@ impl SourceLister for ClaudeCodeAdapter {
             sources,
             absent_layers: absent,
             not_checked,
+            seat: seat::read_seat(
+                &self.knowledge,
+                context,
+                &self.system_root,
+                self.platform,
+                installed.as_ref(),
+                &variable,
+            ),
         })
     }
 }
@@ -529,7 +543,7 @@ fn parse_keys(path: &Path, meta: &fs::Metadata) -> Parsed {
 }
 
 /// The parse failure as position and category, never any file content.
-fn json_note(why: &serde_json::Error) -> String {
+pub(crate) fn json_note(why: &serde_json::Error) -> String {
     let category = match why.classify() {
         serde_json::error::Category::Io => "read error",
         serde_json::error::Category::Syntax => "syntax",

@@ -1442,8 +1442,10 @@ fn check_variables(items: &[Item]) -> Result<(), UsherError> {
 }
 
 /// A file a `keys-present` item reads must be one a `sources` item or a `names` seat item
-/// of the same harness already names, over versions that overlap. Only those make it a
-/// known JSON file; a `keys-present` read reads membership and confers no such standing.
+/// of the same harness already names. Only those make it a known JSON file; a
+/// `keys-present` read reads membership and confers no such standing. The anchor holds the
+/// same versions and every platform the item reads on, an unset platforms field meaning every
+/// platform, so the item never reads the file where nothing makes it known.
 fn check_anchors(items: &[Item]) -> Result<(), UsherError> {
     for item in items {
         let Some(seat) = &item.seat else { continue };
@@ -1453,23 +1455,61 @@ fn check_anchors(items: &[Item]) -> Result<(), UsherError> {
         let Some(path) = seat.path.as_deref() else {
             continue;
         };
-        let anchored = items.iter().any(|other| {
-            other.id != item.id
-                && other.harness == item.harness
-                && other.versions.overlaps(&item.versions)
-                && (other
-                    .source
+        // Each item of the harness that names the file over overlapping versions, with the
+        // platforms it applies on.
+        let named: Vec<(&Item, Option<&[Platform]>)> = items
+            .iter()
+            .filter(|other| {
+                other.id != item.id
+                    && other.harness == item.harness
+                    && other.versions.overlaps(&item.versions)
+            })
+            .filter_map(|other| {
+                if let Some(source) = other.source.as_ref().filter(|source| source.path == path) {
+                    return Some((other, source.platforms.as_deref()));
+                }
+                other
+                    .seat
                     .as_ref()
-                    .is_some_and(|source| source.path == path)
-                    || other.seat.as_ref().is_some_and(|fact| {
+                    .filter(|fact| {
                         fact.read == SeatRead::Names && fact.path.as_deref() == Some(path)
-                    }))
-        });
-        if !anchored {
+                    })
+                    .map(|fact| (other, fact.platforms.as_deref()))
+            })
+            .collect();
+        if named.is_empty() {
             return Err(fail(
                 format!("item `{}`: path", item.id),
                 format!(
-                    "no sources or names item names `{path}`; name that file with a `sources` item or a `names` seat item of the same harness over overlapping versions"
+                    "no sources or names item names `{path}`; name that file with a `sources` item or a `names` seat item of the same harness over the same versions"
+                ),
+            ));
+        }
+        let same_versions: Vec<_> = named
+            .iter()
+            .filter(|(other, _)| other.versions.same_versions(&item.versions))
+            .collect();
+        if same_versions.is_empty() {
+            return Err(fail(
+                format!("item `{}`: versions", item.id),
+                format!(
+                    "the item that names `{path}` must hold the same versions as this item, so the file is known wherever this item reads it"
+                ),
+            ));
+        }
+        let covers = |platforms: Option<&[Platform]>| match (platforms, seat.platforms.as_deref()) {
+            (None, _) => true,
+            (Some(_), None) => false,
+            (Some(anchor), Some(wanted)) => wanted.iter().all(|p| anchor.contains(p)),
+        };
+        if !same_versions
+            .iter()
+            .any(|(_, platforms)| covers(*platforms))
+        {
+            return Err(fail(
+                format!("item `{}`: platforms", item.id),
+                format!(
+                    "the item that names `{path}` must apply on every platform this item reads on; an unset platforms field means every platform"
                 ),
             ));
         }
@@ -1618,6 +1658,12 @@ impl KnowledgeFile {
                 default: variable.default.clone()?,
             })
         })
+    }
+
+    /// Whether `key` is one knowledge marks as a credential. A reader lists such a key by
+    /// name and reads nothing at or under it.
+    pub fn is_credential_key(key: &str) -> bool {
+        CREDENTIAL_KEYS.contains(&key)
     }
 
     /// The items about `harness` that apply to `installed`.

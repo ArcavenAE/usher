@@ -8,17 +8,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use usher_adapter_claude_code::{ClaudeCodeAdapter, VersionReading, read_version};
 use usher_core::{
-    KeyNames, LaunchContext, ListedSource, SourceLister, SourceListing, SourceStatus, SystemRoot,
-    UsherError, environment_key, key_variables,
+    KeyNames, LaunchContext, ListedSource, SeatLine, SourceLister, SourceListing, SourceStatus,
+    SystemRoot, UsherError, environment_key, key_variables,
 };
 use usher_knowledge::{Knowledge, KnowledgeFile, Version};
-use usher_store::{RunRecord, SourceRecord, Store};
+use usher_store::{RunRecord, SeatRecord, SourceRecord, Store};
 
 use crate::time::rfc3339;
 use crate::{InventoryEnv, LaunchEnvironment, inventory_platform};
 
 const HARNESS: &str = "claude-code";
 const CONFIG_DIR_TOKEN: &str = "${CONFIG_DIR}";
+const GLOBAL_STATE_TOKEN: &str = "${GLOBAL_STATE_DIR}";
 
 /// Runs `usher inventory` against `env`, placing absolute knowledge paths under `root`,
 /// and returns the text to print. Only tests pass a root other than the host's.
@@ -51,6 +52,8 @@ pub fn inventory_with(
         key,
         home: env.home.clone(),
         config_dir: config_dir(file, None, env),
+        global_state_dir: global_state_dir(file, None, env),
+        set_variables: set_variables(file, env),
         repo: find_repo(&env.launch_dir),
         user: env.user.clone(),
         harness_version: None,
@@ -60,6 +63,7 @@ pub fn inventory_with(
         context.harness_version = Some(version.clone());
         if let Ok(parsed) = Version::parse(version) {
             context.config_dir = config_dir(file, Some(&parsed), env);
+            context.global_state_dir = global_state_dir(file, Some(&parsed), env);
         }
     }
 
@@ -70,13 +74,40 @@ pub fn inventory_with(
     Ok(render(file, &listing, &reading))
 }
 
-/// The variable that moves the config directory, and the default the directory takes
-/// while it is unset or empty. At a known version the version-scoped binding is used;
-/// with none, any binder knowledge lists for the harness.
+/// The directory the config token takes: the variable knowledge binds to it, or its
+/// default while the variable is unset or empty.
 fn config_dir(file: &KnowledgeFile, version: Option<&Version>, env: &InventoryEnv) -> PathBuf {
+    bound_dir(
+        file,
+        version,
+        env,
+        CONFIG_DIR_TOKEN,
+        env.home.join(".claude"),
+    )
+}
+
+/// The directory the global state token takes, by the same rule as the config directory.
+fn global_state_dir(
+    file: &KnowledgeFile,
+    version: Option<&Version>,
+    env: &InventoryEnv,
+) -> PathBuf {
+    bound_dir(file, version, env, GLOBAL_STATE_TOKEN, env.home.clone())
+}
+
+/// The variable that moves a directory, and the default the directory takes while it is
+/// unset or empty. At a known version the version-scoped binding is used; with none, any
+/// binder knowledge lists for the harness. With no binder at all, `fallback` is used.
+fn bound_dir(
+    file: &KnowledgeFile,
+    version: Option<&Version>,
+    env: &InventoryEnv,
+    token: &str,
+    fallback: PathBuf,
+) -> PathBuf {
     let binder = version
         .and_then(|v| {
-            file.binding(HARNESS, v, CONFIG_DIR_TOKEN)
+            file.binding(HARNESS, v, token)
                 .map(|b| (b.variable().to_string(), b.default().to_string()))
         })
         .or_else(|| {
@@ -84,7 +115,7 @@ fn config_dir(file: &KnowledgeFile, version: Option<&Version>, env: &InventoryEn
                 .iter()
                 .filter(|item| item.harness() == HARNESS)
                 .filter_map(|item| item.variable())
-                .find(|variable| variable.binds() == Some(CONFIG_DIR_TOKEN))
+                .find(|variable| variable.binds() == Some(token))
                 .and_then(|variable| {
                     variable
                         .default()
@@ -92,7 +123,7 @@ fn config_dir(file: &KnowledgeFile, version: Option<&Version>, env: &InventoryEn
                 })
         });
     let Some((variable, default)) = binder else {
-        return env.home.join(".claude");
+        return fallback;
     };
     match env.launch.get(&variable).filter(|value| !value.is_empty()) {
         Some(value) => PathBuf::from(value),
@@ -102,6 +133,22 @@ fn config_dir(file: &KnowledgeFile, version: Option<&Version>, env: &InventoryEn
                 .replace("${USER}", &env.user),
         ),
     }
+}
+
+/// The names knowledge lists that are set and non-empty in the launch environment: the
+/// variables the seat reads and the ones that bind a path token. Only names, never values.
+fn set_variables(file: &KnowledgeFile, env: &InventoryEnv) -> std::collections::BTreeSet<String> {
+    let mut listed: Vec<&str> = file.launch_variables(HARNESS);
+    for item in file.items().iter().filter(|item| item.harness() == HARNESS) {
+        if let Some(seat) = item.seat() {
+            listed.extend(seat.variables().iter().map(String::as_str));
+        }
+    }
+    listed
+        .into_iter()
+        .filter(|name| env.launch.get(name).is_some_and(|value| !value.is_empty()))
+        .map(str::to_string)
+        .collect()
 }
 
 fn read_harness_version(
@@ -200,7 +247,28 @@ fn record(
         environment_key: key,
     };
     let mut store = Store::open(&env.state_dir)?;
-    store.record_inventory(&run, &sources)?;
+    let seat_names: Vec<Vec<Vec<String>>> = listing
+        .seat
+        .iter()
+        .map(|line| match line.read.as_str() {
+            "listing" => line.entries.iter().map(|e| vec![e.clone()]).collect(),
+            _ => line.names.clone(),
+        })
+        .collect();
+    let seat: Vec<SeatRecord<'_>> = listing
+        .seat
+        .iter()
+        .zip(&seat_names)
+        .map(|(line, names)| SeatRecord {
+            part: &line.part,
+            item_id: &line.item_id,
+            present: line.present,
+            names,
+            members: &line.members,
+            note: line.note.as_deref(),
+        })
+        .collect();
+    store.record_inventory_with_seat(&run, &sources, &seat)?;
     Ok(())
 }
 
@@ -241,8 +309,8 @@ fn render(file: &KnowledgeFile, listing: &SourceListing, reading: &VersionReadin
         for checked in &absent.checked {
             let _ = writeln!(
                 out,
-                "no file: {} settings ({})",
-                absent.layer,
+                "no file: {} ({})",
+                layer_label(&absent.layer),
                 checked.path.display()
             );
         }
@@ -250,11 +318,101 @@ fn render(file: &KnowledgeFile, listing: &SourceListing, reading: &VersionReadin
     for layer in &listing.not_checked {
         let _ = writeln!(
             out,
-            "not checked: {} settings ({})",
-            layer.layer, layer.reason
+            "not checked: {} ({})",
+            layer_label(&layer.layer),
+            layer.reason
         );
     }
+    if !listing.seat.is_empty() {
+        out.push('\n');
+        for line in &listing.seat {
+            let _ = writeln!(out, "{}", seat_row(line));
+        }
+    }
     out.trim_end().to_string()
+}
+
+/// One seat line: the part, where it looked, what it found as far as the read rule allows,
+/// and the knowledge item behind it. Never a value.
+fn seat_row(line: &SeatLine) -> String {
+    let tail = format!("(knowledge item {})", line.item_id);
+    let part = &line.part;
+    if line.read == "env" {
+        let vars: Vec<String> = line
+            .members
+            .iter()
+            .map(|(name, set)| format!("{name} {}", if *set { "present" } else { "absent" }))
+            .collect();
+        return format!("{part}  env  {} {tail}", vars.join(", "));
+    }
+    let Some(path) = &line.path else {
+        let why = line.note.as_deref().unwrap_or("not checked");
+        return format!("{part}  not checked ({why}) {tail}");
+    };
+    let path = path.display();
+    let state = match line.present {
+        None => {
+            let why = line.note.as_deref().unwrap_or("not checked");
+            return format!("{part}  {path}  not checked ({why}) {tail}");
+        }
+        Some(false) => "absent".to_string(),
+        Some(true) => match line.read.as_str() {
+            "keys-present" => line
+                .members
+                .iter()
+                .map(|(name, has)| format!("{name} {}", if *has { "present" } else { "absent" }))
+                .collect::<Vec<_>>()
+                .join(", "),
+            "listing" => detail("present", "entries", &line.entries.join(", "), line),
+            "names" => {
+                let names: Vec<String> = line.names.iter().map(|n| dotted(n)).collect();
+                detail("present", "names", &names.join(", "), line)
+            }
+            _ => detail("present", "", "", line),
+        },
+    };
+    format!("{part}  {path}  {state} {tail}")
+}
+
+/// `present`, then the names found and the note, in one parenthesis: names first.
+fn detail(base: &str, label: &str, found: &str, line: &SeatLine) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if !found.is_empty() {
+        parts.push(format!("{label}: {found}"));
+    }
+    if let Some(note) = &line.note {
+        parts.push(note.clone());
+    }
+    if parts.is_empty() {
+        base.to_string()
+    } else {
+        format!("{base} ({})", parts.join("; "))
+    }
+}
+
+/// A path of segments joined by dots. A segment that holds a dot, whitespace or a quote
+/// is printed as a JSON string, so `a.b` stays one segment.
+fn dotted(segments: &[String]) -> String {
+    segments
+        .iter()
+        .map(|segment| {
+            if segment.contains(['.', '"']) || segment.chars().any(char::is_whitespace) {
+                format!("{segment:?}")
+            } else {
+                segment.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
+/// How a layer reads in a line of output. A presentation table, not a harness fact.
+fn layer_label(layer: &str) -> String {
+    match layer {
+        "global-state" => "global state".to_string(),
+        "server-managed-cache" => "server-managed cache".to_string(),
+        other => format!("{other} settings"),
+    }
 }
 
 fn source_row(source: &ListedSource) -> String {
@@ -322,11 +480,32 @@ pub(crate) fn env_from_process() -> Result<InventoryEnv, UsherError> {
         state_dir: usher_store::state_dir_under(&home, store_platform),
         home,
         launch_dir,
-        launch: LaunchEnvironment::from_process(&names)?,
+        launch: launch_from_process(knowledge.current(), &names)?,
         path: std::env::var_os("PATH"),
         now: rfc3339(seconds),
         platform,
     })
+}
+
+/// The launch environment of this process: the variables that bind a path token keep their
+/// values, and a variable only the seat reads is recorded as set, never read.
+fn launch_from_process(
+    file: &KnowledgeFile,
+    binders: &[&str],
+) -> Result<LaunchEnvironment, UsherError> {
+    let mut launch = LaunchEnvironment::from_process(binders)?;
+    for item in file.items().iter().filter(|item| item.harness() == HARNESS) {
+        let Some(seat) = item.seat() else { continue };
+        for name in seat.variables() {
+            if binders.contains(&name.as_str()) {
+                continue;
+            }
+            if std::env::var_os(name).is_some_and(|value| !value.is_empty()) {
+                launch.mark_set(name);
+            }
+        }
+    }
+    Ok(launch)
 }
 
 fn host_name() -> Result<String, UsherError> {

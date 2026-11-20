@@ -19,6 +19,12 @@ pub struct LaunchContext {
     /// The harness config directory, for `${CONFIG_DIR}`, already resolved from
     /// the harness's relocation variable.
     pub config_dir: PathBuf,
+    /// The directory that holds the harness's global state file, for
+    /// `${GLOBAL_STATE_DIR}`, already resolved from the harness's relocation variable.
+    pub global_state_dir: PathBuf,
+    /// The names of the environment variables the seat reads that are set. Values are
+    /// never held.
+    pub set_variables: std::collections::BTreeSet<String>,
     /// The repository root, for `${REPO}`, when the directory is in one.
     pub repo: Option<PathBuf>,
     /// The OS user's name, for `${USER}`.
@@ -158,6 +164,33 @@ pub struct SourceListing {
     pub absent_layers: Vec<AbsentLayer>,
     /// Always-present layers whose path could not be resolved.
     pub not_checked: Vec<NotCheckedLayer>,
+    /// One line per seat item that applies, in item order by part, then id.
+    pub seat: Vec<SeatLine>,
+}
+
+/// What usher found for one seat item: the part of the seat, where it looked and how
+/// much the item's read rule allows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeatLine {
+    /// The part of the seat, as knowledge names it.
+    pub part: String,
+    /// The id of the knowledge item behind the line.
+    pub item_id: String,
+    /// The read rule: `presence`, `listing`, `names`, `env` or `keys-present`.
+    pub read: String,
+    /// Where it looked; none for an environment read.
+    pub path: Option<PathBuf>,
+    /// Whether the file or directory exists; none for an environment read, which has no file.
+    pub present: Option<bool>,
+    /// For a listing, the entry names, sorted.
+    pub entries: Vec<String>,
+    /// For a names read, each name found as its path from the root, sorted by segments.
+    pub names: Vec<Vec<String>>,
+    /// For an environment or keys-present read, each listed member in listed order and
+    /// whether it is present. Membership only, never a value.
+    pub members: Vec<(String, bool)>,
+    /// A statement about what the line cannot say.
+    pub note: Option<String>,
 }
 
 /// The port an adapter implements to list its settings sources.

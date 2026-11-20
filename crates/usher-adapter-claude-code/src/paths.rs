@@ -1,4 +1,4 @@
-//! Placing a knowledge path pattern on this host: the five path tokens resolve from
+//! Placing a knowledge path pattern on this host: the six path tokens resolve from
 //! the launch context, and a pattern written as absolute is placed under the system
 //! root.
 
@@ -45,6 +45,12 @@ fn expand(
                     return Err(format!("{config_dir_variable} is not absolute"));
                 }
                 path_text(&context.config_dir, "the config directory")?
+            }
+            "${GLOBAL_STATE_DIR}" => {
+                if !context.global_state_dir.is_absolute() {
+                    return Err(format!("{config_dir_variable} is not absolute"));
+                }
+                path_text(&context.global_state_dir, "the global state directory")?
             }
             "${REPO}" => context
                 .repo

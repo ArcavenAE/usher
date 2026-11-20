@@ -12,8 +12,8 @@ mod listing;
 
 pub use environment::{EnvironmentKey, environment_key, key_variables};
 pub use listing::{
-    AbsentLayer, CheckedPath, KeyNames, LaunchContext, ListedSource, NotCheckedLayer, SourceLister,
-    SourceListing, SourceStatus, SystemRoot,
+    AbsentLayer, CheckedPath, KeyNames, LaunchContext, ListedSource, NotCheckedLayer, SeatLine,
+    SourceLister, SourceListing, SourceStatus, SystemRoot,
 };
 
 /// The one error type every usher surface reports through.
