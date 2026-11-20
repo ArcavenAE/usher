@@ -164,10 +164,21 @@ fn a_source_using_the_global_state_token_needs_a_binder_over_the_same_versions()
 
 #[test]
 fn a_binder_of_the_config_directory_does_not_stand_in_for_the_global_state_binder() {
+    // The config-directory source is bound and passes; the global-state source beside it
+    // has only that binder over its versions, which binds the other token.
+    let config_source = SOURCE
+        .replace("demo.global-state", "demo.user-settings")
+        .replace(
+            "${GLOBAL_STATE_DIR}/.demo.json",
+            "${CONFIG_DIR}/settings.json",
+        )
+        .replace("global-state\"", "user\"");
     rejects(
-        &file(&[CONFIG, SOURCE]),
-        &["demo.global-state", "${GLOBAL_STATE_DIR}"],
+        &file(&[CONFIG, &config_source, SOURCE]),
+        &["demo.global-state", "${GLOBAL_STATE_DIR}", "same versions"],
     );
+    KnowledgeFile::parse(&file(&[CONFIG, &config_source]))
+        .expect("the config source alone is bound");
 }
 
 #[test]
