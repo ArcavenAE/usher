@@ -133,7 +133,7 @@ mod tests {
     const SEED: &str = include_str!("../knowledge/harness-knowledge.toml");
 
     fn with_sequence(sequence: u64) -> String {
-        SEED.replace("\nsequence = 4\n", &format!("\nsequence = {sequence}\n"))
+        SEED.replace("\nsequence = 5\n", &format!("\nsequence = {sequence}\n"))
     }
 
     /// The held file for these tests: the embedded content at sequence 1, so
