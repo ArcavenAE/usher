@@ -45,6 +45,7 @@ fn child_checks_the_process_environment() {
             env.state_dir.display()
         );
         assert_from_the_account_database(&env);
+        assert_ne!(env.user, "not-the-account", "the child followed USER");
         println!("CHILD_OK");
     }
 }
@@ -63,6 +64,8 @@ fn home_does_not_move_the_verbs_home() {
         ])
         .env("USHER_ENV_CHILD", &elsewhere)
         .env("HOME", &elsewhere)
+        .env("USER", "not-the-account")
+        .env("LOGNAME", "not-the-account")
         .output()
         .expect("the child runs");
     let stdout = String::from_utf8_lossy(&out.stdout);
