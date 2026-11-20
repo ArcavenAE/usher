@@ -1438,6 +1438,10 @@ fn a_list_key_under_a_broken_file_keeps_its_entries_in_effect() {
     let row = reading(&map, "permissions.allow", "user");
     assert_eq!(row.status, ReadingStatus::InEffect, "{row:?}");
     assert_eq!(row.value, text("Bash(ls)"));
+    assert_eq!(
+        row.note.as_deref(),
+        Some("project file could not be read; more entries may apply")
+    );
 }
 
 // ---- two local files -------------------------------------------------------------------
@@ -1648,4 +1652,278 @@ fn an_unplaced_file_with_a_scalar_at_a_prefix_of_the_path_does_not_block_the_key
     let map = fixture_map_with_unplaced_managed(&rig);
     let user = reading(&map, "fx.nested.leaf", "user");
     assert_eq!(user.status, ReadingStatus::InEffect, "{user:?}");
+
+// ---- a file that could not be read leaves a trace -------------------------------------
+
+/// The files the map names as not read: layer, path and reason.
+fn files_not_read(map: &SettingsMap) -> Vec<(String, PathBuf, String)> {
+    map.not_observed
+        .iter()
+        .filter_map(|item| match item {
+            NotObserved::FileNotRead {
+                layer,
+                path,
+                reason,
+            } => Some((layer.clone(), path.clone(), reason.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A list key set only in a readable layer keeps its entries, and each says that more
+/// entries may apply, since an unreadable layer in its scopes may add some. The broken
+/// file is named as not read.
+#[test]
+fn a_list_under_a_broken_file_says_more_entries_may_apply_and_the_file_is_named() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.user_file(),
+        r#"{"permissions": {"deny": ["Read(x)"]}}"#,
+    );
+    let broken = rig.write(&rig.project_file(), "{ not json");
+    let map = rig.seed_map(&[]);
+    let row = reading(&map, "permissions.deny", "user");
+    assert_eq!(row.status, ReadingStatus::InEffect, "{row:?}");
+    assert_eq!(
+        row.note.as_deref(),
+        Some("project file could not be read; more entries may apply")
+    );
+    let files = files_not_read(&map);
+    assert_eq!(files.len(), 1, "{files:?}");
+    assert_eq!(files[0].0, "project");
+    assert_eq!(files[0].1, broken);
+    assert!(
+        files[0].2.starts_with("is not valid JSON at line"),
+        "{files:?}"
+    );
+}
+
+/// A repeated entry keeps its "also set in" note (on the lower layer's copy) and gains the
+/// unreadable-layer note, joined with a semicolon.
+#[test]
+fn a_repeated_list_entry_joins_the_also_set_note_and_the_unreadable_note() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.user_file(),
+        r#"{"permissions": {"deny": ["Read(x)"]}}"#,
+    );
+    rig.write(
+        &rig.local_file(),
+        r#"{"permissions": {"deny": ["Read(x)"]}}"#,
+    );
+    rig.write(&rig.project_file(), "{ not json");
+    let map = rig.seed_map(&[]);
+    let rows = readings(&map, "permissions.deny");
+    let user = rows
+        .iter()
+        .find(|r| r.layer == "user")
+        .expect("a user entry");
+    assert_eq!(
+        user.note.as_deref(),
+        Some("also set in local; project file could not be read; more entries may apply"),
+        "{rows:?}"
+    );
+}
+
+/// A key set only in a file that cannot be read has no row, and the file is named.
+#[test]
+fn a_scalar_set_only_in_a_broken_file_has_no_row_and_the_file_is_named() {
+    let rig = Rig::new();
+    let broken = rig.write(&rig.project_file(), r#"{"model": "canary-scalar""#);
+    let map = rig.seed_map(&[]);
+    assert!(
+        map.readings.iter().all(|r| r.key != "model"),
+        "{:?}",
+        map.readings
+    );
+    let files = files_not_read(&map);
+    assert_eq!(files.len(), 1, "{files:?}");
+    assert_eq!((files[0].0.as_str(), &files[0].1), ("project", &broken));
+    assert!(!format!("{map:?}").contains("canary-scalar"));
+}
+
+/// A key the vendor gives its own merge rule stays not decided, and the note says an
+/// unreadable layer was in its scopes.
+#[test]
+fn an_own_rule_key_under_a_broken_file_joins_the_note() {
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"fallbackModel": "user-fallback"}"#);
+    rig.write(&rig.project_file(), "{ not json");
+    let map = rig.seed_map(&[]);
+    let row = reading(&map, "fallbackModel", "user");
+    assert_eq!(row.status, ReadingStatus::NotDecided, "{row:?}");
+    assert_eq!(
+        row.note.as_deref(),
+        Some("own merge rule; project file could not be read")
+    );
+}
+
+/// A broken layer outside a list key's scopes adds no note to it, and the file is still
+/// named.
+#[test]
+fn a_broken_layer_outside_a_lists_scopes_adds_no_note_but_is_still_named() {
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"autoMode": {"allow": ["rule"]}}"#);
+    rig.write(&rig.project_file(), "{ not json");
+    let map = rig.seed_map(&[]);
+    let row = reading(&map, "autoMode.allow", "user");
+    assert_eq!(row.status, ReadingStatus::InEffect, "{row:?}");
+    assert_eq!(row.note, None, "{row:?}");
+    assert_eq!(files_not_read(&map).len(), 1, "{:?}", map.not_observed);
+}
+
+/// Each cause has its own reason: a file that cannot be opened, one that is not valid
+/// JSON, and one that is not an object. None quotes a byte of the file.
+#[test]
+fn the_three_causes_give_the_three_reasons_and_quote_nothing() {
+    use std::os::unix::fs::PermissionsExt;
+    let rig = Rig::new();
+    let user = rig.write(&rig.user_file(), r#"{"model": "canary-unopened"}"#);
+    rig.write(&rig.project_file(), "{ canary-not-json");
+    rig.write(&rig.local_file(), r#"["canary-array"]"#);
+    fs::set_permissions(&user, fs::Permissions::from_mode(0o000)).expect("mode");
+    let can_open = fs::File::open(&user).is_ok();
+    let map = rig.seed_map(&[]);
+    fs::set_permissions(&user, fs::Permissions::from_mode(0o644)).expect("mode");
+    let files = files_not_read(&map);
+    let reason = |layer: &str| {
+        files
+            .iter()
+            .find(|f| f.0 == layer)
+            .map(|f| f.2.clone())
+            .unwrap_or_else(|| panic!("no {layer} file named in {files:?}"))
+    };
+    assert!(
+        reason("project").starts_with("is not valid JSON at line 1 column"),
+        "{files:?}"
+    );
+    assert_eq!(reason("local"), "is not a JSON object");
+    if can_open {
+        usher_testkit::skip(
+            "the_three_causes_give_the_three_reasons_and_quote_nothing",
+            "this process can read a mode 000 file, so the open case is not tested",
+        );
+    } else {
+        assert!(
+            reason("user").starts_with("cannot be opened: "),
+            "{files:?}"
+        );
+    }
+    assert!(!format!("{map:?}").contains("canary"), "{map:?}");
+}
+
+/// Rank plays no part in the note: a broken layer below the layer that sets the list still
+/// means more entries may apply. The user file is below project in the seed's stack, and a
+/// project entry carries the note.
+#[test]
+fn a_broken_layer_below_the_one_that_sets_a_list_still_adds_the_note() {
+    let rig = Rig::new();
+    let broken = rig.write(&rig.user_file(), "{ not json");
+    rig.write(
+        &rig.project_file(),
+        r#"{"permissions": {"deny": ["Read(x)"]}}"#,
+    );
+    let map = rig.seed_map(&[]);
+    let row = reading(&map, "permissions.deny", "project");
+    assert_eq!(row.status, ReadingStatus::InEffect, "{row:?}");
+    assert_eq!(
+        row.note.as_deref(),
+        Some("user file could not be read; more entries may apply")
+    );
+    let files = files_not_read(&map);
+    assert_eq!(files.len(), 1, "{files:?}");
+    assert_eq!((files[0].0.as_str(), &files[0].1), ("user", &broken));
+}
+
+/// A source the listing marks as not read, or as shadowed by a higher-ranked managed file,
+/// contributes nothing whatever its file holds, so a broken file there gives a skipped
+/// entry and no not-read item: the gap it would state does not exist.
+#[test]
+fn a_broken_file_in_a_skipped_source_is_skipped_and_not_named_as_not_read() {
+    let rig = Rig::new();
+    rig.write(&rig.user_file(), r#"{"model": "user-model"}"#);
+    rig.write(&rig.project_file(), "{ not json");
+    rig.write(
+        &rig.system.join("etc/claude-code/managed-settings.json"),
+        "{ also not json",
+    );
+    let adapter = rig.adapter(KnowledgeFile::embedded().expect("embedded"));
+    let context = rig.context(&[]);
+    let mut listing = rig.listing(&adapter, &context);
+    for source in &mut listing.sources {
+        match source.layer.as_str() {
+            "project" => {
+                source.status = SourceStatus::Unread {
+                    reason: "knowledge item claude-code.fx-unread".to_string(),
+                };
+            }
+            "managed" => {
+                source.status = SourceStatus::Shadowed {
+                    by: PathBuf::from("/higher/ranked/managed-settings.json"),
+                };
+            }
+            _ => {}
+        }
+    }
+    let map = adapter.map_settings(&listing, &context).expect("a map");
+    for layer in ["project", "managed"] {
+        assert!(
+            map.skipped_layers.iter().any(|s| s.layer == layer),
+            "no skipped {layer} in {:?}",
+            map.skipped_layers
+        );
+    }
+    assert!(
+        files_not_read(&map).is_empty(),
+        "a skipped source is named as not read: {:?}",
+        map.not_observed
+    );
+    let user = reading(&map, "model", "user");
+    assert_eq!(user.status, ReadingStatus::InEffect, "{user:?}");
+}
+
+/// With two broken layers the note names each, in stack order, joined with semicolons. A
+/// list entry that is also set elsewhere says so first and ends with the closing clause; an
+/// own-rule key has no closing clause.
+///
+/// Provisional: the wording is not final.
+#[test]
+fn two_broken_layers_are_each_named_in_stack_order_with_the_also_set_note_first() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.system.join("etc/claude-code/managed-settings.json"),
+        r#"{"permissions": {"deny": ["Read(x)"]}}"#,
+    );
+    rig.write(
+        &rig.user_file(),
+        r#"{"permissions": {"deny": ["Read(x)"]}, "fallbackModel": "user-fallback"}"#,
+    );
+    rig.write(&rig.local_file(), "{ not json");
+    rig.write(&rig.project_file(), "[1]");
+    let map = rig.seed_map(&[]);
+    let rows = readings(&map, "permissions.deny");
+    let note = |layer: &str| {
+        rows.iter()
+            .find(|r| r.layer == layer)
+            .unwrap_or_else(|| panic!("no {layer} entry in {rows:?}"))
+            .note
+            .clone()
+    };
+    assert_eq!(
+        note("managed").as_deref(),
+        Some(
+            "local file could not be read; project file could not be read; more entries may apply"
+        )
+    );
+    assert_eq!(
+        note("user").as_deref(),
+        Some(
+            "also set in managed; local file could not be read; project file could not be read; more entries may apply"
+        )
+    );
+    let own = reading(&map, "fallbackModel", "user");
+    assert_eq!(
+        own.note.as_deref(),
+        Some("own merge rule; local file could not be read; project file could not be read")
+    );
 }

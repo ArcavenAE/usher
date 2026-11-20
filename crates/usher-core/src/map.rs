@@ -127,6 +127,16 @@ pub enum NotObserved {
     BuiltInClassifierRules,
     /// A layer that is not in the settings stack, by name.
     LayerMissingFromStack(String),
+    /// A settings file that could not be read, with why. The reason never quotes the
+    /// file's bytes.
+    FileNotRead {
+        /// The layer the file belongs to.
+        layer: String,
+        /// The file.
+        path: PathBuf,
+        /// Why it was not read, such as `is not a JSON object`.
+        reason: String,
+    },
 }
 
 /// Everything one adapter decided for one environment.
