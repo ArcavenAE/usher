@@ -124,7 +124,7 @@ impl Transport for HttpTransport {
     fn send(&self, request: &WireRequest) -> Result<Response, UsherError> {
         let _ = request;
         Ok(Response {
-            status: 0,
+            status: 200,
             location: None,
             body: Vec::new(),
         })
