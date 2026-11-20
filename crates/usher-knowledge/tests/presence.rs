@@ -28,11 +28,11 @@ versions = ">=1.0.0, <2.0.0"
 summary = "The launcher link whose target names the installed version."
 reference = { kind = "vendor-docs", locator = "https://example.test/docs/install" }
 last_verified = 2026-11-20
-version_from = { launcher = "${HOME}/.local/bin/demo", rule = "symlink-target-last-component", layout = "demo/versions/${VERSION}" }
+version_from = { launcher = "${HOME}/.local/bin/demo", rule = "symlink-target-last-component", layout = "${HOME}/.local/share/demo/versions/${VERSION}" }
 "#;
 
 const SOURCE: &str = r#"source = { path = "${CONFIG_DIR}/settings.json", layer = "user", read = "read", rank = 1, always_present = true }"#;
-const LINK: &str = r#"version_from = { launcher = "${HOME}/.local/bin/demo", rule = "symlink-target-last-component", layout = "demo/versions/${VERSION}" }"#;
+const LINK: &str = r#"version_from = { launcher = "${HOME}/.local/bin/demo", rule = "symlink-target-last-component", layout = "${HOME}/.local/share/demo/versions/${VERSION}" }"#;
 
 fn rejects(text: &str, needles: &[&str]) {
     let err = KnowledgeFile::parse(text).expect_err("the check must fail");
@@ -86,7 +86,10 @@ fn a_paths_item_carries_the_launcher_rule_and_layout_for_the_version() {
         .expect("a paths item may say how to read the version");
     assert_eq!(from.launcher(), "${HOME}/.local/bin/demo");
     assert_eq!(from.rule(), VersionRule::SymlinkTargetLastComponent);
-    assert_eq!(from.layout(), "demo/versions/${VERSION}");
+    assert_eq!(
+        from.layout(),
+        "${HOME}/.local/share/demo/versions/${VERSION}"
+    );
     assert!(
         file.items()[0].version_from().is_none(),
         "an item that does not say has none"
@@ -122,7 +125,10 @@ fn a_missing_launcher_rule_or_layout_is_refused_naming_the_field() {
     for (cut, field) in [
         (r#"launcher = "${HOME}/.local/bin/demo", "#, "launcher"),
         (r#"rule = "symlink-target-last-component", "#, "rule"),
-        (r#", layout = "demo/versions/${VERSION}""#, "layout"),
+        (
+            r#", layout = "${HOME}/.local/share/demo/versions/${VERSION}""#,
+            "layout",
+        ),
     ] {
         rejects(
             &with_link(&LINK.replace(cut, "")),
@@ -131,9 +137,52 @@ fn a_missing_launcher_rule_or_layout_is_refused_naming_the_field() {
     }
 }
 
+/// `${VERSION}` is a capture placeholder, not a sixth path token: it stands for the
+/// last component of `layout` and nowhere else.
+#[test]
+fn version_is_a_placeholder_held_once_as_the_last_component_of_the_layout() {
+    let layout = "${HOME}/.local/share/demo/versions/${VERSION}";
+    for (bad, why) in [
+        ("${HOME}/.local/share/demo/versions", "no placeholder"),
+        (
+            "${HOME}/.local/share/${VERSION}/versions/${VERSION}",
+            "twice",
+        ),
+        ("${HOME}/.local/share/demo/${VERSION}/bin", "not last"),
+        (
+            "${HOME}/.local/share/demo/versions/v${VERSION}",
+            "part of a component",
+        ),
+    ] {
+        let text = with_link(&LINK.replace(layout, bad));
+        let err =
+            KnowledgeFile::parse(&text).expect_err(&format!("a layout with {why} must be refused"));
+        let shown = err.to_string();
+        assert!(
+            shown.contains("demo.launcher") && shown.contains("${VERSION}"),
+            "{why}: `{shown}`"
+        );
+    }
+}
+
+#[test]
+fn version_outside_the_layout_is_refused() {
+    rejects(
+        &with_link(&LINK.replace("${HOME}/.local/bin/demo", "${HOME}/${VERSION}/demo")),
+        &["demo.launcher", "${VERSION}"],
+    );
+    rejects(
+        &with_source(&SOURCE.replace(
+            "${CONFIG_DIR}/settings.json",
+            "${CONFIG_DIR}/${VERSION}.json",
+        )),
+        &["demo.user-settings", "${VERSION}"],
+    );
+}
+
 #[test]
 fn an_empty_layout_is_refused() {
-    let text = with_link(&LINK.replace("demo/versions/${VERSION}", ""));
+    let text = with_link(&LINK.replace("${HOME}/.local/share/demo/versions/${VERSION}", ""));
     rejects(&text, &["demo.launcher", "layout", "empty"]);
 }
 
@@ -176,17 +225,19 @@ fn the_embedded_seed_reads_the_claude_code_version_from_the_native_launcher_link
     let item = file
         .items()
         .iter()
-        .find(|i| i.harness() == "claude-code" && i.version_from().is_some())
-        .expect("a Claude Code paths item says how to read the version");
+        .find(|i| i.id() == "claude-code.native-launcher")
+        .expect("the native launcher item is in the seed");
     assert_eq!(item.class(), Class::Paths);
     let from = item.version_from().expect("checked above");
-    assert!(from.launcher().starts_with("${"), "{}", from.launcher());
-    assert!(from.launcher().ends_with("/claude"), "{}", from.launcher());
+    assert_eq!(item.harness(), "claude-code");
+    assert_eq!(from.launcher(), "${HOME}/.local/bin/claude");
     assert_eq!(from.rule(), VersionRule::SymlinkTargetLastComponent);
-    assert!(
-        from.layout().ends_with("/versions/${VERSION}"),
-        "the native layout is claude/versions/<version>: {}",
-        from.layout()
+    assert_eq!(
+        from.layout(),
+        "${HOME}/.local/share/claude/versions/${VERSION}"
     );
-    assert!(!item.reference().locator().is_empty());
+    assert_eq!(
+        item.reference().locator(),
+        "https://code.claude.com/docs/en/setup"
+    );
 }
