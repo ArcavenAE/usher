@@ -1,7 +1,10 @@
 //! Story 1.5, PR C: what `usher inventory` prints and records. Runs against a scratch
 //! home and a scratch system root; the real harness homes are guarded.
 
+use std::cell::RefCell;
+use std::ffi::OsString;
 use std::fs;
+use std::os::unix::ffi::OsStringExt;
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 
@@ -717,7 +720,8 @@ variable = { name = "CLAUDE_OTHER_DIR" }
 #[test]
 fn from_process_keeps_only_the_named_variables_that_are_set() {
     // CARGO_PKG_NAME is set by cargo for every test process; PATH is set but not asked for.
-    let launch = LaunchEnvironment::from_process(&["CARGO_PKG_NAME", "USHER_SURELY_NOT_SET_1"]);
+    let launch = LaunchEnvironment::from_process(&["CARGO_PKG_NAME", "USHER_SURELY_NOT_SET_1"])
+        .expect("every named variable that is set holds valid text");
     assert_eq!(launch.get("CARGO_PKG_NAME"), Some("usher-cli"));
     assert_eq!(launch.get("USHER_SURELY_NOT_SET_1"), None);
     assert_eq!(
@@ -733,4 +737,55 @@ fn from_pairs_holds_exactly_the_pairs_it_is_given() {
     assert_eq!(launch.get("A"), Some("1"));
     assert_eq!(launch.get("B"), Some(""));
     assert_eq!(launch.get("C"), None);
+}
+
+#[test]
+fn from_lookup_asks_for_each_named_variable_and_nothing_else() {
+    let asked = RefCell::new(Vec::new());
+    let launch = LaunchEnvironment::from_lookup(&["A", "B", "C"], |name| {
+        asked.borrow_mut().push(name.to_string());
+        match name {
+            "A" => Some(OsString::from("1")),
+            "B" => Some(OsString::new()),
+            _ => None,
+        }
+    })
+    .expect("valid text and unset variables are not an error");
+    assert_eq!(*asked.borrow(), ["A", "B", "C"]);
+    assert_eq!(launch.get("A"), Some("1"));
+    assert_eq!(launch.get("B"), Some(""));
+    assert_eq!(launch.get("C"), None);
+    assert_eq!(launch.get("D"), None);
+}
+
+#[test]
+fn a_named_variable_holding_invalid_utf8_is_refused_by_name_and_never_by_value() {
+    let bytes = OsString::from_vec(b"secret-\xff-tail".to_vec());
+    let err = LaunchEnvironment::from_lookup(&["CLAUDE_CONFIG_DIR"], |name| {
+        (name == "CLAUDE_CONFIG_DIR").then(|| bytes.clone())
+    })
+    .expect_err("a value that is not valid UTF-8 cannot key an environment");
+    let shown = format!("{err} {err:?}");
+    assert!(shown.contains("CLAUDE_CONFIG_DIR"), "{shown}");
+    for field in [err.step(), err.check(), err.status(), err.next_action()] {
+        assert!(!field.is_empty(), "all four fields are filled: {shown}");
+        assert!(
+            !field.contains("secret") && !field.contains("tail") && !field.contains('\u{FFFD}'),
+            "no part of the value is shown: {field}"
+        );
+    }
+    assert!(
+        !shown.contains("secret") && !shown.contains("tail"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn a_variable_nobody_asked_for_may_hold_invalid_utf8() {
+    let launch = LaunchEnvironment::from_lookup(&["A"], |name| match name {
+        "A" => Some(OsString::from("1")),
+        _ => Some(OsString::from_vec(vec![0xff])),
+    })
+    .expect("only the named variables are read");
+    assert_eq!(launch.get("A"), Some("1"));
 }

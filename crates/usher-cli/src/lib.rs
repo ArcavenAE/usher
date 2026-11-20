@@ -24,11 +24,22 @@ impl LaunchEnvironment {
         LaunchEnvironment::default()
     }
 
-    /// Reads the named variables from the process environment, keeping only those that
-    /// are set to valid text.
-    pub fn from_process(names: &[&str]) -> Self {
-        let _ = names;
-        LaunchEnvironment::default()
+    /// Reads the named variables from the process environment. A variable that is unset
+    /// is absent; one that is set to text that is not valid UTF-8 is refused, naming the
+    /// variable and never its value.
+    pub fn from_process(names: &[&str]) -> Result<Self, UsherError> {
+        Self::from_lookup(names, |name| std::env::var_os(name))
+    }
+
+    /// As [`LaunchEnvironment::from_process`], over any lookup, so a test can hand in
+    /// values a process environment cannot be made to hold. The lookup is asked for
+    /// each of `names` and nothing else.
+    pub fn from_lookup(
+        names: &[&str],
+        lookup: impl Fn(&str) -> Option<OsString>,
+    ) -> Result<Self, UsherError> {
+        let _ = (names, lookup);
+        Ok(LaunchEnvironment::default())
     }
 
     /// The value of `name`, when it was kept.
