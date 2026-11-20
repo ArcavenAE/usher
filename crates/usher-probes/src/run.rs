@@ -203,6 +203,17 @@ impl Launcher<'_> {
         })
     }
 
+    /// `Err` when a start was killed at the timeout.
+    fn check_timeout(&self, timeout: Duration) -> Result<(), NotRun> {
+        if self.timed_out.get() {
+            return Err(NotRun::new(Unmeasured::Broken(format!(
+                "timed out after {} s",
+                timeout.as_secs()
+            ))));
+        }
+        Ok(())
+    }
+
     /// How many processes this launcher has started.
     pub fn starts(&self) -> usize {
         self.starts.get()
@@ -317,18 +328,16 @@ where
         timed_out: Cell::new(false),
     };
 
-    control(&harness, &launcher)
+    let controlled = control(&harness, &launcher);
+    // Any start the launcher killed reads as a timeout, the control's included.
+    launcher.check_timeout(spec.timeout)?;
+    controlled
         .map_err(|text| NotRun::new(Unmeasured::Broken(format!("the control failed: {text}"))))?;
     // The control's starts do not count: the claim must start the harness itself.
     let started_before_claim = launcher.starts();
     let result = claim(&harness, &launcher);
     // A timed-out start ends the probe however the claim took it.
-    if launcher.timed_out.get() {
-        return Err(NotRun::new(Unmeasured::Broken(format!(
-            "timed out after {} s",
-            spec.timeout.as_secs()
-        ))));
-    }
+    launcher.check_timeout(spec.timeout)?;
     let held = result.map_err(NotRun::new)?;
     if launcher.starts() == started_before_claim {
         return Err(NotRun::new(Unmeasured::Broken(
