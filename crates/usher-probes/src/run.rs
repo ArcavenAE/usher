@@ -5,13 +5,14 @@ use std::{
     ffi::OsStr,
     fmt, io,
     io::Read,
+    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     process::{Output, Stdio},
     thread,
     time::{Duration, Instant},
 };
 
-use usher_testkit::{Probe, ScratchHome, probe};
+use usher_testkit::ScratchHome;
 
 use crate::{
     fragment::{Date, Fragment, Network, Outcome, bare_version},
@@ -203,6 +204,33 @@ impl Launcher<'_> {
         })
     }
 
+    /// The first line `<binary> --version` prints, from stdout or else stderr.
+    /// The query is a start like any other (profile, environment, home and
+    /// timeout) but is not counted as a claim start.
+    fn version(&self, binary: &Path) -> Result<String, NotRun> {
+        let starts = self.starts.get();
+        let output = self.run(binary, &["--version"]);
+        self.starts.set(starts);
+        let output = output.map_err(|err| {
+            NotRun::new(Unmeasured::Broken(format!(
+                "`{} --version` did not run: {err}",
+                binary.display()
+            )))
+        })?;
+        if !output.status.success() {
+            return Err(NotRun::new(Unmeasured::Broken(format!(
+                "`{} --version` exited with {}",
+                binary.display(),
+                output.status
+            ))));
+        }
+        let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+        if text.trim().is_empty() {
+            text = String::from_utf8_lossy(&output.stderr).into_owned();
+        }
+        Ok(text.lines().next().unwrap_or("").trim().to_string())
+    }
+
     /// `Err` when a start was killed at the timeout.
     fn check_timeout(&self, timeout: Duration) -> Result<(), NotRun> {
         if self.timed_out.get() {
@@ -233,6 +261,27 @@ impl Launcher<'_> {
     pub fn scratch_root(&self) -> &Path {
         self.scratch.root()
     }
+}
+
+/// Looks for `name` on `search_path` (or on `PATH` when `None`) and returns
+/// the first executable file. Nothing is started.
+fn find_binary(name: &str, search_path: Option<&OsStr>) -> Result<PathBuf, NotRun> {
+    let search = match search_path {
+        Some(path) => path.to_os_string(),
+        None => std::env::var_os("PATH").unwrap_or_default(),
+    };
+    std::env::split_paths(&search)
+        .map(|dir| dir.join(name))
+        .find(|candidate| {
+            std::fs::metadata(candidate)
+                .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+                .unwrap_or(false)
+        })
+        .ok_or_else(|| {
+            NotRun::new(Unmeasured::Broken(format!(
+                "`{name}` is not on the search path"
+            )))
+        })
 }
 
 /// Reads a pipe to its end.
@@ -307,17 +356,6 @@ where
     C: FnOnce(&Harness, &Launcher<'_>) -> Result<(), String>,
     K: FnOnce(&Harness, &Launcher<'_>) -> Result<bool, Unmeasured>,
 {
-    let (path, version_line) = match probe(spec.binary, spec.search_path, scratch) {
-        Probe::Found { path, version } => (path, version),
-        Probe::Missing { reason } => return Err(NotRun::new(Unmeasured::Broken(reason))),
-    };
-    let Some(version) = bare_version(&version_line) else {
-        return Err(NotRun::new(Unmeasured::Broken(format!(
-            "`{} --version` printed no version number",
-            spec.binary
-        ))));
-    };
-    let harness = Harness { path, version };
     let launcher = Launcher {
         scratch,
         host,
@@ -327,6 +365,18 @@ where
         starts: Cell::new(0),
         timed_out: Cell::new(false),
     };
+    let path = find_binary(spec.binary, spec.search_path)?;
+    // The version query is a start of the harness: it goes through the launcher.
+    let version_line = launcher.version(&path);
+    launcher.check_timeout(spec.timeout)?;
+    let version_line = version_line?;
+    let Some(version) = bare_version(&version_line) else {
+        return Err(NotRun::new(Unmeasured::Broken(format!(
+            "`{} --version` printed no version number",
+            spec.binary
+        ))));
+    };
+    let harness = Harness { path, version };
 
     let controlled = control(&harness, &launcher);
     // Any start the launcher killed reads as a timeout, the control's included.
