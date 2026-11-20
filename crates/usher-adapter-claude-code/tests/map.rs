@@ -1247,3 +1247,40 @@ fn a_credential_key_is_listed_by_name_at_any_depth_with_nothing_under_it() {
     );
     assert!(!format!("{map:?}").contains("canary"));
 }
+
+// ---- a layer the listing cannot place ---------------------------------------------------
+
+/// A managed source the listing cannot decide (two managed files share a rank) whose file
+/// does parse still blocks the layers below it: it might hold the key, so nothing below it
+/// reads in effect.
+#[test]
+fn an_undecided_managed_source_above_a_user_value_leaves_the_user_value_not_decided() {
+    let rig = Rig::new();
+    rig.write(
+        &rig.system.join("etc/claude-code/managed-settings.json"),
+        r#"{"model": "managed-model"}"#,
+    );
+    rig.write(&rig.user_file(), r#"{"model": "user-model"}"#);
+    let adapter = rig.adapter(KnowledgeFile::embedded().expect("embedded"));
+    let context = rig.context(&[]);
+    let mut listing = rig.listing(&adapter, &context);
+    let managed = listing
+        .sources
+        .iter_mut()
+        .find(|s| s.layer == "managed")
+        .expect("a managed source");
+    managed.status = SourceStatus::Unknown {
+        reason: "first-wins not decided: two managed sources share rank 3".to_string(),
+    };
+    let map = adapter.map_settings(&listing, &context).expect("a map");
+    let user = reading(&map, "model", "user");
+    assert_eq!(user.status, ReadingStatus::NotDecided, "{user:?}");
+    assert!(note_has(user, "managed"), "{user:?}");
+    assert!(
+        map.readings
+            .iter()
+            .all(|r| r.status != ReadingStatus::InEffect),
+        "{:?}",
+        map.readings
+    );
+}
