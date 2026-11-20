@@ -173,7 +173,12 @@ mod tests {
         let scratch = ScratchHome::new().expect("scratch");
         link(&scratch, &versions(&scratch).join("2.1.317"));
         let reading = read_version(&from(), &context(&scratch), Some(&path_of(&scratch)));
-        assert!(unknown(&reading).contains("dangling"), "{reading:?}");
+        let reason = unknown(&reading);
+        assert!(reason.contains("dangling"), "{reason}");
+        assert!(
+            reason.contains(&versions(&scratch).join("2.1.317").display().to_string()),
+            "the reason names the target: {reason}"
+        );
     }
 
     #[test]
