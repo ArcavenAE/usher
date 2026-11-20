@@ -1,5 +1,5 @@
 //! Probes live only in `src/probes/`, the scan over them reads every nested
-//! file and knows eleven ways to start a process, no ignored test sits outside
+//! file and knows twelve ways to start a process, no ignored test sits outside
 //! `src/probes/`, and the launcher has no method that sets a variable.
 
 use std::{fs, path::Path};
@@ -9,7 +9,7 @@ use usher_probes::structural::{
 };
 use usher_testkit::ScratchHome;
 
-const NEEDLES: [&str; 11] = [
+const NEEDLES: [&str; 12] = [
     "Command::new",
     "process::Command",
     "scratch.command",
@@ -20,7 +20,9 @@ const NEEDLES: [&str; 11] = [
     "libc::",
     "posix_spawn",
     "fork(",
-    "exec",
+    // Meaning change (Q8): the bare word `exec` became its call forms.
+    "exec(",
+    "execv",
 ];
 
 /// The attribute, built in two pieces so this file does not hold it itself.
@@ -34,7 +36,7 @@ fn write(path: &Path, text: &str) {
 }
 
 #[test]
-fn each_of_the_eleven_needles_alone_is_a_bypass_and_a_launcher_call_is_not() {
+fn each_of_the_twelve_needles_alone_is_a_bypass_and_a_launcher_call_is_not() {
     assert!(find_launch_bypasses("fn clean() { launcher.run(\"x\", &[]); }").is_empty());
     for needle in NEEDLES {
         let fixture = format!("fn bypass() {{ {needle} }}");
@@ -149,7 +151,7 @@ fn the_launcher_has_no_method_that_sets_an_environment_variable() {
     assert!(find_env_setters(&run).is_empty());
 }
 
-// One scan covers all of this crate's src with the eleven needles. The one
+// One scan covers all of this crate's src with the twelve needles. The one
 // exemption is the launcher's spawn site: the `run` method of `Launcher`, in
 // the file `run.rs`.
 const SPAWN_SITE: &str = "impl Launcher<'_> {
