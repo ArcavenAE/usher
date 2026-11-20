@@ -445,3 +445,37 @@ fn a_run_rs_anywhere_but_src_run_rs_is_not_the_spawn_site() {
         assert!(found.iter().all(|(path, _)| path.ends_with(file)));
     }
 }
+
+// F148: placement matches the src/probes/ directory exactly.
+#[test]
+fn only_the_src_probes_directory_holds_ignored_tests_not_a_name_that_holds_probes() {
+    let scratch = ScratchHome::new().expect("scratch home");
+    let fixture = format!(
+        "{} = \"child\"]\n#[test]\nfn child() {{}}\n",
+        ignore_attribute()
+    );
+
+    // Control: src/probes/ itself, nested or not, is placed.
+    let placed = scratch.root().join("placed-exact");
+    write(&placed.join("src/probes/mod.rs"), &fixture);
+    write(&placed.join("src/probes/nested/more.rs"), &fixture);
+    assert!(
+        find_misplaced_ignored_tests(&placed)
+            .expect("the crate reads")
+            .is_empty()
+    );
+
+    for (name, file) in [
+        ("helper", "tests/probes_helper.rs"),
+        ("sibling-dir", "src/probesx/mod.rs"),
+        ("prefixed-dir", "src/probes_extra/mod.rs"),
+        ("probes-under-tests", "tests/probes/mod.rs"),
+    ] {
+        let krate = scratch.root().join(format!("misplaced-{name}"));
+        write(&krate.join("src/probes/mod.rs"), &fixture);
+        write(&krate.join(file), &fixture);
+        let found = find_misplaced_ignored_tests(&krate).expect("the crate reads");
+        assert_eq!(found.len(), 1, "for {file}: {found:?}");
+        assert!(found[0].ends_with(file), "for {file}: {found:?}");
+    }
+}
