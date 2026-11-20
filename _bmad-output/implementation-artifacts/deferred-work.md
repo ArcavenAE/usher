@@ -81,3 +81,6 @@
 - source_spec: `_bmad-output/planning-artifacts/epics.md`
   summary: the harness can raise a settings error for a whole file when one value fails its schema; the reader does not run the schema, so the other keys in that file keep their rows and the file reads as readable.
   evidence: the vendor's settings page says a value the schema rejects can raise a settings error for the file; a later story that models it needs a probe that shows which values are rejected, and a status for a file the harness refuses.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the map verb parses the reader's printed key path back into segments to store the JSON array of segments. A `segments` field on the reading in the port would drop the round trip.
+  evidence: the printed path quotes every segment that holds a dot, a quote or whitespace, so the split is unambiguous and two reds pin it; a field on the port types is a change to the reader's interface, which the reader's review round had already closed.
