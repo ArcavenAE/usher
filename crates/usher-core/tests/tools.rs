@@ -370,6 +370,15 @@ fn an_absolute_brew_environment_gives_brew_paths_when_no_fixed_location_exists()
 }
 
 #[test]
+fn with_no_brew_found_the_two_fixed_locations_are_carried_as_candidates_and_not_usr_local() {
+    let paths = resolve(&[("HOME", "/h")], &[], true);
+    assert_eq!(
+        paths.brew_candidates,
+        [p("/opt/homebrew"), p("/usr/local/Homebrew")]
+    );
+}
+
+#[test]
 fn a_relative_brew_variable_is_ignored() {
     let paths = resolve(
         &[("HOME", "/h"), ("HOMEBREW_REPOSITORY", "repo")],

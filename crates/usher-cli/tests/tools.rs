@@ -34,6 +34,7 @@ impl Rig {
                 prefix: root.join("brew"),
                 cache: root.join("brew-cache"),
             }),
+            brew_candidates: vec![],
             mise_data: root.join("mise/data"),
             mise_cache: root.join("mise/cache"),
             mise_state: root.join("mise/state"),
@@ -396,7 +397,7 @@ fn a_formula_in_two_taps_is_an_error_row_with_the_whole_ruled_line() {
     assert_eq!(
         row.error,
         Some(format!(
-            "{}: installed from two taps, acme/tools and other/extras",
+            "{}: installed from 2 taps, acme/tools and other/extras",
             rig.brew().prefix.join("Cellar/jq").display()
         ))
     );
@@ -414,7 +415,7 @@ fn a_formula_in_three_taps_lists_them_joined_by_commas_and_an_and_before_the_las
     assert_eq!(
         row.error,
         Some(format!(
-            "{}: installed from two taps, acme/a, acme/b and acme/c",
+            "{}: installed from 3 taps, acme/a, acme/b and acme/c",
             rig.brew().prefix.join("Cellar/jq").display()
         ))
     );

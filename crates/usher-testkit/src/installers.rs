@@ -65,6 +65,7 @@ mod tests {
                 prefix: root.join("brew"),
                 cache: root.join("brew-cache"),
             }),
+            brew_candidates: vec![],
             mise_data: root.join("mise/data"),
             mise_cache: root.join("mise/cache"),
             mise_state: root.join("mise/state"),
@@ -128,6 +129,7 @@ mod tests {
                 prefix: b(&rig.paths).prefix.join("none"),
                 cache: b(&rig.paths).cache.join("none"),
             }),
+            brew_candidates: vec![],
             mise_data: rig.paths.mise_data.join("none"),
             mise_cache: rig.paths.mise_cache.join("none"),
             mise_state: rig.paths.mise_state.join("none"),
@@ -341,6 +343,7 @@ mod tests {
         let rig = rig();
         let no_brew = InstallerPaths {
             brew: None,
+            brew_candidates: vec![],
             mise_data: rig.paths.mise_data.clone(),
             mise_cache: rig.paths.mise_cache.clone(),
             mise_state: rig.paths.mise_state.clone(),
@@ -348,5 +351,25 @@ mod tests {
         let before = digest_installers(&no_brew).expect("a digest without brew");
         fs::create_dir_all(rig.paths.mise_data.join("installs/go/1.25.0")).expect("install");
         assert_ne!(before, digest_installers(&no_brew).expect("a digest"));
+    }
+
+    #[test]
+    fn with_no_brew_a_candidate_location_that_appears_is_a_change_and_fails_the_guard() {
+        let rig = rig();
+        let candidate = rig.paths.mise_data.join("candidate-a/Homebrew");
+        let other = rig.paths.mise_data.join("candidate-b/Homebrew");
+        let no_brew = InstallerPaths {
+            brew: None,
+            brew_candidates: vec![candidate.clone(), other],
+            mise_data: rig.paths.mise_data.clone(),
+            mise_cache: rig.paths.mise_cache.clone(),
+            mise_state: rig.paths.mise_state.clone(),
+        };
+        let before = digest_installers(&no_brew).expect("absent candidates are not an error");
+        let guard = InstallerGuard::snapshot(&no_brew).expect("a snapshot");
+        fs::create_dir_all(&candidate).expect("a brew appears");
+        assert_ne!(before, digest_installers(&no_brew).expect("a digest"));
+        let err = guard.verify().expect_err("a created candidate must fail");
+        assert!(err.contains("installer state changed"), "{err}");
     }
 }

@@ -142,6 +142,8 @@ pub struct BrewPaths {
 pub struct InstallerPaths {
     /// Homebrew's paths, or none when brew is not found.
     pub brew: Option<BrewPaths>,
+    /// The fixed brew locations watched as absent paths when `brew` is none.
+    pub brew_candidates: Vec<PathBuf>,
     /// The mise data directory (holds `installs` and `shims`).
     pub mise_data: PathBuf,
     /// The mise cache directory.
@@ -165,6 +167,7 @@ impl InstallerPaths {
                 prefix: PathBuf::new(),
                 cache: PathBuf::new(),
             }),
+            brew_candidates: Vec::new(),
             mise_data: PathBuf::new(),
             mise_cache: PathBuf::new(),
             mise_state: PathBuf::new(),
