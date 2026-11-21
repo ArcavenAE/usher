@@ -550,6 +550,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "usher-probes"
+version = "0.0.0"
+dependencies = [
+ "usher-testkit",
+]
+
+[[package]]
 name = "usher-store"
 version = "0.0.0"
 dependencies = [
