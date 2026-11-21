@@ -279,7 +279,7 @@ fn scan_mise(paths: &InstallerPaths) -> Vec<MiseDir> {
         .map(|dir| {
             let root = installs.join(&dir);
             let file = root.join(BACKEND_FILE);
-            let mut versions: Vec<String> = fs::read_dir(&root)
+            let versions: Vec<String> = fs::read_dir(&root)
                 .map(|entries| {
                     entries
                         .flatten()
