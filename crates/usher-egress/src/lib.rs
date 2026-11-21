@@ -7,16 +7,21 @@
 //! of every answer.
 
 #![forbid(unsafe_code)]
+// This crate is the one place that may name the http client and open a socket: the
+// workspace clippy.toml refuses those types and calls everywhere else.
+#![allow(clippy::disallowed_types, clippy::disallowed_methods)]
+
+mod map;
 
 use std::io::{self, Read};
 
 use usher_core::{Method, Response, Transport, UsherError, WireRequest};
 
 /// Seconds the client waits for a connection.
-pub const CONNECT_TIMEOUT_SECS: u64 = 0;
+pub const CONNECT_TIMEOUT_SECS: u64 = 10;
 
 /// Seconds the client allows a whole call.
-pub const CALL_TIMEOUT_SECS: u64 = 0;
+pub const CALL_TIMEOUT_SECS: u64 = 30;
 
 /// What the client is configured to do and not to do.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,10 +45,10 @@ pub struct AgentSettings {
 /// The settings the one agent is built from.
 pub fn agent_settings() -> AgentSettings {
     AgentSettings {
-        connect_timeout_secs: 0,
-        call_timeout_secs: 0,
+        connect_timeout_secs: CONNECT_TIMEOUT_SECS,
+        call_timeout_secs: CALL_TIMEOUT_SECS,
         max_redirects: 0,
-        https_only: false,
+        https_only: true,
         http_status_as_error: false,
         gzip: false,
         cookies: false,
@@ -61,8 +66,16 @@ pub enum TimeoutKind {
 
 /// The error for a call that did not finish in time.
 pub fn timeout_error(host: &str, kind: TimeoutKind) -> UsherError {
-    let _ = (host, kind);
-    UsherError::new("stub", "stub", "stub", "stub")
+    let (secs, which) = match kind {
+        TimeoutKind::Connect => (CONNECT_TIMEOUT_SECS, "connect"),
+        TimeoutKind::Call => (CALL_TIMEOUT_SECS, "whole call"),
+    };
+    UsherError::new(
+        "send request",
+        "the host answers within the limit",
+        format!("{host}: no answer within {secs} s ({which})"),
+        "check the connection and try again",
+    )
 }
 
 /// A request as the client will send it, before any connection is made.
@@ -76,21 +89,39 @@ pub struct RequestPlan {
     pub headers: Vec<(String, String)>,
 }
 
-/// Plans one request, or refuses one the client does not send.
+/// Plans one request, or refuses one the client does not send. The port has already
+/// percent-encoded the query, so it is joined as it stands.
 pub fn plan_request(request: &WireRequest) -> Result<RequestPlan, UsherError> {
-    let _ = request;
+    if !request.body().is_empty() {
+        return Err(UsherError::new(
+            "send request",
+            "the call sends no body",
+            format!("{}: no registered call sends a body", request.host()),
+            "no change is needed; a call that sends a body needs its own ruling",
+        ));
+    }
+    let mut uri = format!("https://{}{}", request.host(), request.path());
+    for (index, (name, value)) in request.query().iter().enumerate() {
+        uri.push(if index == 0 { '?' } else { '&' });
+        uri.push_str(name);
+        uri.push('=');
+        uri.push_str(value);
+    }
     Ok(RequestPlan {
-        method: Method::Get,
-        uri: String::new(),
-        headers: Vec::new(),
+        method: request.method(),
+        uri,
+        headers: request.headers().to_vec(),
     })
 }
 
 /// Reads at most `limit + 1` bytes: one more than the limit is enough for the port to
 /// see that the answer is too large, and no more is read.
 pub fn read_limited(reader: impl Read, limit: u64) -> io::Result<Vec<u8>> {
-    let _ = (reader, limit);
-    Ok(Vec::new())
+    let mut bytes = Vec::new();
+    reader
+        .take(limit.saturating_add(1))
+        .read_to_end(&mut bytes)?;
+    Ok(bytes)
 }
 
 /// Builds the port's [`Response`] from what the client received, reading the body with
@@ -101,32 +132,146 @@ pub fn response_from(
     body: impl Read,
     limit: u64,
 ) -> Result<Response, UsherError> {
-    let _ = (location, body, limit);
+    let body = read_limited(body, limit).map_err(|err| {
+        UsherError::new(
+            "send request",
+            "the answer is readable",
+            clean(&err.to_string()),
+            "try again later",
+        )
+    })?;
     Ok(Response {
         status,
-        location: None,
-        body: Vec::new(),
+        location: location.map(str::to_string),
+        body,
     })
 }
 
+/// A cause text with control characters replaced, since part of it can come from the
+/// remote end.
+fn clean(text: &str) -> String {
+    text.chars()
+        .map(|c| if c.is_control() { '?' } else { c })
+        .collect()
+}
+
+/// A transport error's text led by the host it concerns.
+fn naming_host(host: &str, err: &UsherError) -> UsherError {
+    UsherError::new(
+        err.step(),
+        err.check(),
+        format!("{host}: {}", err.status()),
+        err.next_action(),
+    )
+}
+
+/// The error for a failure of the connection or the exchange.
+fn transport_error(host: &str, err: &ureq::Error) -> UsherError {
+    match err {
+        ureq::Error::Timeout(ureq::Timeout::Connect) => timeout_error(host, TimeoutKind::Connect),
+        ureq::Error::Timeout(_) => timeout_error(host, TimeoutKind::Call),
+        other => UsherError::new(
+            "send request",
+            "reach the host over https",
+            format!("{host}: {}", clean(&other.to_string())),
+            "check the connection and try again",
+        ),
+    }
+}
+
 /// The real transport.
-#[derive(Debug, Clone, Default)]
-pub struct HttpTransport;
+#[derive(Debug, Clone)]
+pub struct HttpTransport {
+    agent: ureq::Agent,
+}
+
+impl Default for HttpTransport {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl HttpTransport {
     /// A transport that dials only the hosts the port gives it.
     pub fn new() -> Self {
-        Self
+        Self {
+            agent: ureq::Agent::new_with_config(map::to_config(&agent_settings())),
+        }
     }
 }
 
 impl Transport for HttpTransport {
     fn send(&self, request: &WireRequest) -> Result<Response, UsherError> {
-        let _ = request;
-        Ok(Response {
-            status: 200,
-            location: None,
-            body: Vec::new(),
-        })
+        let host = request.host();
+        let plan = plan_request(request)?;
+        let outgoing = map::to_request(&plan)?;
+        let mut answer = self
+            .agent
+            .run(outgoing)
+            .map_err(|err| transport_error(host, &err))?;
+        let status = answer.status().as_u16();
+        let location = answer
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+        response_from(
+            status,
+            location.as_deref(),
+            answer.body_mut().as_reader(),
+            request.max_response_bytes(),
+        )
+        .map_err(|err| naming_host(host, &err))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_connect_timeout_from_the_client_reads_as_the_connect_text() {
+        let err = transport_error(
+            "h.usher.invalid",
+            &ureq::Error::Timeout(ureq::Timeout::Connect),
+        );
+        assert_eq!(
+            err.status(),
+            "h.usher.invalid: no answer within 10 s (connect)"
+        );
+    }
+
+    #[test]
+    fn any_other_timeout_from_the_client_reads_as_the_whole_call_text() {
+        for kind in [
+            ureq::Timeout::Global,
+            ureq::Timeout::PerCall,
+            ureq::Timeout::RecvBody,
+        ] {
+            let err = transport_error("h.usher.invalid", &ureq::Error::Timeout(kind));
+            assert_eq!(
+                err.status(),
+                "h.usher.invalid: no answer within 30 s (whole call)",
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn another_client_error_names_the_host_first_under_the_transports_own_check() {
+        let err = transport_error("h.usher.invalid", &ureq::Error::TooManyRedirects);
+        assert_eq!(err.step(), "send request");
+        assert_eq!(err.check(), "reach the host over https");
+        assert!(err.status().starts_with("h.usher.invalid: "), "{err}");
+    }
+
+    #[test]
+    fn a_cause_text_loses_its_control_characters() {
+        assert_eq!(clean("a\u{1b}[31mb\n"), "a?[31mb?");
+    }
+
+    #[test]
+    fn a_read_limit_of_the_largest_number_does_not_wrap() {
+        assert_eq!(read_limited(&b"abc"[..], u64::MAX).expect("a read"), b"abc");
     }
 }
