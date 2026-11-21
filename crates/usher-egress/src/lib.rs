@@ -100,6 +100,14 @@ pub fn plan_request(request: &WireRequest) -> Result<RequestPlan, UsherError> {
             "no change is needed; a call that sends a body needs its own ruling",
         ));
     }
+    if request.host().contains('@') {
+        return Err(UsherError::new(
+            "send request",
+            "the host is a bare host name",
+            "the host holds a user name or password".to_string(),
+            "no change is needed; a host with credentials needs its own ruling",
+        ));
+    }
     let mut uri = format!("https://{}{}", request.host(), request.path());
     for (index, (name, value)) in request.query().iter().enumerate() {
         uri.push(if index == 0 { '?' } else { '&' });
@@ -148,7 +156,9 @@ pub fn response_from(
 }
 
 /// The port's [`Response`] for what the client received: the status, the `Location`
-/// header, and a body read with the limit of [`read_limited`].
+/// header, and a body read with the limit of [`read_limited`]. A read that fails is an
+/// error naming the host; one the client itself ended (a timeout, for one) reads as
+/// the same error a failed exchange gives.
 pub fn answer_from(
     host: &str,
     status: u16,
@@ -156,8 +166,29 @@ pub fn answer_from(
     body: impl Read,
     limit: u64,
 ) -> Result<Response, UsherError> {
-    let _ = (host, status, headers, body, limit);
-    Err(UsherError::new("send request", "stub", "stub", "stub"))
+    let location = headers
+        .get("location")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let body = read_limited(body, limit).map_err(|err| {
+        match err
+            .get_ref()
+            .and_then(|inner| inner.downcast_ref::<ureq::Error>())
+        {
+            Some(client) => transport_error(host, client),
+            None => UsherError::new(
+                "send request",
+                "the answer is readable",
+                format!("{host}: {}", clean(&err.to_string())),
+                "try again later",
+            ),
+        }
+    })?;
+    Ok(Response {
+        status,
+        location,
+        body,
+    })
 }
 
 /// A cause text with control characters replaced, since part of it can come from the
@@ -166,16 +197,6 @@ fn clean(text: &str) -> String {
     text.chars()
         .map(|c| if c.is_control() { '?' } else { c })
         .collect()
-}
-
-/// A transport error's text led by the host it concerns.
-fn naming_host(host: &str, err: &UsherError) -> UsherError {
-    UsherError::new(
-        err.step(),
-        err.check(),
-        format!("{host}: {}", err.status()),
-        err.next_action(),
-    )
 }
 
 /// The error for a failure of the connection or the exchange.
@@ -223,18 +244,14 @@ impl Transport for HttpTransport {
             .run(outgoing)
             .map_err(|err| transport_error(host, &err))?;
         let status = answer.status().as_u16();
-        let location = answer
-            .headers()
-            .get("location")
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string);
-        response_from(
+        let headers = answer.headers().clone();
+        answer_from(
+            host,
             status,
-            location.as_deref(),
+            &headers,
             answer.body_mut().as_reader(),
             request.max_response_bytes(),
         )
-        .map_err(|err| naming_host(host, &err))
     }
 }
 
