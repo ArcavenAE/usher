@@ -20,8 +20,10 @@ pub enum Installer {
 impl Installer {
     /// The installer's name as it appears in a source column and in command text.
     pub fn name(self) -> &'static str {
-        let _ = self;
-        ""
+        match self {
+            Installer::Brew => "brew",
+            Installer::Mise => "mise",
+        }
     }
 }
 
@@ -47,7 +49,28 @@ pub struct ToolSpec {
 /// The tools usher looks for. One function, so where the list lives can change without
 /// touching the readers.
 pub fn tool_specs() -> Vec<ToolSpec> {
-    Vec::new()
+    let entry = |name, installer, package| ToolSpec {
+        name,
+        install: Some(Recorded { installer, package }),
+    };
+    let unrecorded = |name| ToolSpec {
+        name,
+        install: None,
+    };
+    vec![
+        entry("codex", Installer::Mise, "codex"),
+        entry("goose", Installer::Brew, "block-goose-cli"),
+        entry("marvel", Installer::Brew, "arcavenae/tap/marvel"),
+        entry("marvel", Installer::Mise, "github:ArcavenAE/marvel"),
+        unrecorded("director"),
+        entry("sideshow", Installer::Brew, "arcavenae/tap/sideshow"),
+        entry("kos", Installer::Brew, "arcavenae/tap/kos"),
+        unrecorded("aq"),
+        unrecorded("ax"),
+        unrecorded("akey"),
+        unrecorded("tmux-cmc"),
+        entry("mise", Installer::Brew, "mise"),
+    ]
 }
 
 /// Whether a tool is installed by the source a row names.
@@ -160,32 +183,129 @@ impl InstallerPaths {
         exists: impl Fn(&Path) -> bool,
         macos: bool,
     ) -> Self {
-        let _ = (get, exists, macos);
+        // A variable counts only when it holds an absolute path.
+        let absolute = |name: &str| {
+            get(name)
+                .map(PathBuf::from)
+                .filter(|path| path.is_absolute())
+        };
+        let home = get("HOME").map(PathBuf::from).unwrap_or_default();
+
+        let brew = brew_paths(&absolute, &exists, &home, macos);
+        let brew_candidates = if brew.is_none() {
+            BREW_LOCATIONS
+                .iter()
+                .map(|(repository, _)| PathBuf::from(repository))
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        let mise_data = absolute("MISE_DATA_DIR")
+            .or_else(|| absolute("XDG_DATA_HOME").map(|dir| dir.join("mise")))
+            .unwrap_or_else(|| home.join(".local/share/mise"));
+        let mise_cache = absolute("MISE_CACHE_DIR").unwrap_or_else(|| {
+            if macos {
+                home.join("Library/Caches/mise")
+            } else {
+                absolute("XDG_CACHE_HOME")
+                    .map(|dir| dir.join("mise"))
+                    .unwrap_or_else(|| home.join(".cache/mise"))
+            }
+        });
+        let mise_state = absolute("MISE_STATE_DIR")
+            .or_else(|| absolute("XDG_STATE_HOME").map(|dir| dir.join("mise")))
+            .unwrap_or_else(|| home.join(".local/state/mise"));
         Self {
-            brew: Some(BrewPaths {
-                repository: PathBuf::new(),
-                prefix: PathBuf::new(),
-                cache: PathBuf::new(),
-            }),
-            brew_candidates: Vec::new(),
-            mise_data: PathBuf::new(),
-            mise_cache: PathBuf::new(),
-            mise_state: PathBuf::new(),
+            brew,
+            brew_candidates,
+            mise_data,
+            mise_cache,
+            mise_state,
         }
     }
 }
 
+/// The two fixed Homebrew locations, as repository and prefix, in the order tried.
+const BREW_LOCATIONS: [(&str, &str); 2] = [
+    ("/opt/homebrew", "/opt/homebrew"),
+    ("/usr/local/Homebrew", "/usr/local"),
+];
+
+fn brew_paths(
+    absolute: &impl Fn(&str) -> Option<PathBuf>,
+    exists: &impl Fn(&Path) -> bool,
+    home: &Path,
+    macos: bool,
+) -> Option<BrewPaths> {
+    let (repository, prefix) = match (absolute("HOMEBREW_REPOSITORY"), absolute("HOMEBREW_PREFIX"))
+    {
+        (Some(repository), Some(prefix)) => (repository, prefix),
+        _ => BREW_LOCATIONS
+            .iter()
+            .find(|(repository, _)| exists(Path::new(repository)))
+            .map(|(repository, prefix)| (PathBuf::from(repository), PathBuf::from(prefix)))?,
+    };
+    let cache = absolute("HOMEBREW_CACHE").unwrap_or_else(|| {
+        if macos {
+            home.join("Library/Caches/Homebrew")
+        } else {
+            home.join(".cache/Homebrew")
+        }
+    });
+    Some(BrewPaths {
+        repository,
+        prefix,
+        cache,
+    })
+}
+
 /// The commands usher must never run for an installer.
 pub fn never_call(installer: Installer) -> &'static [&'static str] {
-    let _ = installer;
-    &[]
+    match installer {
+        Installer::Brew => &[
+            "update",
+            "upgrade",
+            "cleanup",
+            "autoremove",
+            "link",
+            "unlink",
+            "reinstall",
+            "install",
+            "uninstall",
+            "tap",
+            "untap",
+            "pin",
+            "unpin",
+            "postinstall",
+            "doctor",
+        ],
+        Installer::Mise => &[
+            "install",
+            "upgrade",
+            "up",
+            "use",
+            "prune",
+            "reshim",
+            "self-update",
+            "plugins update",
+            "cache clear",
+        ],
+    }
 }
 
 /// The environment every query of an installer carries, so it does not update, clean up,
 /// send analytics or reach the network on its own.
 pub fn no_update_env(installer: Installer) -> &'static [(&'static str, &'static str)] {
-    let _ = installer;
-    &[]
+    match installer {
+        Installer::Brew => &[
+            ("HOMEBREW_NO_AUTO_UPDATE", "1"),
+            ("HOMEBREW_NO_INSTALL_CLEANUP", "1"),
+            ("HOMEBREW_NO_ANALYTICS", "1"),
+            ("HOMEBREW_NO_ENV_HINTS", "1"),
+        ],
+        Installer::Mise => &[("MISE_OFFLINE", "1")],
+    }
 }
 
 /// The exact argument lists usher may run. Empty while no installer is run.
@@ -195,12 +315,64 @@ pub fn allowed_invocations() -> &'static [&'static [&'static str]] {
 
 /// The install or update command for a package, as text.
 pub fn command_text(installer: Installer, kind: HintKind, package: &str) -> String {
-    let _ = (installer, kind, package);
-    String::new()
+    match (installer, kind) {
+        (Installer::Brew, HintKind::Install) => format!("brew install {package}"),
+        (Installer::Brew, HintKind::Update) => format!("brew upgrade {package}"),
+        (Installer::Mise, HintKind::Install) => format!("mise use --global {package}"),
+        (Installer::Mise, HintKind::Update) => format!("mise upgrade {package}"),
+    }
 }
 
 /// Renders the rows as the `usher tools` text.
 pub fn render_rows(rows: &[ToolRow]) -> String {
-    let _ = rows;
-    String::new()
+    let mut lines = Vec::new();
+    for row in rows {
+        let state = match row.state {
+            InstallState::Installed => "installed".to_string(),
+            InstallState::Missing => "missing".to_string(),
+            InstallState::NoInstaller => "unknown (no installer recorded)".to_string(),
+        };
+        let verdict = match &row.verdict {
+            Verdict::Behind => "behind".to_string(),
+            Verdict::Current => "current".to_string(),
+            Verdict::Unknown(why) => format!("unknown ({why})"),
+            Verdict::Error => "error".to_string(),
+        };
+        lines.push(format!(
+            "{}  {}  {}  {}  {}  {}",
+            row.name,
+            state,
+            row.source,
+            reading_text(&row.installed),
+            reading_text(&row.current),
+            verdict
+        ));
+        if let Some(error) = &row.error {
+            lines.push(format!("    error: {error}"));
+        }
+        if let Some(hint) = &row.hint {
+            let word = match hint.kind {
+                HintKind::Install => "install",
+                HintKind::Update => "update",
+            };
+            lines.push(format!(
+                "    {word}: {}  (source {})",
+                hint.command, hint.source
+            ));
+        }
+    }
+    lines.join("\n")
+}
+
+fn reading_text(reading: &Reading) -> String {
+    match reading {
+        Reading::Known(text) => text.clone(),
+        Reading::Unknown(why) => format!("unknown ({why})"),
+        Reading::None => "none".to_string(),
+    }
+}
+
+/// Versions joined the way a row prints them: `, ` between each.
+pub fn join_versions(versions: &[String]) -> String {
+    versions.join(", ")
 }
