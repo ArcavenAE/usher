@@ -51,7 +51,7 @@ usher/
 
 - **Git workflow:** trunk-based, `main` only. Gitflow adoption (per orc
   charter B11) waits for a distribution channel.
-- **Visibility:** private for now.
+- **Visibility:** public.
 - **Auth:** delegate to owning tools; never store credentials (SOUL.md §3).
 - **Task tracking:** bd via `.beads -> ../.beads` symlink (orc shared).
 - **Worktrees:** a session that builds on a branch uses a worktree under
