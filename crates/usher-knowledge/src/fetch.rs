@@ -262,7 +262,10 @@ mod tests {
         let before = sequence(&knowledge);
         let err = fetch_update(&port(&transport), &mut knowledge, &trusting(&signer))
             .expect_err("a failed signature fetch must fail");
-        assert_eq!(err, failure);
+        assert_eq!(err.step(), "send knowledge-update");
+        assert_eq!(err.check(), failure.check());
+        assert_eq!(err.status(), failure.status());
+        assert_eq!(err.next_action(), failure.next_action());
         assert_eq!(sequence(&knowledge), before);
     }
 
