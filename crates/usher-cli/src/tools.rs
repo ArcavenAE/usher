@@ -347,6 +347,11 @@ pub fn read_mise(spec: &ToolSpec, paths: &InstallerPaths) -> Vec<ToolRow> {
 /// The error row for a directory that exists and cannot be listed, if `dir` is one. An
 /// absent directory is not an error: its tools read as missing.
 fn unreadable_directory_row(installer: &str, dir: &Path) -> Option<ToolRow> {
+    unreadable_named_row(installer, installer, dir)
+}
+
+/// As [`unreadable_directory_row`], with the row named `name`.
+fn unreadable_named_row(name: &str, installer: &str, dir: &Path) -> Option<ToolRow> {
     if !dir.is_absolute() {
         return None;
     }
@@ -355,11 +360,45 @@ fn unreadable_directory_row(installer: &str, dir: &Path) -> Option<ToolRow> {
         return None;
     }
     Some(error_row(
-        installer,
+        name,
         installer,
         "directory unreadable",
         format!("{}: {err}", dir.display()),
     ))
+}
+
+/// The error rows for brew formula directories that exist and cannot be listed, one per
+/// formula, named for the formula. They are read only when the `Cellar` itself can be
+/// listed: an unreadable `Cellar` has its own row, and its entries read as absent.
+fn unreadable_formula_rows(specs: &[ToolSpec], paths: &InstallerPaths) -> Vec<ToolRow> {
+    let Some(brew) = &paths.brew else {
+        return Vec::new();
+    };
+    let cellar = brew.prefix.join("Cellar");
+    if fs::read_dir(&cellar).is_err() {
+        return Vec::new();
+    }
+    let mut formulae: Vec<&str> = Vec::new();
+    for spec in specs {
+        let Some(recorded) = spec.install else {
+            continue;
+        };
+        if recorded.installer != Installer::Brew {
+            continue;
+        }
+        let formula = recorded
+            .package
+            .rsplit('/')
+            .next()
+            .unwrap_or(recorded.package);
+        if !formulae.contains(&formula) {
+            formulae.push(formula);
+        }
+    }
+    formulae
+        .into_iter()
+        .filter_map(|formula| unreadable_named_row(formula, "brew", &cellar.join(formula)))
+        .collect()
 }
 
 /// The error rows for directories whose backend file cannot be read, once each, in
@@ -429,6 +468,7 @@ pub fn read_tools(specs: &[ToolSpec], paths: &InstallerPaths) -> Vec<ToolRow> {
         }
         rows.extend(found);
     }
+    rows.extend(unreadable_formula_rows(specs, paths));
     if let Some(brew) = &paths.brew {
         rows.extend(unreadable_directory_row(
             "brew",
