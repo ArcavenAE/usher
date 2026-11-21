@@ -9,6 +9,11 @@
 
 mod display;
 mod manifest;
+mod source;
 
 pub use display::display_name;
 pub use manifest::{HarnessCover, Manifest, McpServer, Note, Tool};
+pub use source::{
+    CredentialFlag, Fragment, FragmentFormat, HarnessRule, LoadRules, McpEntry, McpOrigin, Profile,
+    Source,
+};
