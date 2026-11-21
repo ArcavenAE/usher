@@ -26,6 +26,9 @@ pub fn digest_installers(paths: &InstallerPaths) -> io::Result<InstallerDigest> 
     match &paths.brew {
         Some(brew) => {
             "brew".hash(&mut hasher);
+            for root in [&brew.repository, &brew.prefix, &brew.cache] {
+                present(root).hash(&mut hasher);
+            }
             file_text(&brew.repository.join(".git/HEAD")).hash(&mut hasher);
             file_text(&brew.repository.join(".git/FETCH_HEAD")).hash(&mut hasher);
             names(&brew.repository.join("Library/Taps"), 2).hash(&mut hasher);
@@ -41,6 +44,9 @@ pub fn digest_installers(paths: &InstallerPaths) -> io::Result<InstallerDigest> 
             }
         }
     }
+    for root in [&paths.mise_data, &paths.mise_cache, &paths.mise_state] {
+        present(root).hash(&mut hasher);
+    }
     names(&paths.mise_data.join("installs"), 2).hash(&mut hasher);
     names(&paths.mise_data.join("shims"), 1).hash(&mut hasher);
     timed(&paths.mise_cache).hash(&mut hasher);
@@ -48,8 +54,17 @@ pub fn digest_installers(paths: &InstallerPaths) -> io::Result<InstallerDigest> 
     Ok(InstallerDigest(hasher.finish()))
 }
 
+/// Whether an absolute `root` exists: an absent root and an empty one must differ. An
+/// unresolved (empty or relative) root is never read from the current directory.
+fn present(root: &Path) -> Option<bool> {
+    root.is_absolute().then(|| root.exists())
+}
+
 /// The text of a file, or nothing when it is absent or unreadable.
 fn file_text(path: &Path) -> Option<Vec<u8>> {
+    if !path.is_absolute() {
+        return None;
+    }
     fs::read(path).ok()
 }
 
@@ -63,7 +78,7 @@ fn names(root: &Path, depth: usize) -> Vec<String> {
 }
 
 fn collect(dir: &Path, prefix: &str, depth: usize, found: &mut Vec<String>) {
-    if depth == 0 {
+    if depth == 0 || !dir.is_absolute() {
         return;
     }
     let Ok(entries) = fs::read_dir(dir) else {
@@ -82,6 +97,9 @@ fn collect(dir: &Path, prefix: &str, depth: usize, found: &mut Vec<String>) {
 /// by name; empty when `dir` is absent.
 fn timed(dir: &Path) -> Vec<(String, u64, u128)> {
     let mut found = Vec::new();
+    if !dir.is_absolute() {
+        return found;
+    }
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let (size, nanos) = entry.metadata().map_or((0, 0), |meta| {

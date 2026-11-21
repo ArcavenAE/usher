@@ -6,7 +6,6 @@
 //! `installs` directory and the backend file mise writes beside them.
 
 use std::{
-    cmp::Ordering,
     fs, io,
     path::{Path, PathBuf},
 };
@@ -113,25 +112,6 @@ fn io_reason(err: &io::Error) -> String {
     }
 }
 
-/// Orders versions by their numeric parts, so `1.10.0` follows `1.9.0`.
-fn version_order(a: &str, b: &str) -> Ordering {
-    let parts = |text: &str| -> Vec<String> {
-        text.split(['.', '-', '+', '_'])
-            .map(str::to_string)
-            .collect()
-    };
-    for (left, right) in parts(a).iter().zip(parts(b).iter()) {
-        let order = match (left.parse::<u64>(), right.parse::<u64>()) {
-            (Ok(x), Ok(y)) => x.cmp(&y),
-            _ => left.cmp(right),
-        };
-        if order != Ordering::Equal {
-            return order;
-        }
-    }
-    a.len().cmp(&b.len()).then_with(|| a.cmp(b))
-}
-
 /// The names of the real, non-hidden directories directly under `dir`. A missing or
 /// unreadable directory has none.
 fn subdirectories(dir: &Path) -> Vec<String> {
@@ -173,7 +153,7 @@ pub fn read_brew(spec: &ToolSpec, paths: &InstallerPaths) -> Vec<ToolRow> {
     if taps.len() > 1 {
         return vec![error_row(
             spec.name,
-            UNKNOWN_SOURCE,
+            "brew",
             "installed from more than one tap",
             format!(
                 "{}: installed from {} taps, {}",
@@ -198,7 +178,7 @@ pub fn read_brew(spec: &ToolSpec, paths: &InstallerPaths) -> Vec<ToolRow> {
     let Some(in_effect) = in_effect else {
         return vec![error_row(
             spec.name,
-            UNKNOWN_SOURCE,
+            "brew",
             "the version in effect is not known",
             format!("{}: does not name an installed version", opt.display()),
         )];
@@ -210,7 +190,7 @@ pub fn read_brew(spec: &ToolSpec, paths: &InstallerPaths) -> Vec<ToolRow> {
         Err(reason) => {
             return vec![error_row(
                 spec.name,
-                UNKNOWN_SOURCE,
+                "brew",
                 "receipt unreadable",
                 format!("{}: {reason}", receipt.display()),
             )];
@@ -218,9 +198,13 @@ pub fn read_brew(spec: &ToolSpec, paths: &InstallerPaths) -> Vec<ToolRow> {
     };
 
     versions.retain(|version| *version != in_effect);
-    versions.sort_by(|a, b| version_order(b, a));
-    versions.insert(0, in_effect);
-    vec![installed_row(spec, format!("brew {tap}"), &versions)]
+    let others = join_versions(&versions);
+    let all = if others.is_empty() {
+        in_effect
+    } else {
+        format!("{in_effect}, {others}")
+    };
+    vec![installed_row(spec, format!("brew {tap}"), &[all])]
 }
 
 /// The tap named in an install receipt, or why it cannot be read.
@@ -237,7 +221,9 @@ fn read_receipt_tap(receipt: &Path) -> Result<String, String> {
     }
 }
 
-/// The taps, as `org/name`, that carry a formula file for `formula`, in name order.
+/// The taps, as `org/name`, that carry a formula file for `formula`, in name order. Two
+/// layouts are read: `Formula/<name>.rb` and `Formula/<first letter>/<name>.rb`. A tap
+/// that keeps its formulae elsewhere (`HomebrewFormula`, or the tap root) is not read.
 fn taps_holding(repository: &Path, formula: &str) -> Vec<String> {
     let taps_dir = repository.join("Library/Taps");
     let mut found = Vec::new();
@@ -283,6 +269,10 @@ struct Backend {
 }
 
 fn scan_mise(paths: &InstallerPaths) -> Vec<MiseDir> {
+    // An unresolved mise data directory is an empty path: nothing is read from it.
+    if !paths.mise_data.is_absolute() {
+        return Vec::new();
+    }
     let installs = paths.mise_data.join("installs");
     subdirectories(&installs)
         .into_iter()
@@ -299,7 +289,6 @@ fn scan_mise(paths: &InstallerPaths) -> Vec<MiseDir> {
                         .collect()
                 })
                 .unwrap_or_default();
-            versions.sort_by(|a, b| version_order(a, b));
             let backend = read_backend(&file);
             MiseDir {
                 dir,
@@ -353,6 +342,24 @@ pub fn read_mise(spec: &ToolSpec, paths: &InstallerPaths) -> Vec<ToolRow> {
     } else {
         rows
     }
+}
+
+/// The error row for a directory that exists and cannot be listed, if `dir` is one. An
+/// absent directory is not an error: its tools read as missing.
+fn unreadable_directory_row(installer: &str, dir: &Path) -> Option<ToolRow> {
+    if !dir.is_absolute() {
+        return None;
+    }
+    let err = fs::read_dir(dir).err()?;
+    if err.kind() == io::ErrorKind::NotFound {
+        return None;
+    }
+    Some(error_row(
+        installer,
+        installer,
+        "directory unreadable",
+        format!("{}: {err}", dir.display()),
+    ))
 }
 
 /// The error rows for directories whose backend file cannot be read, once each, in
@@ -422,6 +429,16 @@ pub fn read_tools(specs: &[ToolSpec], paths: &InstallerPaths) -> Vec<ToolRow> {
         }
         rows.extend(found);
     }
+    if let Some(brew) = &paths.brew {
+        rows.extend(unreadable_directory_row(
+            "brew",
+            &brew.prefix.join("Cellar"),
+        ));
+    }
+    rows.extend(unreadable_directory_row(
+        "mise",
+        &paths.mise_data.join("installs"),
+    ));
     rows.extend(backend_error_rows(paths));
     rows
 }

@@ -189,9 +189,16 @@ impl InstallerPaths {
                 .map(PathBuf::from)
                 .filter(|path| path.is_absolute())
         };
-        let home = get("HOME").map(PathBuf::from).unwrap_or_default();
+        // A home counts only when it is an absolute path: a defaulted path under an empty
+        // or relative home would be read from the current directory.
+        let home = absolute("HOME");
+        let under_home = |tail: &str| {
+            home.as_ref()
+                .map(|home| home.join(tail))
+                .unwrap_or_default()
+        };
 
-        let brew = brew_paths(&absolute, &exists, &home, macos);
+        let brew = brew_paths(&absolute, &exists, &under_home, macos);
         let brew_candidates = if brew.is_none() {
             BREW_LOCATIONS
                 .iter()
@@ -203,19 +210,19 @@ impl InstallerPaths {
 
         let mise_data = absolute("MISE_DATA_DIR")
             .or_else(|| absolute("XDG_DATA_HOME").map(|dir| dir.join("mise")))
-            .unwrap_or_else(|| home.join(".local/share/mise"));
+            .unwrap_or_else(|| under_home(".local/share/mise"));
         let mise_cache = absolute("MISE_CACHE_DIR").unwrap_or_else(|| {
             if macos {
-                home.join("Library/Caches/mise")
+                under_home("Library/Caches/mise")
             } else {
                 absolute("XDG_CACHE_HOME")
                     .map(|dir| dir.join("mise"))
-                    .unwrap_or_else(|| home.join(".cache/mise"))
+                    .unwrap_or_else(|| under_home(".cache/mise"))
             }
         });
         let mise_state = absolute("MISE_STATE_DIR")
             .or_else(|| absolute("XDG_STATE_HOME").map(|dir| dir.join("mise")))
-            .unwrap_or_else(|| home.join(".local/state/mise"));
+            .unwrap_or_else(|| under_home(".local/state/mise"));
         Self {
             brew,
             brew_candidates,
@@ -235,7 +242,7 @@ const BREW_LOCATIONS: [(&str, &str); 2] = [
 fn brew_paths(
     absolute: &impl Fn(&str) -> Option<PathBuf>,
     exists: &impl Fn(&Path) -> bool,
-    home: &Path,
+    under_home: &impl Fn(&str) -> PathBuf,
     macos: bool,
 ) -> Option<BrewPaths> {
     let (repository, prefix) = match (absolute("HOMEBREW_REPOSITORY"), absolute("HOMEBREW_PREFIX"))
@@ -248,9 +255,9 @@ fn brew_paths(
     };
     let cache = absolute("HOMEBREW_CACHE").unwrap_or_else(|| {
         if macos {
-            home.join("Library/Caches/Homebrew")
+            under_home("Library/Caches/Homebrew")
         } else {
-            home.join(".cache/Homebrew")
+            under_home(".cache/Homebrew")
         }
     });
     Some(BrewPaths {
@@ -372,7 +379,37 @@ fn reading_text(reading: &Reading) -> String {
     }
 }
 
-/// Versions joined the way a row prints them: `, ` between each.
+/// Versions joined the way a row prints them: newest first, `, ` between each. The order
+/// compares dot-separated parts as numbers where both are digits and as text otherwise; a
+/// version that is a prefix of another sorts after it, and text order breaks any tie.
 pub fn join_versions(versions: &[String]) -> String {
-    versions.join(", ")
+    let mut sorted: Vec<&String> = versions.iter().collect();
+    sorted.sort_by(|a, b| version_order(b, a));
+    sorted
+        .iter()
+        .map(|version| version.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn version_order(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let mut left = a.split('.');
+    let mut right = b.split('.');
+    loop {
+        match (left.next(), right.next()) {
+            (None, None) => return a.cmp(b),
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(x), Some(y)) => {
+                let order = match (x.parse::<u64>(), y.parse::<u64>()) {
+                    (Ok(x), Ok(y)) => x.cmp(&y),
+                    _ => x.cmp(y),
+                };
+                if order != Ordering::Equal {
+                    return order;
+                }
+            }
+        }
+    }
 }

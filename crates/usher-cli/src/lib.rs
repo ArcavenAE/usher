@@ -168,7 +168,7 @@ fn parse_command(args: &[String]) -> Result<(), UsherError> {
 pub fn run(args: &[String], env: &InventoryEnv) -> Result<String, UsherError> {
     parse_command(args)?;
     if args.first().map(String::as_str) == Some("tools") {
-        return run_tools(args, &tools_context(env));
+        return run_with_installers(args, env, &installer_paths(env));
     }
     inventory(env, inventory_system_root())
 }
@@ -180,8 +180,15 @@ pub fn run_with_installers(
     env: &InventoryEnv,
     paths: &usher_core::InstallerPaths,
 ) -> Result<String, UsherError> {
-    let _ = (args, env, paths);
-    Ok(String::new())
+    let _ = env;
+    parse_command(args)?;
+    run_tools(
+        args,
+        &ToolsContext {
+            specs: usher_core::tool_specs(),
+            paths: paths.clone(),
+        },
+    )
 }
 
 /// The installer variables the `tools` verb reads from the process, and nothing else.
@@ -197,9 +204,9 @@ const INSTALLER_VARIABLES: [&str; 9] = [
     "XDG_STATE_HOME",
 ];
 
-/// What the `tools` verb reads on this host: the ruled list, and where the installers
-/// keep their state, found from the account home and the installer variables.
-fn tools_context(env: &InventoryEnv) -> ToolsContext {
+/// Where the installers keep their state on this host, found from the account home and
+/// the installer variables.
+fn installer_paths(env: &InventoryEnv) -> usher_core::InstallerPaths {
     let get = |name: &str| {
         if name == "HOME" {
             Some(env.home.to_string_lossy().into_owned())
@@ -209,14 +216,11 @@ fn tools_context(env: &InventoryEnv) -> ToolsContext {
             None
         }
     };
-    ToolsContext {
-        specs: usher_core::tool_specs(),
-        paths: usher_core::InstallerPaths::resolve(
-            get,
-            |path| path.exists(),
-            env.platform == usher_knowledge::Platform::Macos,
-        ),
-    }
+    usher_core::InstallerPaths::resolve(
+        get,
+        |path| path.exists(),
+        env.platform == usher_knowledge::Platform::Macos,
+    )
 }
 
 /// As [`run`], reading the environment from this process after the arguments check out,
