@@ -122,8 +122,32 @@ mod tests {
         assert_eq!(read_back(&config), agent_settings());
     }
 
+    /// Runs `test` in a child of this binary with proxy variables set, since the
+    /// crate forbids unsafe code and so cannot set them here.
+    fn in_child_with_proxy_variables(test: &str) {
+        let output = std::process::Command::new(std::env::current_exe().expect("this binary"))
+            .args(["--exact", test, "--nocapture"])
+            .env("USHER_IN_PROXY_CHILD", "1")
+            .env("HTTPS_PROXY", "http://127.0.0.1:9")
+            .env("ALL_PROXY", "http://127.0.0.1:9")
+            .env("https_proxy", "http://127.0.0.1:9")
+            .env("all_proxy", "http://127.0.0.1:9")
+            .output()
+            .expect("a child run");
+        assert!(
+            output.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("1 passed"),
+            "the child ran the test"
+        );
+    }
+
     #[test]
-    fn the_mapped_config_adds_no_header_of_the_clients_own_and_reads_no_proxy() {
+    fn the_mapped_config_adds_no_header_of_the_clients_own() {
         let config = to_config(&agent_settings());
         assert!(matches!(
             config.user_agent(),
@@ -133,6 +157,17 @@ mod tests {
             config.accept_encoding(),
             ureq::config::AutoHeaderValue::None
         ));
+    }
+
+    #[test]
+    fn the_mapped_config_reads_no_proxy_even_when_the_environment_names_one() {
+        if std::env::var_os("USHER_IN_PROXY_CHILD").is_none() {
+            in_child_with_proxy_variables(
+                "map::tests::the_mapped_config_reads_no_proxy_even_when_the_environment_names_one",
+            );
+            return;
+        }
+        let config = to_config(&agent_settings());
         assert!(config.proxy().is_none(), "no proxy from the environment");
     }
 
