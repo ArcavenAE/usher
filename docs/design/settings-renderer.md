@@ -1,7 +1,7 @@
 # Applying a profile to Claude Code's user settings: what the spine does not yet say
 
 - **Status:** design for review, 2026-11-21. Nothing here is built. A build waits until this design and its plan are reviewed and the operator says go.
-- **Author:** the arcaven-ent team's architect seat, from a six-seat design party.
+- **Author:** the arcaven-ent team's architect seat, from a six-seat design review.
 - **Checked at:** usher `origin/main` 4147ad6; Claude Code 2.1.329 (binary strings, read only); Claude Code docs read 2026-11-21: [settings](https://code.claude.com/docs/en/settings#settings-precedence), [settings reference](https://code.claude.com/docs/en/settings-reference), [managed settings](https://code.claude.com/docs/en/managed-settings).
 - **Builds on:** the architecture spine (`_bmad-output/planning-artifacts/architecture/architecture-usher-2026-11-08/ARCHITECTURE-SPINE.md`, cited as AD-n), the stories in `_bmad-output/planning-artifacts/epics.md` (cited as story n.m), and the PRD addendum's change-safety table (`_bmad-output/planning-artifacts/prds/prd-usher-2026-11-03/addendum.md` section 7). This design adds deltas to them. It adds no second write path, lock, journal or backup store.
 - **Extends:** `_kos/ideas/fleet-settings-profile.md` (the fleet profile idea), charter F2 (correct initial settings), F7 (organization-locked settings) and F10 (settings discovery).
@@ -49,6 +49,7 @@ Each delta names the spine rule or story it lands in. Every Claude Code fact a d
 - **`apiKeyHelper`.** Knowledge gains one item marking it sensitive, because it names a command that mints credentials. Knowledge has no item for it at 4147ad6.
 - **The backup unit for an owned entry is the entry.** A key-level backup of `permissions.allow` would hold the whole array, including other writers' entries, and a rollback that writes it back would erase entries added since. For an entry usher adds, the backup records "absent" and the entry's value. Rollback removes that entry by value, as a new AD-3 transaction, and leaves every other entry alone.
 - **AD-8's reading.** The format-preserving editor (AD-5) parses every byte of the file to patch it. This design reads AD-8's "its value is not read" as "never extracted": a sensitive value never leaves the editor's memory, so it never reaches a backup, the journal, a diff, a log or an error. Diffs and errors on this file print owned key paths and line numbers only. The reading is flagged for usher's owners to confirm.
+- **The one exception: D4's read.** One `env` name, `CLAUDE_CODE_AUTO_MODE_SERVER`, is read by value, for D4 only. Its value is compared to `1` and then dropped. It is never stored, logged or shown, and it never reaches a backup, the journal, a diff or an error; only the result, on or off, is reported. No other `env` value is read. The exception is flagged for usher's owners with the reading above (section 6).
 
 **D2. What a profile may own here, and how usher knows it owns it (stories 7.1, 6.13, 8.4; AD-6, AD-11, AD-18).**
 
@@ -72,7 +73,8 @@ The Claude Code fragment is native JSON, as AD-11 requires. A profile may own en
 
 **D4. Auto mode turned off (story 8.4, AD-8, AD-17).** cc-switch sets `CLAUDE_CODE_AUTO_MODE_SERVER` on gateways (`floor.rs:104`). 2.1.329's strings say that turning it off leaves "no check of its own to use instead", and that to use auto mode you "set CLAUDE_CODE_AUTO_MODE_SERVER to 1 or remove it, in your shell or in the settings file that sets it".
 
-- Knowledge reads `env` names only, so knowledge gains one item that makes this one name readable by value, from the settings `env` table and from the launch context (AD-17), with its reason and `last_verified` at 2.1.329. A value other than `1` reads as off.
+- Knowledge reads `env` names only, so knowledge gains one item that makes this one name readable by value, from the settings `env` table and from the launch context (AD-17), with its reason and `last_verified` at 2.1.329. A value other than `1` reads as off. This is D1's one exception, with D1's bounds: one name, compared to `1`, never stored, logged or shown.
+- The new item is a child of `claude-code.key-env` for the single key path `env.CLAUDE_CODE_AUTO_MODE_SERVER`. For that path only, its readable mark takes the place of the parent's `sensitive` mark; every other child of `env` stays `sensitive`. The `claude-code.key-env` summary changes with it, to name the one exception (U1).
 - usher never writes it (D2).
 - When it reads as off, usher reports every adopted `autoMode` entry as not in effect, with that reason: story 8.4's "not loaded (with the reason)".
 
@@ -102,7 +104,7 @@ A codex target needs its own rule for codex's admin layer, `requirements.toml`, 
 ## 4. What it never does
 
 - Write a key D2 bars, or any key that harness knowledge does not list as writable (AD-6, AD-8).
-- Let a sensitive value out of the editor's memory (D1).
+- Let a sensitive value out of the editor's memory, or read any `env` value except D4's one exception, which is compared to `1` and never stored, logged or shown (D1, D4).
 - Roll back an entry another writer added (D1, D2).
 - Fetch the remote managed layer, or write any managed source (D5, story 8.3).
 - Retry after a read-back mismatch, or leave an aborted write as a crash marker (D6).
@@ -114,7 +116,7 @@ Every fixture is synthetic: scratch homes and made-up canary tokens. A test that
 
 - **`crates/usher-knowledge/tests/settings_keys.rs`, extended (U1).** These fail at 4147ad6 because the items do not exist:
   - `api_key_helper_is_sensitive`;
-  - `auto_mode_server_is_readable_by_value_with_reason`;
+  - `auto_mode_server_is_readable_by_value_with_reason`: also asserts that every other child of `env` stays `sensitive` and that the `claude-code.key-env` summary names the exception;
   - `profile_ownable_keys_are_marked`;
   - `auto_mode_items_carry_the_defaults_rule`.
 - **`crates/usher-profiles/tests/profile_fragment.rs` (U2).** The spine places profiles in `usher-profiles` (spine, capability map), which does not exist at 4147ad6. These fail because no fragment loader exists:
@@ -123,7 +125,7 @@ Every fixture is synthetic: scratch homes and made-up canary tokens. A test that
 - **`crates/usher-adapter-claude-code/tests/apply.rs` (U3).** These fail because no Claude Code write path exists:
   - `file_with_sensitive_key_gets_key_level_backup_and_is_not_a_credential_file`;
   - `user_settings_outside_mark_range_fails_closed`: a Claude Code version outside `>=2.1.317, <3.0.0`, with a positive control at an in-range version;
-  - `canary_in_env_never_leaves_the_file`: stdout, stderr, journal, backup store, diff, and a forced parse failure;
+  - `canary_in_env_never_leaves_the_file`: stdout, stderr, journal, backup store, diff, and a forced parse failure. The canary sits in a second `env` name, with `CLAUDE_CODE_AUTO_MODE_SERVER` also present, so the exception cannot widen to the whole table;
   - `backup_of_owned_entry_holds_only_that_entry`: a canary in another writer's `allow` entry is absent from the backup;
   - `rollback_removes_only_usher_entry`;
   - `adopted_entry_found_after_reorder`;
@@ -152,7 +154,7 @@ The read-deny profile is `sandbox-exec` on macOS. Its Linux equivalent is unveri
 - **R-B, codex:** whether a first slice also applies to `~/.codex/config.toml` for human sessions. The party split 3 to 3. For: marvel's codex seats use a private `CODEX_HOME`, so it reaches human sessions only. Against: the named codex pain is seats stopping at approval prompts, and `requirements.toml` has no managed rule yet. The plan holds the codex ticket until this is ruled.
 - **R-C, `hooks` and `statusLine`:** whether a profile may ever own them. The party voted 6 to 0 to keep them out unless ruled in.
 - **R-E, vendor terms:** the rule on subscription use outside a vendor's official client. It may decide whether D7's report names cc-switch at all, so U5's wording waits on it.
-- **For usher's owners, not a ruling of this plan:** D1's reading of AD-8 ("never extracted").
+- **For usher's owners, not a ruling of this plan:** D1's reading of AD-8 ("never extracted"), and D4's one-name exception to `env`'s `sensitive` mark (D1, D4).
 
 ## 7. Prior art and license basis
 
@@ -171,7 +173,7 @@ Flat tickets with dependency edges and no umbrella. "Story n.m" edges are usher'
 
 | ticket | does | depends on | red tests it turns green |
 |---|---|---|---|
-| U1 | knowledge items for D1, D2, D3 and D4 | R-A | `settings_keys.rs`: 4 more |
+| U1 | knowledge items for D1, D2, D3 and D4, including the D4 child item that overrides `env`'s `sensitive` mark for one path, and the `claude-code.key-env` summary that names it | R-A | `settings_keys.rs`: 4 more |
 | U2 | fragment refusal for D2 | R-A, U1; story 7.1 | `profile_fragment.rs`: 2 |
 | U3 | Claude Code apply deltas: D1, D2's journal ownership, D3, D6, and the addendum row | U1, U2; stories 6.3, 6.4, 6.13, 8.3, 8.4 | `apply.rs`: 13 |
 | U4 | D5, the managed rule | U3; story 8.1 | `managed.rs`: 4 more |
