@@ -355,6 +355,21 @@ fn brew_paths_come_from_the_environment_when_it_is_absolute() {
 }
 
 #[test]
+fn an_absolute_brew_environment_gives_brew_paths_when_no_fixed_location_exists() {
+    let paths = resolve(
+        &[
+            ("HOME", "/h"),
+            ("HOMEBREW_REPOSITORY", "/custom/repo"),
+            ("HOMEBREW_PREFIX", "/custom/prefix"),
+        ],
+        &[],
+        true,
+    );
+    assert_eq!(brew(&paths).repository, p("/custom/repo"));
+    assert_eq!(brew(&paths).prefix, p("/custom/prefix"));
+}
+
+#[test]
 fn a_relative_brew_variable_is_ignored() {
     let paths = resolve(
         &[("HOME", "/h"), ("HOMEBREW_REPOSITORY", "repo")],
