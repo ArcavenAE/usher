@@ -998,14 +998,14 @@ fn the_scan_lets_an_error_status_call_through_in_a_file_that_runs_no_command() {
 fn no_file_in_the_cli_or_core_source_runs_a_process_except_the_hostname_lookup() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut files = Vec::new();
-    for relative in ["src", "../usher-core/src"] {
+    for relative in ["src", "../usher-core/src", "../usher/src"] {
         rust_files(&manifest.join(relative), &mut files);
     }
     let names: Vec<String> = files
         .iter()
         .filter_map(|f| f.file_name().map(|n| n.to_string_lossy().into_owned()))
         .collect();
-    for expected in ["lib.rs", "inventory.rs", "tools.rs", "egress.rs"] {
+    for expected in ["lib.rs", "inventory.rs", "tools.rs", "egress.rs", "main.rs"] {
         assert!(
             names.iter().any(|n| n == expected),
             "the scan must reach every file, and missed {expected}: {names:?}"
@@ -1013,7 +1013,7 @@ fn no_file_in_the_cli_or_core_source_runs_a_process_except_the_hostname_lookup()
     }
     for file in &files {
         let text = fs::read_to_string(file).expect("a readable file");
-        if file.ends_with("usher-cli/src/inventory.rs") || file.ends_with("src/inventory.rs") {
+        if *file == manifest.join("src/inventory.rs") {
             continue;
         }
         assert!(
