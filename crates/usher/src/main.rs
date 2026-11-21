@@ -1,6 +1,6 @@
 //! The usher binary. Mode selection only.
 //!
-//! Knows `--version` and hands `inventory` to the `usher-cli` crate, which holds the
+//! Knows `--version` and hands `inventory` and `tools` to the `usher-cli` crate, which holds the
 //! verb. Every other argument, or none, is an unknown mode and exits nonzero with a next
 //! action. The real modes (`mcp`, `daemon`, `collector`) arrive with the stories that
 //! build them.
@@ -37,7 +37,7 @@ fn main() -> ExitCode {
 
 /// Whether the first argument names a verb the `usher-cli` crate holds.
 fn hands_to_cli(first: Option<&str>) -> bool {
-    first == Some("inventory")
+    matches!(first, Some("inventory" | "tools"))
 }
 
 /// Picks a mode from the arguments and returns the text to print.
@@ -48,13 +48,13 @@ fn run(mut args: impl Iterator<Item = String>) -> Result<String, UsherError> {
             STEP,
             format!("mode `{}` is one this build supports", other.escape_debug()),
             "unknown mode",
-            "run `usher --version` or `usher inventory`",
+            "run `usher inventory`, `usher tools` or `usher --version`",
         )),
         None => Err(UsherError::new(
             STEP,
             "a mode was given",
             "no mode",
-            "run `usher --version` or `usher inventory`",
+            "run `usher inventory`, `usher tools` or `usher --version`",
         )),
     }
 }
