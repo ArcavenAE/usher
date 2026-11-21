@@ -82,6 +82,10 @@ jobs:
         with:
           cache-on-failure: true
       - run: cargo test --locked --workspace --all-targets
+      - name: Run the doctests, which --all-targets skips
+        # The compile_fail doctests are what stop a WireRequest or a Policy from being
+        # built or implemented outside usher-core.
+        run: cargo test --locked --workspace --doc
       - name: Test the signing-crate guard
         run: scripts/test-guard-signer-crates.sh
       - name: Keep test-only signing crates out of shipping crates

@@ -7,9 +7,17 @@
 
 use std::{error::Error, fmt};
 
+mod egress;
 mod environment;
 mod listing;
 
+pub use egress::{
+    ALL, Class, DELEGATED_INSTALLERS, DELEGATED_NOTE, DelegatedInstaller, Descriptor, Egress,
+    Field, Method, PersonStartedOnly, Place, Policy, Port, Request, Response, Transport,
+    WireRequest, descriptor,
+};
+#[cfg(feature = "test-seam")]
+pub use egress::{AllowAll, DenyAll};
 pub use environment::{EnvironmentKey, environment_key, key_variables};
 pub use listing::{
     AbsentLayer, CheckedPath, KeyNames, LaunchContext, ListedSource, NotCheckedLayer, SeatLine,
