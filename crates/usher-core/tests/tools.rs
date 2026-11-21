@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 
 use usher_core::{
     BrewPaths, Hint, HintKind, InstallState, Installer, InstallerPaths, Reading, Recorded, ToolRow,
-    ToolSpec, Verdict, allowed_invocations, command_text, never_call, no_update_env, render_rows,
-    tool_specs,
+    ToolSpec, Verdict, allowed_invocations, command_text, join_versions, never_call, no_update_env,
+    render_rows, tool_specs,
 };
 
 const NOT_RUN: &str = "version check not run";
@@ -473,4 +473,55 @@ fn a_brew_prefix_with_no_repository_gives_no_brew_paths() {
         true,
     );
     assert_eq!(prefix_only.brew, None);
+}
+
+// ---- one version order ----
+
+#[test]
+fn versions_are_joined_newest_first_by_number_and_not_by_text() {
+    let versions =
+        |list: &[&str]| -> Vec<String> { list.iter().map(|v| (*v).to_string()).collect() };
+    assert_eq!(
+        join_versions(&versions(&["1.9.0", "1.10.0"])),
+        "1.10.0, 1.9.0"
+    );
+    assert_eq!(
+        join_versions(&versions(&["1.7.0", "1.7.1", "1.6.9"])),
+        "1.7.1, 1.7.0, 1.6.9"
+    );
+}
+
+#[test]
+fn a_version_that_is_a_prefix_of_another_sorts_after_it_and_text_breaks_a_tie() {
+    let versions =
+        |list: &[&str]| -> Vec<String> { list.iter().map(|v| (*v).to_string()).collect() };
+    assert_eq!(join_versions(&versions(&["1.0", "1.0.1"])), "1.0.1, 1.0");
+    assert_eq!(join_versions(&versions(&["1.0a", "1.0b"])), "1.0b, 1.0a");
+}
+
+// ---- a home that cannot be trusted ----
+
+#[test]
+fn a_home_that_is_absent_empty_or_relative_leaves_the_home_relative_defaults_unresolved() {
+    for home in [None, Some(""), Some("relative/home")] {
+        let env: Vec<(&str, &str)> = home.map(|h| ("HOME", h)).into_iter().collect();
+        let paths = resolve(&env, &["/opt/homebrew"], true);
+        assert_eq!(paths.mise_data, PathBuf::new(), "HOME {home:?}");
+        assert_eq!(paths.mise_cache, PathBuf::new(), "HOME {home:?}");
+        assert_eq!(paths.mise_state, PathBuf::new(), "HOME {home:?}");
+        assert_eq!(brew(&paths).repository, p("/opt/homebrew"), "HOME {home:?}");
+        assert_eq!(brew(&paths).cache, PathBuf::new(), "HOME {home:?}");
+    }
+}
+
+#[test]
+fn an_absolute_installer_variable_is_used_even_when_the_home_cannot_be() {
+    let paths = resolve(
+        &[("MISE_DATA_DIR", "/m/data"), ("HOMEBREW_CACHE", "/b/cache")],
+        &["/opt/homebrew"],
+        true,
+    );
+    assert_eq!(paths.mise_data, p("/m/data"));
+    assert_eq!(brew(&paths).cache, p("/b/cache"));
+    assert_eq!(paths.mise_cache, PathBuf::new());
 }

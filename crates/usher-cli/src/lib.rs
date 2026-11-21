@@ -173,6 +173,17 @@ pub fn run(args: &[String], env: &InventoryEnv) -> Result<String, UsherError> {
     inventory(env, inventory_system_root())
 }
 
+/// As [`run`] for the `tools` command, over installer paths the caller gives, so a test
+/// reads scratch state and not the host's.
+pub fn run_with_installers(
+    args: &[String],
+    env: &InventoryEnv,
+    paths: &usher_core::InstallerPaths,
+) -> Result<String, UsherError> {
+    let _ = (args, env, paths);
+    Ok(String::new())
+}
+
 /// The installer variables the `tools` verb reads from the process, and nothing else.
 const INSTALLER_VARIABLES: [&str; 9] = [
     "HOMEBREW_REPOSITORY",

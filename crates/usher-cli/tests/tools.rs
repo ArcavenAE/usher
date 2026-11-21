@@ -8,7 +8,8 @@ use std::{
 };
 
 use usher_cli::{
-    InventoryEnv, LaunchEnvironment, ToolsContext, read_brew, read_mise, read_tools, run, run_tools,
+    InventoryEnv, LaunchEnvironment, ToolsContext, read_brew, read_mise, read_tools, run,
+    run_tools, run_with_installers,
 };
 use usher_core::{
     BrewPaths, Hint, HintKind, InstallState, Installer, InstallerPaths, Reading, Recorded, ToolRow,
@@ -272,7 +273,7 @@ fn a_receipt_without_a_source_tap_is_an_error_row_that_does_not_guess_a_source()
         row.error,
         Some(format!("{}: source.tap is missing", path.display()))
     );
-    assert_eq!(row.source, "unknown source");
+    assert_eq!(row.source, "brew");
 }
 
 #[test]
@@ -484,12 +485,12 @@ fn a_mise_tool_reads_its_versions_from_the_installs_directory_names() {
 }
 
 #[test]
-fn several_mise_versions_print_sorted_and_joined() {
+fn several_mise_versions_print_newest_first_and_joined() {
     let rig = Rig::new();
     rig.mise_tool("go", "go", "core:go", "1.23.0");
     rig.mise_version("go", "1.22.0");
     let row = only(read_mise(&mise_spec("go", "go"), &rig.paths));
-    assert_eq!(row.installed, Reading::Known("1.22.0, 1.23.0".to_string()));
+    assert_eq!(row.installed, Reading::Known("1.23.0, 1.22.0".to_string()));
 }
 
 #[test]
@@ -916,14 +917,31 @@ fn no_command_names_the_tools_verb_in_its_next_action() {
 }
 
 #[test]
-fn run_hands_the_tools_command_to_the_tools_verb_and_not_to_inventory() {
+fn run_hands_the_tools_command_to_the_tools_verb_over_the_paths_it_is_given() {
     let scratch = ScratchHome::new().expect("scratch");
-    let result = run(&args(&["tools"]), &env_in(&scratch));
-    assert!(result.is_ok(), "`usher tools` is a command: {result:?}");
-    let out = result.unwrap_or_default();
+    let rig = Rig::new();
+    rig.mise_tool("codex", "codex", "aqua:openai/codex", "0.160.0");
+    let mut paths = rig.paths.clone();
+    paths.brew = None;
+    paths.brew_candidates = vec![
+        scratch.root().join("no-brew/one"),
+        scratch.root().join("no-brew/two"),
+    ];
+    let out = run_with_installers(&args(&["tools"]), &env_in(&scratch), &paths)
+        .expect("`usher tools` is a command");
     assert!(
         out.contains("director  unknown (no installer recorded)  unknown source"),
-        "the tools rows were expected, and the director row needs no host state: {out}"
+        "{out}"
+    );
+    assert!(
+        out.contains("codex  installed  mise aqua  0.160.0"),
+        "the scratch mise state was read, not the host's: {out}"
+    );
+    assert!(
+        out.contains(
+            "goose  missing  brew  none  unknown (version check not run)  unknown (brew not found)"
+        ),
+        "no brew was found in the scratch paths: {out}"
     );
 }
 
@@ -1115,4 +1133,180 @@ fn the_installer_guard_fires_when_a_run_writes_under_a_watched_path() {
         guard.verify().is_err(),
         "a write under the mise installs directory must be seen"
     );
+}
+
+// ---- version order, one for both installers ----
+
+#[test]
+fn mise_versions_print_newest_first_by_number_not_by_text() {
+    let rig = Rig::new();
+    rig.mise_tool("go", "go", "core:go", "1.9.0");
+    rig.mise_version("go", "1.10.0");
+    let row = only(read_mise(&mise_spec("go", "go"), &rig.paths));
+    assert_eq!(row.installed, Reading::Known("1.10.0, 1.9.0".to_string()));
+}
+
+#[test]
+fn brew_prints_the_version_in_effect_first_then_the_others_newest_first_by_number() {
+    let rig = Rig::new();
+    for version in ["1.8.0", "1.9.0", "1.10.0"] {
+        rig.good_receipt("jq", version);
+    }
+    rig.link("jq", "1.9.0");
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
+    assert_eq!(
+        row.installed,
+        Reading::Known("1.9.0, 1.10.0, 1.8.0".to_string())
+    );
+}
+
+// ---- a brew error row names the installer, never an unknown source ----
+
+#[test]
+fn a_two_tap_error_row_has_the_source_brew() {
+    let rig = Rig::new();
+    rig.good_receipt("jq", "1.7.1");
+    rig.link("jq", "1.7.1");
+    rig.tap_formula("acme/tools", false, "jq");
+    rig.tap_formula("other/extras", true, "jq");
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
+    assert_eq!(row.verdict, Verdict::Error);
+    assert_eq!(row.source, "brew");
+}
+
+#[test]
+fn a_bad_receipt_error_row_has_the_source_brew() {
+    let rig = Rig::new();
+    rig.receipt("jq", "1.7.1", "{ not json");
+    rig.link("jq", "1.7.1");
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
+    assert_eq!(row.verdict, Verdict::Error);
+    assert_eq!(row.source, "brew");
+}
+
+#[test]
+fn a_no_version_in_effect_error_row_has_the_source_brew() {
+    let rig = Rig::new();
+    rig.good_receipt("jq", "1.7.0");
+    rig.good_receipt("jq", "1.7.1");
+    let row = only(read_brew(&brew_spec("jq", "jq"), &rig.paths));
+    assert_eq!(row.verdict, Verdict::Error);
+    assert_eq!(row.source, "brew");
+}
+
+// ---- an unusable HOME resolves nothing against the current directory ----
+
+/// Puts the process in `dir` for the test and back afterwards, even on a failure.
+struct InDirectory(PathBuf);
+
+impl InDirectory {
+    fn enter(dir: &Path) -> Self {
+        let before = std::env::current_dir().expect("a current directory");
+        std::env::set_current_dir(dir).expect("enter the directory");
+        InDirectory(before)
+    }
+}
+
+impl Drop for InDirectory {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.0);
+    }
+}
+
+#[test]
+fn with_no_home_a_mise_tool_under_the_current_directory_reads_as_missing() {
+    let scratch = ScratchHome::new().expect("scratch");
+    let here = scratch.root().join("cwd");
+    let installs = here.join(".local/share/mise/installs/codex");
+    fs::create_dir_all(installs.join("0.160.0")).expect("a lookalike install");
+    fs::write(
+        installs.join(".mise.backend.toml"),
+        "short = \"codex\"\nfull = \"aqua:openai/codex\"\n",
+    )
+    .expect("backend file");
+    let _in = InDirectory::enter(&here);
+    for home in [None, Some(""), Some("relative/home")] {
+        let paths = InstallerPaths::resolve(
+            |name| (name == "HOME").then(|| home.map(str::to_string)).flatten(),
+            |_| false,
+            false,
+        );
+        let row = only(read_mise(&mise_spec("codex", "codex"), &paths));
+        assert_eq!(
+            row.state,
+            InstallState::Missing,
+            "HOME {home:?} must not resolve against the current directory"
+        );
+    }
+}
+
+// ---- a directory that exists and cannot be read is an error row ----
+
+/// A mode-000 directory that cannot be listed; skipped (returns false) when the test
+/// runs as a user who can list it anyway, such as root.
+fn made_unlistable(dir: &Path) -> bool {
+    fs::set_permissions(dir, fs::Permissions::from_mode(0o000)).expect("chmod");
+    if fs::read_dir(dir).is_ok() {
+        eprintln!("skipped: this user can list a mode 000 directory (running as root)");
+        fs::set_permissions(dir, fs::Permissions::from_mode(0o755)).expect("chmod back");
+        return false;
+    }
+    true
+}
+
+fn directory_error_row(installer: &str, dir: &Path, text: &str) -> ToolRow {
+    ToolRow {
+        name: installer.to_string(),
+        state: InstallState::Installed,
+        source: installer.to_string(),
+        installed: Reading::Unknown("directory unreadable".to_string()),
+        current: not_run(),
+        verdict: Verdict::Error,
+        error: Some(format!("{}: {text}", dir.display())),
+        hint: None,
+    }
+}
+
+#[test]
+fn an_unreadable_cellar_gives_one_error_row_and_the_brew_entries_read_as_missing() {
+    let rig = Rig::new();
+    rig.good_receipt("jq", "1.7.1");
+    let cellar = rig.brew().prefix.join("Cellar");
+    if !made_unlistable(&cellar) {
+        return;
+    }
+    let rows = read_tools(
+        &[brew_spec("jq", "jq"), brew_spec("kos", "kos")],
+        &rig.paths,
+    );
+    fs::set_permissions(&cellar, fs::Permissions::from_mode(0o755)).expect("chmod back");
+    assert_eq!(rows.len(), 3, "{rows:?}");
+    assert_eq!(rows[0].state, InstallState::Missing);
+    assert_eq!(rows[1].state, InstallState::Missing);
+    let expected = directory_error_row("brew", &cellar, "Permission denied (os error 13)");
+    assert_eq!(rows[2], expected);
+}
+
+#[test]
+fn an_unreadable_installs_directory_gives_one_error_row_and_the_mise_entries_read_as_missing() {
+    let rig = Rig::new();
+    rig.mise_tool("go", "go", "core:go", "1.23.0");
+    let installs = rig.paths.mise_data.join("installs");
+    if !made_unlistable(&installs) {
+        return;
+    }
+    let rows = read_tools(&[mise_spec("go", "go")], &rig.paths);
+    fs::set_permissions(&installs, fs::Permissions::from_mode(0o755)).expect("chmod back");
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    assert_eq!(rows[0].state, InstallState::Missing);
+    let expected = directory_error_row("mise", &installs, "Permission denied (os error 13)");
+    assert_eq!(rows[1], expected);
+}
+
+#[test]
+fn an_absent_cellar_and_an_absent_installs_directory_are_missing_not_errors() {
+    let rig = Rig::new();
+    let rows = read_tools(&[brew_spec("jq", "jq"), mise_spec("go", "go")], &rig.paths);
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    assert!(rows.iter().all(|row| row.state == InstallState::Missing));
 }

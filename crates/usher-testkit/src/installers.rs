@@ -464,4 +464,58 @@ mod tests {
         let err = guard.verify().expect_err("a created candidate must fail");
         assert!(err.contains("installer state changed"), "{err}");
     }
+
+    /// Points one watched root at a path that does not exist, digests, creates that
+    /// path empty, and digests again.
+    fn absent_then_created(which: usize) {
+        let rig = rig();
+        let dir = rig.paths.mise_data.join(format!("absent-root-{which}"));
+        let mut paths = rig.paths.clone();
+        let brew = paths.brew.as_mut().expect("brew paths");
+        match which {
+            0 => brew.repository = dir.clone(),
+            1 => brew.prefix = dir.clone(),
+            2 => brew.cache = dir.clone(),
+            3 => paths.mise_data = dir.clone(),
+            4 => paths.mise_cache = dir.clone(),
+            _ => paths.mise_state = dir.clone(),
+        }
+        let before = digest_installers(&paths).expect("absent is not an error");
+        fs::create_dir_all(&dir).expect("an empty root appears");
+        assert_ne!(
+            before,
+            digest_installers(&paths).expect("a digest"),
+            "absent and empty must differ"
+        );
+    }
+
+    #[test]
+    fn an_absent_brew_repository_created_empty_is_a_change() {
+        absent_then_created(0);
+    }
+
+    #[test]
+    fn an_absent_brew_prefix_created_empty_is_a_change() {
+        absent_then_created(1);
+    }
+
+    #[test]
+    fn an_absent_brew_cache_created_empty_is_a_change() {
+        absent_then_created(2);
+    }
+
+    #[test]
+    fn an_absent_mise_data_directory_created_empty_is_a_change() {
+        absent_then_created(3);
+    }
+
+    #[test]
+    fn an_absent_mise_cache_directory_created_empty_is_a_change() {
+        absent_then_created(4);
+    }
+
+    #[test]
+    fn an_absent_mise_state_directory_created_empty_is_a_change() {
+        absent_then_created(5);
+    }
 }
