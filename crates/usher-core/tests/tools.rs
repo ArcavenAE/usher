@@ -499,6 +499,14 @@ fn a_version_that_is_a_prefix_of_another_sorts_after_it_and_text_breaks_a_tie() 
     assert_eq!(join_versions(&versions(&["1.0a", "1.0b"])), "1.0b, 1.0a");
 }
 
+#[test]
+fn versions_equal_by_number_and_different_in_text_are_ordered_by_text_newest_first() {
+    let versions =
+        |list: &[&str]| -> Vec<String> { list.iter().map(|v| (*v).to_string()).collect() };
+    assert_eq!(join_versions(&versions(&["1.01", "1.1"])), "1.1, 1.01");
+    assert_eq!(join_versions(&versions(&["1.1", "1.01"])), "1.1, 1.01");
+}
+
 // ---- a home that cannot be trusted ----
 
 #[test]

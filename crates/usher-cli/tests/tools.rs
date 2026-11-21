@@ -1224,6 +1224,14 @@ fn with_no_home_a_mise_tool_under_the_current_directory_reads_as_missing() {
         "short = \"codex\"\nfull = \"aqua:openai/codex\"\n",
     )
     .expect("backend file");
+    // The same install where an empty (unresolved) data path would look for it.
+    let bare = here.join("installs/codex");
+    fs::create_dir_all(bare.join("0.160.0")).expect("a bare lookalike install");
+    fs::write(
+        bare.join(".mise.backend.toml"),
+        "short = \"codex\"\nfull = \"aqua:openai/codex\"\n",
+    )
+    .expect("backend file");
     let _in = InDirectory::enter(&here);
     for home in [None, Some(""), Some("relative/home")] {
         let paths = InstallerPaths::resolve(
@@ -1284,6 +1292,32 @@ fn an_unreadable_cellar_gives_one_error_row_and_the_brew_entries_read_as_missing
     assert_eq!(rows[0].state, InstallState::Missing);
     assert_eq!(rows[1].state, InstallState::Missing);
     let expected = directory_error_row("brew", &cellar, "Permission denied (os error 13)");
+    assert_eq!(rows[2], expected);
+}
+
+#[test]
+fn an_unreadable_formula_directory_gives_one_error_row_beside_the_missing_row_and_leaves_others_alone()
+ {
+    let rig = Rig::new();
+    rig.good_receipt("jq", "1.7.1");
+    rig.link("jq", "1.7.1");
+    let bad = rig.cellar("badformula", "1.0");
+    let bad_dir = bad.parent().expect("the formula directory").to_path_buf();
+    if !made_unlistable(&bad_dir) {
+        return;
+    }
+    let rows = read_tools(
+        &[brew_spec("jq", "jq"), brew_spec("bad", "badformula")],
+        &rig.paths,
+    );
+    fs::set_permissions(&bad_dir, fs::Permissions::from_mode(0o755)).expect("chmod back");
+    assert_eq!(rows.len(), 3, "{rows:?}");
+    assert_eq!(rows[0].name, "jq");
+    assert_eq!(rows[0].state, InstallState::Installed);
+    assert_eq!(rows[1].name, "bad");
+    assert_eq!(rows[1].state, InstallState::Missing);
+    let mut expected = directory_error_row("brew", &bad_dir, "Permission denied (os error 13)");
+    expected.name = "badformula".to_string();
     assert_eq!(rows[2], expected);
 }
 
