@@ -8,6 +8,8 @@ publish.workspace = true
 
 [dependencies]
 usher-core.workspace = true
+ureq.workspace = true
+rustls.workspace = true
 
 [dev-dependencies]
 usher-core = { workspace = true, features = ["test-seam"] }

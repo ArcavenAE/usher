@@ -31,6 +31,24 @@ ignore = true
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# The one http client is ureq, and only usher-egress may depend on it. The others are
+# named so a second client cannot arrive by accident.
+deny = [
+    { crate = "ureq", wrappers = ["usher-egress"] },
+    { crate = "reqwest" },
+    { crate = "hyper" },
+    { crate = "hyper-util" },
+    { crate = "isahc" },
+    { crate = "surf" },
+    { crate = "attohttpc" },
+    { crate = "curl" },
+    { crate = "curl-sys" },
+    { crate = "minreq" },
+    { crate = "http-req" },
+    { crate = "native-tls" },
+    { crate = "openssl" },
+    { crate = "openssl-sys" },
+]
 
 [sources]
 unknown-registry = "deny"
