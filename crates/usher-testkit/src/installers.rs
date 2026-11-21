@@ -5,7 +5,14 @@
 //! or mise run by the person while a test runs reads as a violation, which is a true
 //! report and not a flake to retry.
 
-use std::io;
+use std::{
+    collections::hash_map::DefaultHasher,
+    fs,
+    hash::{Hash, Hasher},
+    io,
+    path::Path,
+    time::UNIX_EPOCH,
+};
 
 use usher_core::InstallerPaths;
 
@@ -15,8 +22,85 @@ pub struct InstallerDigest(u64);
 
 /// Digests the watched parts of installer state.
 pub fn digest_installers(paths: &InstallerPaths) -> io::Result<InstallerDigest> {
-    let _ = paths;
-    Ok(InstallerDigest(0))
+    let mut hasher = DefaultHasher::new();
+    match &paths.brew {
+        Some(brew) => {
+            "brew".hash(&mut hasher);
+            file_text(&brew.repository.join(".git/HEAD")).hash(&mut hasher);
+            file_text(&brew.repository.join(".git/FETCH_HEAD")).hash(&mut hasher);
+            names(&brew.repository.join("Library/Taps"), 2).hash(&mut hasher);
+            names(&brew.prefix.join("Cellar"), 2).hash(&mut hasher);
+            names(&brew.prefix.join("Caskroom"), 2).hash(&mut hasher);
+            names(&brew.prefix.join("var/homebrew/linked"), 1).hash(&mut hasher);
+            timed(&brew.cache.join("api")).hash(&mut hasher);
+        }
+        None => {
+            "no brew".hash(&mut hasher);
+            for candidate in &paths.brew_candidates {
+                (candidate, candidate.exists()).hash(&mut hasher);
+            }
+        }
+    }
+    names(&paths.mise_data.join("installs"), 2).hash(&mut hasher);
+    names(&paths.mise_data.join("shims"), 1).hash(&mut hasher);
+    timed(&paths.mise_cache).hash(&mut hasher);
+    timed(&paths.mise_state).hash(&mut hasher);
+    Ok(InstallerDigest(hasher.finish()))
+}
+
+/// The text of a file, or nothing when it is absent or unreadable.
+fn file_text(path: &Path) -> Option<Vec<u8>> {
+    fs::read(path).ok()
+}
+
+/// The entry names under `root` down to `depth` levels, sorted; empty when `root` is
+/// absent.
+fn names(root: &Path, depth: usize) -> Vec<String> {
+    let mut found = Vec::new();
+    collect(root, "", depth, &mut found);
+    found.sort();
+    found
+}
+
+fn collect(dir: &Path, prefix: &str, depth: usize, found: &mut Vec<String>) {
+    if depth == 0 {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = format!("{prefix}{}", entry.file_name().to_string_lossy());
+        found.push(name.clone());
+        if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            collect(&entry.path(), &format!("{name}/"), depth - 1, found);
+        }
+    }
+}
+
+/// The entries directly under `dir` with each one's size and modification time, sorted
+/// by name; empty when `dir` is absent.
+fn timed(dir: &Path) -> Vec<(String, u64, u128)> {
+    let mut found = Vec::new();
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let (size, nanos) = entry.metadata().map_or((0, 0), |meta| {
+                let nanos = meta
+                    .modified()
+                    .ok()
+                    .and_then(|when| when.duration_since(UNIX_EPOCH).ok())
+                    .map_or(0, |elapsed| elapsed.as_nanos());
+                (meta.len(), nanos)
+            });
+            found.push((
+                entry.file_name().to_string_lossy().into_owned(),
+                size,
+                nanos,
+            ));
+        }
+    }
+    found.sort();
+    found
 }
 
 /// A snapshot of installer state to compare against later.
@@ -37,8 +121,16 @@ impl InstallerGuard {
 
     /// Fails when anything watched changed since the snapshot.
     pub fn verify(&self) -> Result<(), String> {
-        let _ = (&self.paths, &self.before);
-        Ok(())
+        let after = digest_installers(&self.paths)
+            .map_err(|err| format!("installer state could not be read again: {err}"))?;
+        if after == self.before {
+            Ok(())
+        } else {
+            Err(
+                "installer state changed since the snapshot: a watched brew or mise path differs"
+                    .to_string(),
+            )
+        }
     }
 }
 
