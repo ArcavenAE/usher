@@ -147,6 +147,19 @@ pub fn response_from(
     })
 }
 
+/// The port's [`Response`] for what the client received: the status, the `Location`
+/// header, and a body read with the limit of [`read_limited`].
+pub fn answer_from(
+    host: &str,
+    status: u16,
+    headers: &ureq::http::HeaderMap,
+    body: impl Read,
+    limit: u64,
+) -> Result<Response, UsherError> {
+    let _ = (host, status, headers, body, limit);
+    Err(UsherError::new("send request", "stub", "stub", "stub"))
+}
+
 /// A cause text with control characters replaced, since part of it can come from the
 /// remote end.
 fn clean(text: &str) -> String {
@@ -228,6 +241,16 @@ impl Transport for HttpTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cause_carrying_control_characters_is_cleaned_in_the_transport_error() {
+        let err = transport_error(
+            "h.usher.invalid",
+            &ureq::Error::BadUri("a\u{1b}b".to_string()),
+        );
+        assert!(err.status().contains("a?b"), "{err}");
+        assert!(!err.status().contains('\u{1b}'), "{err}");
+    }
 
     #[test]
     fn a_connect_timeout_from_the_client_reads_as_the_connect_text() {
