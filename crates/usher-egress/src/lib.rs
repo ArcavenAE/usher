@@ -105,7 +105,7 @@ pub fn plan_request(request: &WireRequest) -> Result<RequestPlan, UsherError> {
             "send request",
             "the host is a bare host name",
             "the host holds a user name or password".to_string(),
-            "no change is needed; a host with credentials needs its own ruling",
+            "remove the user name and password from the host; a host that needs credentials needs its own ruling",
         ));
     }
     let mut uri = format!("https://{}{}", request.host(), request.path());
