@@ -282,15 +282,17 @@ fn a_repeated_key_in_a_yaml_fragment_is_refused_naming_the_path() {
         "p/profile.toml",
         &with_harness("\n[harnesses.goose]\nversions = \">=1.0.0\"\n"),
     );
-    s.write("p/goose/config.yaml", "a: 1\na: 2\n");
-    names(&refusal(&dir), "a");
+    s.write("p/goose/config.yaml", "dupkey_x: 1\ndupkey_x: 2\n");
+    names(&refusal(&dir), "dupkey_x");
 }
 
 #[test]
 fn a_repeated_key_in_the_manifest_is_refused() {
     let s = Scratch::new();
     let dir = s.profile("p");
-    s.write("p/profile.toml", &format!("{MANIFEST}\nname = \"again\"\n"));
+    // `name` is a top-level key the manifest allows, so this reaches the
+    // repeated-key rule and not the unknown-key rule.
+    s.write("p/profile.toml", &format!("name = \"again\"\n{MANIFEST}"));
     names(&refusal(&dir), "profile.toml");
 }
 
@@ -419,6 +421,19 @@ fn a_file_the_table_does_not_name_is_listed_as_not_read_and_never_opened() {
 }
 
 #[test]
+fn a_readable_file_the_table_does_not_name_is_not_scanned_for_credential_keys() {
+    let s = Scratch::new();
+    let dir = s.profile("p");
+    s.write("p/claude-code/extra.json", r#"{"token": "never-scanned"}"#);
+    let profiles = must_load(&dir);
+    assert_eq!(profiles[0].not_read(), ["claude-code/extra.json"]);
+    assert!(
+        profiles[0].credential_flags().is_empty(),
+        "an unnamed file is listed, not read, so it raises no credential flag"
+    );
+}
+
+#[test]
 fn a_covered_harness_without_its_file_is_refused_naming_the_file() {
     let s = Scratch::new();
     let dir = s.profile("p");
@@ -494,7 +509,20 @@ fn a_symlinked_profile_directory_is_refused() {
     symlink(&real, &link).expect("symlink");
     must_load(&real);
     let err = load_dir(&link).expect_err("a symlinked root");
-    names(&err, "link");
+    names(&err, &link.to_string_lossy());
+}
+
+#[test]
+fn a_file_source_through_a_symlinked_parent_directory_is_refused() {
+    let s = Scratch::new();
+    let real = s.profile("real");
+    let link = s.path().join("link");
+    symlink(&real, &link).expect("symlink");
+    let ok = Profile::load(&Source::File(real.join("profile.toml")), &rules());
+    assert!(ok.is_ok(), "the real path must load");
+    let err = Profile::load(&Source::File(link.join("profile.toml")), &rules())
+        .expect_err("a symlinked parent directory");
+    names(&err, &link.to_string_lossy());
 }
 
 #[test]
@@ -513,12 +541,16 @@ fn a_symlinked_profile_toml_is_refused() {
 fn a_file_over_one_mebibyte_makes_the_profile_invalid() {
     let s = Scratch::new();
     let dir = s.profile("p");
-    let pad = "x".repeat(1024 * 1024 + 1);
-    s.write(
-        "p/claude-code/settings.json",
-        &format!("{{\"pad\": \"{pad}\"}}"),
-    );
-    names(&refusal(&dir), "settings.json");
+    // Exactly 1 MiB + 1 byte, beside the exactly-1-MiB load below.
+    let head = "{\"pad\": \"";
+    let tail = "\"}";
+    let pad = "x".repeat(1024 * 1024 + 1 - head.len() - tail.len());
+    let text = format!("{head}{pad}{tail}");
+    assert_eq!(text.len(), 1024 * 1024 + 1);
+    s.write("p/claude-code/settings.json", &text);
+    let err = refusal(&dir);
+    names(&err, "settings.json");
+    names(&err, "1 MiB");
 }
 
 #[test]
@@ -542,7 +574,7 @@ fn sixty_five_files_make_the_profile_invalid_and_sixty_four_do_not() {
     }
     assert_eq!(must_load(&dir).len(), 1);
     s.write("p/docs/f62.txt", "x");
-    names(&refusal(&dir), "64");
+    names(&refusal(&dir), "64 files");
 }
 
 #[test]
@@ -597,7 +629,7 @@ fn the_total_of_bytes_read_is_capped_at_four_mebibytes() {
     table.push(wide("extra"));
     let err = Profile::load(&Source::Directory(dir), &LoadRules::new(table))
         .expect_err("five near-1-MiB fragments pass the 4 MiB total");
-    names(&err, "4");
+    names(&err, "4 MiB");
 }
 
 #[test]
@@ -665,7 +697,7 @@ fn a_collection_holds_at_most_sixty_four_profiles() {
     assert_eq!(must_load(&repo).len(), 64);
     let s2 = Scratch::new();
     let repo2 = collection(&s2, 65);
-    names(&refusal(&repo2), "64");
+    names(&refusal(&repo2), "64 profiles");
 }
 
 #[test]
