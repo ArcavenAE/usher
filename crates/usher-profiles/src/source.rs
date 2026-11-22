@@ -10,6 +10,7 @@
 
 use std::fs::{self, File};
 use std::io::Read;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
 
 use usher_core::UsherError;
@@ -106,12 +107,15 @@ impl LoadRules {
     }
 }
 
+/// MCP servers of a fragment: each name with its string fields.
+type McpServers = Vec<(String, Vec<(String, String)>)>;
+
 /// One fragment, parsed.
 #[derive(Debug, Clone)]
 pub struct Fragment {
     leaves: Vec<String>,
     tree: Node,
-    mcp: Vec<(String, Vec<(String, String)>)>,
+    mcp: McpServers,
 }
 
 impl Fragment {
@@ -503,7 +507,7 @@ fn mcp_servers(
     rule: &HarnessRule,
     tree: &Node,
     rel: &str,
-) -> Result<Vec<(String, Vec<(String, String)>)>, UsherError> {
+) -> Result<McpServers, UsherError> {
     let Some(path) = &rule.mcp_path else {
         return Ok(Vec::new());
     };
@@ -603,7 +607,7 @@ fn walk(ctx: &Ctx, dir: &Path) -> Result<Vec<String>, UsherError> {
             } else {
                 format!("{rel}/{text}")
             };
-            if depth >= DEPTH_CAP + 1 {
+            if depth > DEPTH_CAP {
                 return Err(ctx.refuse(
                     format!("a profile nests at most {DEPTH_CAP} directory levels"),
                     format!(
@@ -696,9 +700,7 @@ fn read_text(ctx: &Ctx, path: &Path, rel: &str, total: &mut u64) -> Result<Strin
 /// read. Comparing the device and inode of the opened file with the checked
 /// one closes that race with std alone.
 fn same_file(checked: &fs::Metadata, opened: &fs::Metadata) -> bool {
-    // Stub: the comparison is written in the next change.
-    let _ = (checked, opened);
-    true
+    checked.dev() == opened.dev() && checked.ino() == opened.ino()
 }
 
 #[cfg(test)]

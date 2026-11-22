@@ -11,7 +11,7 @@ use toml_edit::{DocumentMut, Item, Table, Value};
 use yaml_rust2::parser::{Event, Parser};
 use yaml_rust2::scanner::TScalarStyle;
 
-use crate::display::display_name;
+use crate::display::{display_name, toml_reason};
 use crate::manifest::split_path;
 use crate::source::FragmentFormat;
 
@@ -284,9 +284,9 @@ impl Json<'_> {
 // TOML: toml_edit refuses a repeated key itself.
 
 fn parse_toml(text: &str) -> Result<Node, String> {
-    let doc: DocumentMut = text
-        .parse()
-        .map_err(|err: toml_edit::TomlError| format!("not valid TOML: {}", err.message()))?;
+    let doc: DocumentMut = text.parse().map_err(|err: toml_edit::TomlError| {
+        format!("not valid TOML: {}", toml_reason(&err, text))
+    })?;
     toml_table(doc.as_table(), 1)
 }
 

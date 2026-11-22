@@ -3,7 +3,7 @@
 use toml_edit::{DocumentMut, Item, Table, Value};
 use usher_core::{UsherError, VersionRange};
 
-use crate::display::{display_name, is_escaped};
+use crate::display::{display_name, is_escaped, toml_reason};
 
 /// A parsed `profile.toml`.
 #[derive(Debug, Clone)]
@@ -56,7 +56,7 @@ impl Manifest {
         let doc: DocumentMut = text.parse().map_err(|err: toml_edit::TomlError| {
             refuse.error(
                 "profile.toml: valid TOML".to_string(),
-                format!("not valid TOML: {}", display_name(err.message())),
+                format!("not valid TOML: {}", toml_reason(&err, text)),
                 "fix the TOML syntax in profile.toml",
             )
         })?;

@@ -31,3 +31,17 @@ pub fn display_name(text: &str) -> String {
     }
     shown
 }
+
+/// The reason for a TOML refusal as an error shows it. toml_edit's message for
+/// a repeated key is the bare words "duplicate key" and carries the key only
+/// in its span, so that message gets the key as written, sliced from `text`;
+/// every other message stays as it is.
+pub(crate) fn toml_reason(err: &toml_edit::TomlError, text: &str) -> String {
+    let message = err.message();
+    if message == "duplicate key"
+        && let Some(key) = err.span().and_then(|span| text.get(span))
+    {
+        return display_name(&format!("{message} {key}"));
+    }
+    display_name(message)
+}
