@@ -173,15 +173,13 @@ fn parts(status: u16, location: Option<&str>) -> ureq::http::response::Parts {
 
 #[test]
 fn the_answer_for_a_request_is_read_with_that_requests_limit() {
-    let response =
-        answer_for(&small_wire(), &parts(200, None), bytes_of(20)).expect("a response");
+    let response = answer_for(&small_wire(), &parts(200, None), bytes_of(20)).expect("a response");
     assert_eq!(response.body.len(), 5);
 }
 
 #[test]
 fn the_answer_for_a_request_names_that_requests_host_when_the_read_fails() {
-    let err =
-        answer_for(&small_wire(), &parts(200, None), Reset).expect_err("the read failed");
+    let err = answer_for(&small_wire(), &parts(200, None), Reset).expect_err("the read failed");
     assert!(err.status().starts_with("files.usher.invalid: "), "{err}");
 }
 
