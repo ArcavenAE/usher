@@ -522,7 +522,7 @@ fn check_note_key(
 /// Splits a key path at the dots outside quoted segments. A quoted segment
 /// starts with `"` and ends at the next unescaped `"`; one that never closes
 /// runs to the end of the path.
-fn split_path(path: &str) -> Vec<&str> {
+pub(crate) fn split_path(path: &str) -> Vec<&str> {
     let mut segments = Vec::new();
     let mut start = 0;
     let mut in_quote = false;
