@@ -191,15 +191,21 @@ pub fn answer_from(
     })
 }
 
-/// The port's [`Response`] for the answer to one request. Placeholder values until the
-/// wiring is pinned: the status, the headers, the host and the limit are not yet taken
-/// from the request and the parts.
+/// The port's [`Response`] for the answer to one request: the status and the headers come
+/// from the answer's parts, the host named in errors and the size limit from the request,
+/// so a caller passes only the parts and the body reader.
 pub fn answer_for(
-    _request: &WireRequest,
-    _parts: &ureq::http::response::Parts,
+    request: &WireRequest,
+    parts: &ureq::http::response::Parts,
     body: impl Read,
 ) -> Result<Response, UsherError> {
-    answer_from("", 0, &ureq::http::HeaderMap::new(), body, u64::MAX)
+    answer_from(
+        request.host(),
+        parts.status.as_u16(),
+        &parts.headers,
+        body,
+        request.max_response_bytes(),
+    )
 }
 
 /// A cause text with control characters replaced, since part of it can come from the
@@ -250,19 +256,12 @@ impl Transport for HttpTransport {
         let host = request.host();
         let plan = plan_request(request)?;
         let outgoing = map::to_request(&plan)?;
-        let mut answer = self
+        let answer = self
             .agent
             .run(outgoing)
             .map_err(|err| transport_error(host, &err))?;
-        let status = answer.status().as_u16();
-        let headers = answer.headers().clone();
-        answer_from(
-            host,
-            status,
-            &headers,
-            answer.body_mut().as_reader(),
-            request.max_response_bytes(),
-        )
+        let (parts, mut body) = answer.into_parts();
+        answer_for(request, &parts, body.as_reader())
     }
 }
 
