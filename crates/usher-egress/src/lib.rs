@@ -191,6 +191,22 @@ pub fn answer_from(
     })
 }
 
+/// The port's [`Response`] for one request's answer. Placeholder arguments until the
+/// wiring is pinned: the host and the limit do not yet come from the request.
+pub fn answer_for(
+    _request: &WireRequest,
+    status: u16,
+    headers: &ureq::http::HeaderMap,
+    body: impl Read,
+) -> Result<Response, UsherError> {
+    answer_from("", status, &ureq::http::HeaderMap::new(), body, u64::MAX)
+        .map(|response| Response { status, ..response })
+        .map_err(|err| {
+            let _ = headers;
+            err
+        })
+}
+
 /// A cause text with control characters replaced, since part of it can come from the
 /// remote end.
 fn clean(text: &str) -> String {

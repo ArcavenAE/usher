@@ -6,16 +6,13 @@ use ureq::http::{HeaderMap, HeaderValue};
 use usher_core::{
     AllowAll, Class, Descriptor, Egress, Field, Method, Place, Port, Request, WireRequest,
 };
-use usher_egress::{answer_from, plan_request};
+use usher_egress::{answer_for, answer_from, plan_request};
 use usher_testkit::RecordingTransport;
 
-struct Endless;
-
-impl Read for Endless {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        buf.fill(b'x');
-        Ok(buf.len())
-    }
+/// A finite reader of `n` bytes, so a read that ignores the limit ends with a wrong length
+/// and fails an assertion instead of hanging.
+fn bytes_of(n: usize) -> &'static [u8] {
+    &[b'x'; 64][..n]
 }
 
 struct Failing(io::Error);
@@ -102,14 +99,28 @@ fn no_location_header_gives_none() {
 #[test]
 fn the_body_is_read_at_most_one_byte_past_the_limit() {
     let response =
-        answer_from("h.usher.invalid", 200, &HeaderMap::new(), Endless, 4).expect("a response");
+        answer_from(
+            "h.usher.invalid",
+            200,
+            &HeaderMap::new(),
+            bytes_of(20),
+            4,
+        )
+        .expect("a response");
     assert_eq!(response.body.len(), 5);
 }
 
 #[test]
 fn the_limit_applies_to_an_error_status_too() {
     let response =
-        answer_from("h.usher.invalid", 503, &HeaderMap::new(), Endless, 4).expect("a response");
+        answer_from(
+            "h.usher.invalid",
+            503,
+            &HeaderMap::new(),
+            bytes_of(20),
+            4,
+        )
+        .expect("a response");
     assert_eq!(response.status, 503);
     assert_eq!(response.body.len(), 5);
 }
@@ -144,4 +155,52 @@ fn a_host_with_a_user_name_or_password_is_refused() {
     assert_eq!(err.check(), "the host is a bare host name");
     assert!(err.status().contains("user name or password"), "{err}");
     assert!(!err.status().contains("secret"), "{err}");
+}
+
+const SMALL: Descriptor = Descriptor {
+    name: "test-small",
+    method: Method::Get,
+    host: "files.usher.invalid",
+    path: "/list",
+    purpose: "a test call with a small answer limit",
+    class: Class::PersonStarted,
+    fields: &[UA],
+    redirect_hosts: &[],
+    max_body_bytes: 4,
+};
+
+fn small_wire() -> WireRequest {
+    let transport = RecordingTransport::new().answering_ok("ok");
+    Port::new(transport.clone(), AllowAll)
+        .call_described(&SMALL, Request::new(Egress::KnowledgeUpdate))
+        .expect("the fake accepts the call");
+    transport.sent().remove(0)
+}
+
+#[test]
+fn the_answer_for_a_request_is_read_with_that_requests_limit() {
+    let response = answer_for(&small_wire(), 200, &HeaderMap::new(), bytes_of(20))
+        .expect("a response");
+    assert_eq!(response.body.len(), 5);
+}
+
+#[test]
+fn the_answer_for_a_request_names_that_requests_host_when_the_read_fails() {
+    let err = answer_for(&small_wire(), 200, &HeaderMap::new(), Reset)
+        .expect_err("the read failed");
+    assert!(err.status().starts_with("files.usher.invalid: "), "{err}");
+}
+
+#[test]
+fn the_answer_for_a_request_carries_the_location_header() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "location",
+        HeaderValue::from_static("https://assets.usher.invalid/x"),
+    );
+    let response = answer_for(&small_wire(), 302, &headers, &b""[..]).expect("a response");
+    assert_eq!(
+        response.location.as_deref(),
+        Some("https://assets.usher.invalid/x")
+    );
 }
