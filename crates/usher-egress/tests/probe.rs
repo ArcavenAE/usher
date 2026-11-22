@@ -98,28 +98,14 @@ fn no_location_header_gives_none() {
 
 #[test]
 fn the_body_is_read_at_most_one_byte_past_the_limit() {
-    let response =
-        answer_from(
-            "h.usher.invalid",
-            200,
-            &HeaderMap::new(),
-            bytes_of(20),
-            4,
-        )
+    let response = answer_from("h.usher.invalid", 200, &HeaderMap::new(), bytes_of(20), 4)
         .expect("a response");
     assert_eq!(response.body.len(), 5);
 }
 
 #[test]
 fn the_limit_applies_to_an_error_status_too() {
-    let response =
-        answer_from(
-            "h.usher.invalid",
-            503,
-            &HeaderMap::new(),
-            bytes_of(20),
-            4,
-        )
+    let response = answer_from("h.usher.invalid", 503, &HeaderMap::new(), bytes_of(20), 4)
         .expect("a response");
     assert_eq!(response.status, 503);
     assert_eq!(response.body.len(), 5);
@@ -179,15 +165,15 @@ fn small_wire() -> WireRequest {
 
 #[test]
 fn the_answer_for_a_request_is_read_with_that_requests_limit() {
-    let response = answer_for(&small_wire(), 200, &HeaderMap::new(), bytes_of(20))
-        .expect("a response");
+    let response =
+        answer_for(&small_wire(), 200, &HeaderMap::new(), bytes_of(20)).expect("a response");
     assert_eq!(response.body.len(), 5);
 }
 
 #[test]
 fn the_answer_for_a_request_names_that_requests_host_when_the_read_fails() {
-    let err = answer_for(&small_wire(), 200, &HeaderMap::new(), Reset)
-        .expect_err("the read failed");
+    let err =
+        answer_for(&small_wire(), 200, &HeaderMap::new(), Reset).expect_err("the read failed");
     assert!(err.status().starts_with("files.usher.invalid: "), "{err}");
 }
 
