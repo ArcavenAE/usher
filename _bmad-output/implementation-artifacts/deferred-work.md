@@ -75,3 +75,6 @@
 - source_spec: `_bmad-output/planning-artifacts/epics.md`
   summary: the settings reference says that for conversations the VS Code extension starts, Claude Code reads only user, managed and `--settings` values. That launch context is not mapped yet, so the map's layers for it are not stated.
   evidence: the settings reference entry for `permissions.defaultMode`; story 1.9 maps the launch directories and is where the extension's launch context belongs.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the profile walk lists every name in a directory and sorts them before it checks the 64-file cap, and it does not count directories, so a directory that holds a very large number of names, or a very wide tree, costs time and memory before any cap applies. For a directory a person names on their own disk that costs only time.
+  evidence: before a git source lands, the walk counts every entry it lists, directories and files, and stops reading a directory once the count passes the cap. The number is set with the provisional file and profile limits when that source is built.
