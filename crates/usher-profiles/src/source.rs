@@ -406,16 +406,22 @@ fn check_directory(ctx: &Ctx, dir: &Path) -> Result<(), UsherError> {
 fn load_profile(dir: &Path, rules: &LoadRules) -> Result<Profile, UsherError> {
     let ctx = Ctx::new(dir);
     let files = walk(&ctx, dir)?;
-    if !files.iter().any(|f| f == "profile.toml") {
+    let Some(manifest_file) = files.iter().find(|f| f.rel == "profile.toml") else {
         return Err(ctx.refuse(
             "the profile holds profile.toml".to_string(),
             "profile.toml is missing".to_string(),
             "add a profile.toml",
         ));
-    }
+    };
     let mut total = 0u64;
     let manifest_path = dir.join("profile.toml");
-    let text = read_text(&ctx, &manifest_path, "profile.toml", &mut total)?;
+    let text = read_text(
+        &ctx,
+        &manifest_path,
+        "profile.toml",
+        &manifest_file.meta,
+        &mut total,
+    )?;
     let manifest = Manifest::parse(&text, &shown(&manifest_path))?;
 
     let mut used = vec!["profile.toml".to_string()];
@@ -449,7 +455,7 @@ fn load_profile(dir: &Path, rules: &LoadRules) -> Result<Profile, UsherError> {
             ));
         }
         let rel = format!("{id}/{}", rule.file_name);
-        if !files.contains(&rel) {
+        let Some(walked) = files.iter().find(|f| f.rel == rel) else {
             return Err(ctx.refuse(
                 format!(
                     "harness `{}` has its fragment file {}",
@@ -459,8 +465,14 @@ fn load_profile(dir: &Path, rules: &LoadRules) -> Result<Profile, UsherError> {
                 format!("{} is missing", display_name(&rel)),
                 "add the fragment file or remove the harness from profile.toml",
             ));
-        }
-        let text = read_text(&ctx, &dir.join(id).join(file_name), &rel, &mut total)?;
+        };
+        let text = read_text(
+            &ctx,
+            &dir.join(id).join(file_name),
+            &rel,
+            &walked.meta,
+            &mut total,
+        )?;
         let tree = fragment::parse(rule.format, &text).map_err(|why| {
             ctx.refuse(
                 format!("{}: valid {}", display_name(&rel), rule.format.label()),
@@ -491,7 +503,11 @@ fn load_profile(dir: &Path, rules: &LoadRules) -> Result<Profile, UsherError> {
 
     check_notes(&ctx, &manifest, &fragments)?;
 
-    let not_read = files.into_iter().filter(|f| !used.contains(f)).collect();
+    let not_read = files
+        .into_iter()
+        .map(|f| f.rel)
+        .filter(|f| !used.contains(f))
+        .collect();
     Ok(Profile {
         manifest,
         path: dir.to_path_buf(),
@@ -587,11 +603,18 @@ fn check_notes(
     Ok(())
 }
 
+/// One file the walk found: its path relative to the profile and the
+/// metadata the walk took of it.
+struct Walked {
+    rel: String,
+    meta: fs::Metadata,
+}
+
 /// Lists every file under `dir` as a `/`-separated path relative to it,
 /// sorted, refusing a symlink, a depth past the cap and a file count past the
 /// cap. Nothing is opened.
-fn walk(ctx: &Ctx, dir: &Path) -> Result<Vec<String>, UsherError> {
-    let mut files: Vec<String> = Vec::new();
+fn walk(ctx: &Ctx, dir: &Path) -> Result<Vec<Walked>, UsherError> {
+    let mut files: Vec<Walked> = Vec::new();
     let mut pending: Vec<(PathBuf, String, usize)> = vec![(dir.to_path_buf(), String::new(), 0)];
     while let Some((path, rel, depth)) = pending.pop() {
         let mut names = Vec::new();
@@ -636,17 +659,26 @@ fn walk(ctx: &Ctx, dir: &Path) -> Result<Vec<String>, UsherError> {
                         "remove files the profile does not need",
                     ));
                 }
-                files.push(child_rel);
+                files.push(Walked {
+                    rel: child_rel,
+                    meta,
+                });
             }
         }
     }
-    files.sort();
+    files.sort_by(|a, b| a.rel.cmp(&b.rel));
     Ok(files)
 }
 
 /// Reads one file as text under the per-file and total caps. The size is
 /// checked from metadata before the open and again on the bytes read.
-fn read_text(ctx: &Ctx, path: &Path, rel: &str, total: &mut u64) -> Result<String, UsherError> {
+fn read_text(
+    ctx: &Ctx,
+    path: &Path,
+    rel: &str,
+    _walked: &fs::Metadata,
+    total: &mut u64,
+) -> Result<String, UsherError> {
     let over_file = || {
         ctx.refuse(
             "a file in a profile is at most 1 MiB".to_string(),
@@ -707,7 +739,7 @@ fn same_file(checked: &fs::Metadata, opened: &fs::Metadata) -> bool {
 mod tests {
     use std::fs;
 
-    use super::same_file;
+    use super::{Ctx, read_text, same_file};
 
     #[test]
     fn two_different_files_are_not_the_same_file() {
@@ -724,5 +756,27 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         assert!(same, "a file is the same file as itself");
         assert!(!different, "two files with the same size are not one file");
+    }
+
+    #[test]
+    fn a_file_is_read_only_if_it_is_the_one_the_walk_listed() {
+        let dir = std::env::temp_dir().join(format!("usher-walked-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("create scratch");
+        let a = dir.join("a");
+        let b = dir.join("b");
+        fs::write(&a, "x").expect("write a");
+        fs::write(&b, "x").expect("write b");
+        let meta_a = fs::symlink_metadata(&a).expect("metadata a");
+        let meta_b = fs::symlink_metadata(&b).expect("metadata b");
+        let ctx = Ctx::new(&dir);
+        let mut total = 0;
+        let own = read_text(&ctx, &a, "a", &meta_a, &mut total);
+        let other = read_text(&ctx, &a, "a", &meta_b, &mut total);
+        let _ = fs::remove_dir_all(&dir);
+        assert!(own.is_ok(), "the file the walk listed is read");
+        assert!(
+            other.is_err(),
+            "a file whose identity differs from the walk's is refused"
+        );
     }
 }

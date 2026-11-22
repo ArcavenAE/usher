@@ -930,3 +930,197 @@ fn a_refusal_has_four_fields_and_names_the_profile_path() {
     }
     names(&err, dir.to_str().expect("utf-8 path"));
 }
+
+// Pins for rules the reader already holds: each test names the wrong reader it
+// fails. The root counts as the first level in every format.
+
+fn toml_profile(s: &Scratch, toml: &str) -> PathBuf {
+    let dir = s.profile("p");
+    s.write(
+        "p/profile.toml",
+        &with_harness("\n[harnesses.codex]\nversions = \">=0.160.0\"\n"),
+    );
+    s.write("p/codex/config.toml", toml);
+    dir
+}
+
+fn json_profile(s: &Scratch, json: &str) -> PathBuf {
+    let dir = s.profile("p");
+    s.write("p/claude-code/settings.json", json);
+    dir
+}
+
+#[test]
+fn toml_nesting_through_arrays_is_capped_at_the_same_depth() {
+    let s = Scratch::new();
+    // Root, then the array `a`, then 62 arrays inside it: 64 levels.
+    let deep = |inner: usize| format!("a = {}1{}\n", "[".repeat(inner + 1), "]".repeat(inner + 1));
+    let dir = toml_profile(&s, &deep(62));
+    must_load(&dir);
+    s.write("p/codex/config.toml", &deep(63));
+    names(&refusal(&dir), "config.toml");
+}
+
+#[test]
+fn toml_nesting_through_inline_tables_inside_an_array_is_capped() {
+    let s = Scratch::new();
+    // Root, the array `a`, then inline tables: 62 of them is 64 levels.
+    let deep = |tables: usize| format!("a = [{}1{}]\n", "{b=".repeat(tables), "}".repeat(tables));
+    let dir = toml_profile(&s, &deep(62));
+    must_load(&dir);
+    s.write("p/codex/config.toml", &deep(63));
+    names(&refusal(&dir), "config.toml");
+}
+
+#[test]
+fn toml_nesting_through_tables_under_an_array_of_tables_is_capped() {
+    let s = Scratch::new();
+    // Root, the array `x`, its element, then `k` tables: 61 of them is 64 levels.
+    let deep = |keys: usize| format!("[[x]]\n[x.{}]\nleaf = 1\n", vec!["k"; keys].join("."));
+    let dir = toml_profile(&s, &deep(61));
+    must_load(&dir);
+    s.write("p/codex/config.toml", &deep(62));
+    names(&refusal(&dir), "config.toml");
+}
+
+#[test]
+fn toml_nesting_through_inline_tables_is_capped() {
+    let s = Scratch::new();
+    // Root, then the inline table `a` and 62 inside it: 64 levels.
+    let deep = |tables: usize| {
+        format!(
+            "a = {}1{}\n",
+            "{b=".repeat(tables + 1),
+            "}".repeat(tables + 1)
+        )
+    };
+    let dir = toml_profile(&s, &deep(62));
+    must_load(&dir);
+    s.write("p/codex/config.toml", &deep(63));
+    names(&refusal(&dir), "config.toml");
+}
+
+#[test]
+fn json_nesting_through_arrays_is_capped() {
+    let s = Scratch::new();
+    // The object is level 1, so 63 arrays reach 64 levels.
+    let deep = |arrays: usize| format!("{{\"a\": {}1{}}}", "[".repeat(arrays), "]".repeat(arrays));
+    let dir = json_profile(&s, &deep(63));
+    must_load(&dir);
+    s.write("p/claude-code/settings.json", &deep(64));
+    names(&refusal(&dir), "settings.json");
+}
+
+#[test]
+fn a_json_key_repeated_through_an_escape_is_refused_naming_the_key() {
+    let s = Scratch::new();
+    let dir = json_profile(&s, r#"{"dupkey_y": 1, "dupkey_z": 2}"#);
+    must_load(&dir);
+    // `\u0064` is a `d`: the two spellings are one key.
+    s.write(
+        "p/claude-code/settings.json",
+        r#"{"dupkey_y": 1, "\u0064upkey_y": 2}"#,
+    );
+    names(&refusal(&dir), "dupkey_y");
+}
+
+#[test]
+fn text_after_the_json_value_is_refused() {
+    let s = Scratch::new();
+    let dir = json_profile(&s, r#"{"a": 1}"#);
+    must_load(&dir);
+    s.write("p/claude-code/settings.json", r#"{"a": 1} {"b": 2}"#);
+    names(&refusal(&dir), "settings.json");
+}
+
+#[test]
+fn a_bare_word_is_not_a_json_value() {
+    let s = Scratch::new();
+    let dir = json_profile(&s, r#"{"a": true, "b": null, "c": -1.5e3, "d": 0}"#);
+    must_load(&dir);
+    for bad in [
+        r#"{"a": nope}"#,
+        r#"{"a": True}"#,
+        r#"{"a": 01}"#,
+        r#"{"a": NaN}"#,
+    ] {
+        s.write("p/claude-code/settings.json", bad);
+        names(&refusal(&dir), "settings.json");
+    }
+}
+
+#[test]
+fn toml_string_values_are_kept_as_written_and_a_codex_mcp_entry_reads_them() {
+    let s = Scratch::new();
+    let dir = toml_profile(
+        &s,
+        "model = \"gpt-5\"\n[mcp_servers.github]\ncommand = \"github-mcp\"\n",
+    );
+    let profiles = must_load(&dir);
+    let fragment = profiles[0].fragment("codex").expect("fragment");
+    assert_eq!(fragment.string_at("model").as_deref(), Some("gpt-5"));
+    let entry = profiles[0].mcp_entry("codex", "github").expect("entry");
+    assert_eq!(entry.origin(), McpOrigin::Fragment);
+    assert_eq!(entry.field_str("command"), Some("github-mcp"));
+}
+
+#[test]
+fn a_yaml_anchor_or_tag_on_a_mapping_or_a_sequence_is_refused() {
+    let s = Scratch::new();
+    let dir = yaml_profile(&s, "a:\n  b: 1\n  c:\n    - 1\n");
+    must_load(&dir);
+    for bad in [
+        "a: &x\n  b: 1\n",
+        "a: &y\n  - 1\n",
+        "a: !!map\n  b: 1\n",
+        "a: !!seq\n  - 1\n",
+    ] {
+        s.write("p/goose/config.yaml", bad);
+        names(&refusal(&dir), "config.yaml");
+    }
+}
+
+#[test]
+fn a_yaml_file_holding_only_a_null_reads_as_an_empty_mapping() {
+    let s = Scratch::new();
+    let dir = yaml_profile(&s, "a: 1\n");
+    must_load(&dir);
+    for empty in ["~\n", "null\n"] {
+        s.write("p/goose/config.yaml", empty);
+        let profiles = must_load(&dir);
+        assert!(leaves(&profiles[0], "goose").is_empty());
+    }
+}
+
+#[test]
+fn a_symlink_entry_under_profiles_is_refused_naming_it() {
+    let s = Scratch::new();
+    let repo = collection(&s, 2);
+    must_load(&repo);
+    symlink(
+        s.path().join("repo/profiles/team-0"),
+        s.path().join("repo/profiles/ghost"),
+    )
+    .expect("symlink");
+    names(&refusal(&repo), "ghost");
+}
+
+// A collection holds at least one profile directory.
+
+#[test]
+fn an_empty_profiles_directory_is_refused_naming_the_directory() {
+    let s = Scratch::new();
+    fs::create_dir_all(s.path().join("repo/profiles")).expect("mkdir");
+    let err = refusal(&s.path().join("repo"));
+    names(&err, "no profile directory");
+    names(&err, &s.path().join("repo/profiles").to_string_lossy());
+}
+
+#[test]
+fn a_profiles_directory_holding_only_files_is_refused_naming_the_directory() {
+    let s = Scratch::new();
+    s.write("repo/profiles/readme.txt", "not a profile");
+    let err = refusal(&s.path().join("repo"));
+    names(&err, "no profile directory");
+    names(&err, &s.path().join("repo/profiles").to_string_lossy());
+}
