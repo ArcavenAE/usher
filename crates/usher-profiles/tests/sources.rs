@@ -271,7 +271,9 @@ fn a_repeated_key_in_a_toml_fragment_is_refused() {
         &with_harness("\n[harnesses.codex]\nversions = \">=0.160.0\"\n"),
     );
     s.write("p/codex/config.toml", "model = \"a\"\nmodel = \"b\"\n");
-    names(&refusal(&dir), "config.toml");
+    let err = refusal(&dir);
+    names(&err, "config.toml");
+    names(&err, "duplicate key model");
 }
 
 #[test]
@@ -293,7 +295,9 @@ fn a_repeated_key_in_the_manifest_is_refused() {
     // `name` is a top-level key the manifest allows, so this reaches the
     // repeated-key rule and not the unknown-key rule.
     s.write("p/profile.toml", &format!("name = \"again\"\n{MANIFEST}"));
-    names(&refusal(&dir), "profile.toml");
+    let err = refusal(&dir);
+    names(&err, "profile.toml");
+    names(&err, "duplicate key name");
 }
 
 // YAML: one document, no anchors, aliases or tags, string keys only.
@@ -342,6 +346,23 @@ fn two_yaml_documents_are_refused() {
 fn a_yaml_key_that_is_not_a_string_is_refused() {
     let s = Scratch::new();
     names(&refusal(&yaml_profile(&s, "1: one\n")), "config.yaml");
+}
+
+// A fragment is a mapping of keys at its top level.
+
+#[test]
+fn a_json_fragment_whose_top_level_is_an_array_is_refused_naming_the_file() {
+    let s = Scratch::new();
+    let dir = s.profile("p");
+    s.write("p/claude-code/settings.json", r#"["a", "b"]"#);
+    names(&refusal(&dir), "settings.json");
+}
+
+#[test]
+fn a_yaml_fragment_whose_top_level_is_a_scalar_is_refused_naming_the_file() {
+    let s = Scratch::new();
+    let dir = yaml_profile(&s, "just some text\n");
+    names(&refusal(&dir), "config.yaml");
 }
 
 // Nesting: 64 levels read, 65 refused, in every format.

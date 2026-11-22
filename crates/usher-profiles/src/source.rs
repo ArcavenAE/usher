@@ -662,6 +662,10 @@ fn read_text(ctx: &Ctx, path: &Path, rel: &str, total: &mut u64) -> Result<Strin
         return Err(over_file());
     }
     let file = File::open(path).map_err(|err| ctx.io("file", path, &err))?;
+    let opened = file.metadata().map_err(|err| ctx.io("file", path, &err))?;
+    if !same_file(&meta, &opened) {
+        return Err(symlink_refusal(ctx, path));
+    }
     let mut bytes = Vec::new();
     file.take(FILE_CAP + 1)
         .read_to_end(&mut bytes)
@@ -684,4 +688,39 @@ fn read_text(ctx: &Ctx, path: &Path, rel: &str, total: &mut u64) -> Result<Strin
             "save the file as UTF-8",
         )
     })
+}
+
+/// Whether the file that was opened is the one the walk checked. The walk
+/// refuses a symlink with `symlink_metadata` and the open follows one, so a
+/// file or a parent directory swapped for a symlink between the two would be
+/// read. Comparing the device and inode of the opened file with the checked
+/// one closes that race with std alone.
+fn same_file(checked: &fs::Metadata, opened: &fs::Metadata) -> bool {
+    // Stub: the comparison is written in the next change.
+    let _ = (checked, opened);
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::same_file;
+
+    #[test]
+    fn two_different_files_are_not_the_same_file() {
+        let dir = std::env::temp_dir().join(format!("usher-same-file-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("create scratch");
+        let a = dir.join("a");
+        let b = dir.join("b");
+        fs::write(&a, "x").expect("write a");
+        fs::write(&b, "x").expect("write b");
+        let meta_a = fs::symlink_metadata(&a).expect("metadata a");
+        let meta_b = fs::symlink_metadata(&b).expect("metadata b");
+        let same = same_file(&meta_a, &meta_a);
+        let different = same_file(&meta_a, &meta_b);
+        let _ = fs::remove_dir_all(&dir);
+        assert!(same, "a file is the same file as itself");
+        assert!(!different, "two files with the same size are not one file");
+    }
 }
