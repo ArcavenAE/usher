@@ -1124,3 +1124,45 @@ fn a_profiles_directory_holding_only_files_is_refused_naming_the_directory() {
     names(&err, "no profile directory");
     names(&err, &s.path().join("repo/profiles").to_string_lossy());
 }
+
+// Two checks on the read path that no other test reaches.
+
+#[test]
+fn a_fragment_that_is_a_socket_is_refused_as_not_a_regular_file() {
+    let s = Scratch::new();
+    let dir = s.profile("p");
+    // A socket path is capped near 104 bytes, so the socket is bound at a short
+    // path and moved to where the fragment is.
+    let short = std::env::temp_dir().join(format!(
+        "us{}-{}.sock",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::SeqCst)
+    ));
+    let listener = std::os::unix::net::UnixListener::bind(&short).expect("bind a socket");
+    let target = dir.join("claude-code/settings.json");
+    fs::remove_file(&target).expect("remove the regular fragment");
+    fs::rename(&short, &target).expect("move the socket into the profile");
+    let err = refusal(&dir);
+    drop(listener);
+    names(&err, "not a regular file");
+}
+
+#[test]
+fn a_fragment_over_one_mebibyte_is_refused_from_its_size_before_it_is_opened() {
+    let s = Scratch::new();
+    let dir = s.profile("p");
+    let target = s.write(
+        "p/claude-code/settings.json",
+        &format!("{{\"pad\": \"{}\"}}", "x".repeat(1024 * 1024)),
+    );
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o000)).expect("chmod");
+    if fs::File::open(&target).is_ok() {
+        // Running as root: a mode-000 file still opens, so the order of the two
+        // checks cannot be seen here.
+        eprintln!("skipped: this account can open a mode 000 file");
+        return;
+    }
+    let err = refusal(&dir);
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).expect("chmod back");
+    names(&err, "over 1 MiB");
+}
