@@ -11,6 +11,6 @@ turns reports into compliance checks and recommendations.
 Wakatime + enterprise configuration management, for AI harnesses.
 Invisible after install.
 
-**Status:** design phase — see [charter.md](charter.md). Private for now.
+**Status:** design phase, see [charter.md](charter.md). This repository is public.
 
-Part of the [aae-orc](https://github.com/ArcavenAE/aae-orc) fleet.
+Part of the ArcavenAE fleet of tools for agentic engineering.

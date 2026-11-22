@@ -1,0 +1,13 @@
+[package]
+name = "usher-probes"
+description = "Re-runnable harness probes: run a real harness under a scratch home, control first, and print the result as a fragment for harness knowledge."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+usher-testkit.workspace = true
+
+[lints]
+workspace = true
