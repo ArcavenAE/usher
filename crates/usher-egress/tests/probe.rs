@@ -163,28 +163,42 @@ fn small_wire() -> WireRequest {
     transport.sent().remove(0)
 }
 
+fn parts(status: u16, location: Option<&str>) -> ureq::http::response::Parts {
+    let mut builder = ureq::http::Response::builder().status(status);
+    if let Some(location) = location {
+        builder = builder.header("location", location);
+    }
+    builder.body(()).expect("a response").into_parts().0
+}
+
 #[test]
 fn the_answer_for_a_request_is_read_with_that_requests_limit() {
     let response =
-        answer_for(&small_wire(), 200, &HeaderMap::new(), bytes_of(20)).expect("a response");
+        answer_for(&small_wire(), &parts(200, None), bytes_of(20)).expect("a response");
     assert_eq!(response.body.len(), 5);
 }
 
 #[test]
 fn the_answer_for_a_request_names_that_requests_host_when_the_read_fails() {
     let err =
-        answer_for(&small_wire(), 200, &HeaderMap::new(), Reset).expect_err("the read failed");
+        answer_for(&small_wire(), &parts(200, None), Reset).expect_err("the read failed");
     assert!(err.status().starts_with("files.usher.invalid: "), "{err}");
 }
 
 #[test]
-fn the_answer_for_a_request_carries_the_location_header() {
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "location",
-        HeaderValue::from_static("https://assets.usher.invalid/x"),
-    );
-    let response = answer_for(&small_wire(), 302, &headers, &b""[..]).expect("a response");
+fn the_answer_for_a_request_carries_the_status_of_its_parts() {
+    let response = answer_for(&small_wire(), &parts(503, None), &b""[..]).expect("a response");
+    assert_eq!(response.status, 503);
+}
+
+#[test]
+fn the_answer_for_a_request_carries_the_location_header_of_its_parts() {
+    let response = answer_for(
+        &small_wire(),
+        &parts(302, Some("https://assets.usher.invalid/x")),
+        &b""[..],
+    )
+    .expect("a response");
     assert_eq!(
         response.location.as_deref(),
         Some("https://assets.usher.invalid/x")

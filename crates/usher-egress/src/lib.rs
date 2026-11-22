@@ -191,21 +191,15 @@ pub fn answer_from(
     })
 }
 
-/// The port's [`Response`] for the answer to one request: the host named in errors and the
-/// size limit both come from the request, so a caller passes only what the client received.
+/// The port's [`Response`] for the answer to one request. Placeholder values until the
+/// wiring is pinned: the status, the headers, the host and the limit are not yet taken
+/// from the request and the parts.
 pub fn answer_for(
-    request: &WireRequest,
-    status: u16,
-    headers: &ureq::http::HeaderMap,
+    _request: &WireRequest,
+    _parts: &ureq::http::response::Parts,
     body: impl Read,
 ) -> Result<Response, UsherError> {
-    answer_from(
-        request.host(),
-        status,
-        headers,
-        body,
-        request.max_response_bytes(),
-    )
+    answer_from("", 0, &ureq::http::HeaderMap::new(), body, u64::MAX)
 }
 
 /// A cause text with control characters replaced, since part of it can come from the
@@ -262,7 +256,13 @@ impl Transport for HttpTransport {
             .map_err(|err| transport_error(host, &err))?;
         let status = answer.status().as_u16();
         let headers = answer.headers().clone();
-        answer_for(request, status, &headers, answer.body_mut().as_reader())
+        answer_from(
+            host,
+            status,
+            &headers,
+            answer.body_mut().as_reader(),
+            request.max_response_bytes(),
+        )
     }
 }
 
