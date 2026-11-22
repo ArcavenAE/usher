@@ -345,6 +345,13 @@ fn load_directory(root: &Path, rules: &LoadRules) -> Result<Vec<Profile>, UsherE
         }
     }
     names.sort();
+    if names.is_empty() {
+        return Err(ctx.refuse(
+            "a collection holds at least one profile directory".to_string(),
+            format!("{} holds no profile directory", shown(&profiles_dir)),
+            "add profiles/<name>/profile.toml, or name a profile directory",
+        ));
+    }
     if names.len() > PROFILES_CAP {
         return Err(ctx.refuse(
             format!("a collection holds at most {PROFILES_CAP} profiles"),
@@ -676,7 +683,7 @@ fn read_text(
     ctx: &Ctx,
     path: &Path,
     rel: &str,
-    _walked: &fs::Metadata,
+    walked: &fs::Metadata,
     total: &mut u64,
 ) -> Result<String, UsherError> {
     let over_file = || {
@@ -686,20 +693,19 @@ fn read_text(
             "shrink the file",
         )
     };
-    let meta = fs::symlink_metadata(path).map_err(|err| ctx.io("file", path, &err))?;
-    if !meta.is_file() {
+    if !walked.is_file() {
         return Err(ctx.refuse(
             "a profile file is a regular file".to_string(),
             format!("{} is not a regular file", display_name(rel)),
             "replace it with a regular file",
         ));
     }
-    if meta.len() > FILE_CAP {
+    if walked.len() > FILE_CAP {
         return Err(over_file());
     }
     let file = File::open(path).map_err(|err| ctx.io("file", path, &err))?;
     let opened = file.metadata().map_err(|err| ctx.io("file", path, &err))?;
-    if !same_file(&meta, &opened) {
+    if !same_file(walked, &opened) {
         return Err(symlink_refusal(ctx, path));
     }
     let mut bytes = Vec::new();
@@ -728,9 +734,10 @@ fn read_text(
 
 /// Whether the file that was opened is the one the walk checked. The walk
 /// refuses a symlink with `symlink_metadata` and the open follows one, so a
-/// file or a parent directory swapped for a symlink between the two would be
-/// read. Comparing the device and inode of the opened file with the checked
-/// one closes that race with std alone.
+/// file, or a parent directory, swapped for a symlink after the walk listed it
+/// would be read. Comparing the device and inode of the opened file with the
+/// metadata the walk took closes that race with std alone. A swap that happens
+/// before the walk reaches the entry is the walk's own symlink refusal.
 fn same_file(checked: &fs::Metadata, opened: &fs::Metadata) -> bool {
     checked.dev() == opened.dev() && checked.ino() == opened.ino()
 }

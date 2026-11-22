@@ -305,7 +305,16 @@ fn toml_item(item: &Item, depth: usize) -> Result<Node, String> {
     match item {
         Item::Table(table) => toml_table(table, depth),
         Item::Value(value) => toml_value(value, depth),
-        Item::ArrayOfTables(_) | Item::None => Ok(Node::Leaf(None)),
+        Item::ArrayOfTables(tables) => {
+            if depth > MAX_DEPTH {
+                return Err(too_deep());
+            }
+            for table in tables {
+                toml_table(table, depth + 1)?;
+            }
+            Ok(Node::Leaf(None))
+        }
+        Item::None => Ok(Node::Leaf(None)),
     }
 }
 
@@ -321,6 +330,15 @@ fn toml_value(value: &Value, depth: usize) -> Result<Node, String> {
                 entries.push((key.to_string(), toml_value(inner, depth + 1)?));
             }
             Ok(Node::Object(entries))
+        }
+        Value::Array(items) => {
+            if depth > MAX_DEPTH {
+                return Err(too_deep());
+            }
+            for inner in items {
+                toml_value(inner, depth + 1)?;
+            }
+            Ok(Node::Leaf(None))
         }
         _ => Ok(Node::Leaf(None)),
     }
