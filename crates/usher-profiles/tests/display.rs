@@ -395,3 +395,48 @@ fn a_quoted_segment_that_needs_its_quotes_and_holds_a_bidi_control_is_refused_fo
         err.status()
     );
 }
+
+// U+061C ARABIC LETTER MARK is in Unicode's Bidi_Control property with the
+// other direction controls, so it is escaped like them.
+#[test]
+fn the_arabic_letter_mark_is_written_as_an_uppercase_u_escape() {
+    let shown = display_name("a\u{061c}b");
+    assert_eq!(shown, "a\\u061Cb");
+    assert!(!shown.contains('\u{061c}'));
+    // Control: the neighbours of U+061C stay as written.
+    for n in [0x061B, 0x061D] {
+        let c = char::from_u32(n).expect("a char");
+        assert_eq!(display_name(&c.to_string()), c.to_string());
+    }
+}
+
+#[test]
+fn a_version_holding_the_arabic_letter_mark_is_refused_and_shown_escaped() {
+    let err = refusal(&VALID.replace("2026.11", "v\\u061Cb"));
+    for value in [err.step(), err.check(), err.status(), err.next_action()] {
+        assert!(!value.contains('\u{061c}'), "a raw U+061C in {value:?}");
+    }
+    assert!(
+        err.check().contains("v\\u061Cb") || err.status().contains("v\\u061Cb"),
+        "{} / {}",
+        err.check(),
+        err.status()
+    );
+    assert!(err.check().contains("version"), "{}", err.check());
+}
+
+#[test]
+fn a_note_key_segment_holding_the_arabic_letter_mark_is_refused_and_shown_escaped() {
+    let err = refusal(&format!(
+        "{VALID}\n[notes]\n\"claude-code:a.b\\u061Cc\" = \"why\"\n"
+    ));
+    for value in [err.step(), err.check(), err.status(), err.next_action()] {
+        assert!(!value.contains('\u{061c}'), "a raw U+061C in {value:?}");
+    }
+    assert!(
+        err.check().contains("b\\u061Cc") || err.status().contains("b\\u061Cc"),
+        "{} / {}",
+        err.check(),
+        err.status()
+    );
+}
