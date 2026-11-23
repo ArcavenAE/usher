@@ -8,6 +8,7 @@ members = [
     "crates/usher-egress",
     "crates/usher-knowledge",
     "crates/usher-probes",
+    "crates/usher-profiles",
     "crates/usher-store",
     "crates/usher-testkit",
 ]
