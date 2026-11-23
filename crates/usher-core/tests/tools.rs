@@ -163,7 +163,7 @@ fn recorded(installer: Installer, package: &'static str) -> Option<Recorded> {
 }
 
 #[test]
-fn the_tools_list_is_exactly_the_twelve_ruled_entries_in_order() {
+fn the_tools_list_is_exactly_the_eleven_ruled_entries_in_order() {
     let entry = |name, install| ToolSpec { name, install };
     assert_eq!(
         tool_specs(),
@@ -183,7 +183,6 @@ fn the_tools_list_is_exactly_the_twelve_ruled_entries_in_order() {
             entry("kos", recorded(Installer::Brew, "arcavenae/tap/kos")),
             entry("aq", None),
             entry("ax", None),
-            entry("akey", None),
             entry("tmux-cmc", None),
             entry("mise", recorded(Installer::Brew, "mise")),
         ]

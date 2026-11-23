@@ -398,7 +398,7 @@ fn a_formula_in_two_taps_is_an_error_row_with_the_whole_ruled_line() {
     assert_eq!(
         row.error,
         Some(format!(
-            "{}: installed from 2 taps, acme/tools and other/extras",
+            "{}: found in 2 taps, acme/tools and other/extras",
             rig.brew().prefix.join("Cellar/jq").display()
         ))
     );
@@ -416,7 +416,7 @@ fn a_formula_in_three_taps_lists_them_joined_by_commas_and_an_and_before_the_las
     assert_eq!(
         row.error,
         Some(format!(
-            "{}: installed from 3 taps, acme/a, acme/b and acme/c",
+            "{}: found in 3 taps, acme/a, acme/b and acme/c",
             rig.brew().prefix.join("Cellar/jq").display()
         ))
     );
@@ -778,7 +778,7 @@ fn a_name_whose_only_readings_are_errors_prints_those_rows_and_no_missing_row() 
 
 // ---- a tool with no recorded installer ----
 
-const NO_INSTALLER_NAMES: [&str; 5] = ["director", "aq", "ax", "akey", "tmux-cmc"];
+const NO_INSTALLER_NAMES: [&str; 4] = ["director", "aq", "ax", "tmux-cmc"];
 
 fn no_installer_row(name: &str) -> ToolRow {
     ToolRow {

@@ -67,7 +67,6 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         entry("kos", Installer::Brew, "arcavenae/tap/kos"),
         unrecorded("aq"),
         unrecorded("ax"),
-        unrecorded("akey"),
         unrecorded("tmux-cmc"),
         entry("mise", Installer::Brew, "mise"),
     ]

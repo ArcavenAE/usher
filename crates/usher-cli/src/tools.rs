@@ -154,9 +154,9 @@ pub fn read_brew(spec: &ToolSpec, paths: &InstallerPaths) -> Vec<ToolRow> {
         return vec![error_row(
             spec.name,
             "brew",
-            "installed from more than one tap",
+            "found in more than one tap",
             format!(
-                "{}: installed from {} taps, {}",
+                "{}: found in {} taps, {}",
                 cellar.display(),
                 taps.len(),
                 list_with_and(&taps)
