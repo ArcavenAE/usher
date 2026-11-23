@@ -219,7 +219,9 @@ fn a_bidi_format_control_is_written_as_an_uppercase_u_escape() {
         assert_eq!(display_name(&c.to_string()), format!("\\u{n:04X}"));
     }
     // Control: the neighbours of each range stay as written.
-    for n in [0x200C, 0x200D, 0x2010, 0x2029, 0x202F, 0x2065, 0x206A] {
+    for n in [
+        0x061B, 0x061D, 0x200C, 0x200D, 0x2010, 0x2029, 0x202F, 0x2065, 0x206A,
+    ] {
         let c = char::from_u32(n).expect("a char");
         assert_eq!(display_name(&c.to_string()), c.to_string());
     }
