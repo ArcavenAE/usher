@@ -229,16 +229,16 @@ design can express backend-conditional rules rather than flat assertions.
   upgrade is the precedence order and the allowlist default, not the
   variable names, which appear stable.
 - **Two of our own artifacts are already wrong** in ways this corrects: the
-  peu course doc describes `ENABLE_PROMPT_CACHING_1H` as a pay-per-token
+  training course repository doc describes `ENABLE_PROMPT_CACHING_1H` as a pay-per-token
   opt-in when it is unconditional and provider-independent, and neither that
-  doc nor the peu doctor mentions the subscription allowlist at all. Any
+  doc nor the training course repository doctor mentions the subscription allowlist at all. Any
   usher content sourced from them inherits both errors.
 
 ## Sources
 
 - Installed binary 2.1.217 (see *Provenance*) — decision function, provider
   chain, source classifier, query-source literals, gate default.
-- `peu/14_Claude_Code_Deep_Dive/claude-caching-and-limits.md` in the infra orchestrator: the
+- `14_Claude_Code_Deep_Dive/claude-caching-and-limits.md` in the training course repository: the
   2x/1.25x write-premium figures and the Bedrock model/region caveat.
-- `peu/doctor.just` in the infra orchestrator: existing checks, and the Mantle pairing comment
+- `doctor.just` in the training course repository: existing checks, and the Mantle pairing comment
   confirming both configurations are in use.
