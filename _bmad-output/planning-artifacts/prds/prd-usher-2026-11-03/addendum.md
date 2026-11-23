@@ -154,15 +154,15 @@ Configuration writes on the person's confirmation are within it.
 
 The boundary rule (operator 2026-11-03): "The key to understanding the
 differences and relationship is objectives, not medium. usher helps you
-install & run it, critic measures & competes/judges it, and stagekeeper
+install & run it, critic measures & competes/judges it, and the fleet watcher
 detects & recovers from faults." The later ruling above refines usher's
 part. All three components read files, watch processes and run control
 loops, so a boundary drawn on what a component touches is wrong.
 
 | Requirement | Shared medium | Why it is usher's | Where it would stop being usher's |
 |---|---|---|---|
-| FR-10 process table | live processes | shows which sessions run an old version, so the person can re-find their seat | deciding a session is wedged and restarting it (stagekeeper) |
-| FR-13 watcher | file changes | tells the person their settings moved | deriving fault conditions from session activity (stagekeeper) |
+| FR-10 process table | live processes | shows which sessions run an old version, so the person can re-find their seat | deciding a session is wedged and restarting it (the fleet watcher) |
+| FR-13 watcher | file changes | tells the person their settings moved | deriving fault conditions from session activity (the fleet watcher) |
 | FR-26 observed effects | session records | a fact about the person's own seat, never combined across backends | scoring or ranking configurations against each other (critic) |
 | FR-15 comparison | settings sets | shows differences so a person can adopt a setting | declaring a winner (critic); usher leaves the judgment to people |
 

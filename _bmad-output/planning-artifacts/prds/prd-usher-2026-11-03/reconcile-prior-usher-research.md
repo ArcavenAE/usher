@@ -81,4 +81,4 @@ Status values: **missing** (no current document carries it), **shrunk** (carried
 | Launch-grade sections (license, public support, release process) | market:758-764 | Deferred to the going-public decision (PRD §0, Q11). Gaps 31 and 32 ask whether the front-door and contributor items should ride with that decision. |
 | Windows client | prior-art:415-416, 508 | Deferred to the architecture platform choice (Q14, aae-orc-1vgfk). |
 | Re-hosting or repackaging installers; managing dotfiles | prior-art:244-246, 532-536 | Out of the product (brief Scope; PRD §6). Settings writes on confirmation stay in scope (PRD addendum §6). |
-| Recovering a wedged session | orc-index:11 | Stagekeeper's objective (PRD §6). |
+| Recovering a wedged session | orc-index:11 | The fleet watcher's objective (PRD §6). |

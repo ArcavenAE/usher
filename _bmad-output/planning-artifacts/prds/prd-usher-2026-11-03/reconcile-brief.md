@@ -31,7 +31,7 @@ Dispositions: **PRD** (add to prd.md), **PA** (add to the PRD addendum), or
 | 1 | Permissions friction, the lead problem, has no feature | High | PRD |
 | 2 | Re-finding a seat, and "quiet, invisible after install", lost; PRD is pull-only | High | PRD |
 | 3 | Instance model (N affiliations, scope) dropped while the v1 collector makes it live | High | PRD + PA |
-| 4 | Sibling overlap table dropped; collector meets critic, process table meets stagekeeper | Medium | PA + PRD Q |
+| 4 | Sibling overlap table dropped; collector meets critic, process table meets the fleet watcher | Medium | PA + PRD Q |
 | 5 | Recommendations from the person's own harness records dropped | Medium | PRD or ruling |
 | 6 | Three brief success criteria dropped without a ruling | Medium | PRD (SM) or ruling |
 | 7 | Prior-art rulings and the template seam obligation dropped | Medium | PA |
@@ -132,7 +132,7 @@ affiliation, record that as a ruling and an assumption instead.
 **Input.** B:205-209 and the table at BA:72-80: sideshow (install and
 five-layer doctor; signed packs overlap the ripple substrate), marvel (seat
 settings, measurement fabric), wardrobe (`constraints.permissions` and
-`policy.sh` render), stagekeeper (read-only session watcher), critic (fleet
+`policy.sh` render), the fleet watcher (read-only session watcher), critic (fleet
 aggregation), beadle (name), aq/ax (install and update posture belongs to
 usher, not a self-updater).
 
@@ -140,12 +140,12 @@ usher, not a self-updater).
 but drops what each overlap is. Two overlaps became sharper after rulings:
 the v1 light collector's cross-host query (FR-34) is what critic is chartered
 for ("fleet aggregation"), and the process table (FR-8) is close to
-stagekeeper's session watcher. Install health (FR-7) overlaps sideshow's
+the fleet watcher's session watcher. Install health (FR-7) overlaps sideshow's
 doctor, and wardrobe renders permissions, which matters once gap 1 lands.
 
 **Disposition: PA + PRD.** Copy the BA:72-80 table into the PRD addendum. Add
 an open question: is the light collector usher's or critic's, and is the
-process table usher's or stagekeeper's? Add to FR-7 that usher reads
+process table usher's or the fleet watcher's? Add to FR-7 that usher reads
 sideshow's doctor output rather than re-checking packs, per "drives, does not
 re-host" (B:89-90).
 
