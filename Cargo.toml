@@ -30,7 +30,7 @@ minisign-verify = "=0.3.0"
 ed25519-dalek = "=3.0.0"
 blake2 = "=0.11.0"
 rusqlite = { version = "=0.41.1", features = ["bundled"] }
-nix = { version = "=0.31.3", default-features = false, features = ["user"] }
+nix = { version = "=0.31.3", default-features = false, features = ["user", "hostname"] }
 ureq = { version = "=3.5.1", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 usher-testkit = { path = "crates/usher-testkit", version = "0.0.0" }

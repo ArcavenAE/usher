@@ -82,6 +82,15 @@
   summary: the harness can raise a settings error for a whole file when one value fails its schema; the reader does not run the schema, so the other keys in that file keep their rows and the file reads as readable.
   evidence: the vendor's settings page says a value the schema rejects can raise a settings error for the file; a later story that models it needs a probe that shows which values are rejected, and a status for a file the harness refuses.
 - source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the map verb parses the reader's printed key path back into segments to store the JSON array of segments. A `segments` field on the reading in the port would drop the round trip.
+  evidence: the printed path quotes every segment that holds a dot, a quote or whitespace, so the split is unambiguous and two reds pin it; a field on the port types is a change to the reader's interface, which the reader's review round had already closed.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: in the map reader, a sensitive list entry returns before the broken-layer note is added, so a sensitive list key under an unreadable layer carries no "more entries may apply". No seeded list key is sensitive today, so no reading is affected yet.
+  evidence: the review of the reader PR read the sensitive-entry branch of the list merge, which pushes its row before the note is joined; a later seed that marks a list key sensitive needs the note added there, with its own red.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: two unreadable files in one layer, such as the repository root's local file and the launch directory's local file, would each add a clause, so the note would name that layer twice.
+  evidence: the note builds one clause per unreadable source, and sources of one layer are not merged first; the not-read items name each file by path, so the note could name each layer once.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
   summary: the first change that copies a real codex home with the copy in `usher-probes` must create the copy root with mode 0700 and delete it on drop, and pin both with tests, because the copy holds whatever tokens `config.toml` carries for its lifetime.
   evidence: the probe crate's copy function makes a directory under the scratch root with the default mode; probes never copy a real home, so nothing exercises it yet. The first caller is the codex map story.
 - source_spec: `_bmad-output/planning-artifacts/epics.md`
