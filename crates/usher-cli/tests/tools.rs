@@ -1014,7 +1014,7 @@ fn the_scan_lets_an_error_status_call_through_in_a_file_that_runs_no_command() {
 }
 
 #[test]
-fn no_file_in_the_cli_or_core_source_runs_a_process_except_the_hostname_lookup() {
+fn no_file_in_the_cli_or_core_source_runs_a_process() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut files = Vec::new();
     for relative in ["src", "../usher-core/src", "../usher/src"] {
@@ -1032,9 +1032,6 @@ fn no_file_in_the_cli_or_core_source_runs_a_process_except_the_hostname_lookup()
     }
     for file in &files {
         let text = fs::read_to_string(file).expect("a readable file");
-        if *file == manifest.join("src/inventory.rs") {
-            continue;
-        }
         assert!(
             forbidden_forms(&text).is_empty(),
             "{} runs a process: {:?}",
@@ -1044,15 +1041,14 @@ fn no_file_in_the_cli_or_core_source_runs_a_process_except_the_hostname_lookup()
     }
 }
 
+/// The host name now comes from the system call, so `inventory.rs` holds no process spawn
+/// and no file is exempt from the scan above.
 #[test]
-fn the_one_exempt_file_still_holds_exactly_its_hostname_spawn() {
+fn the_inventory_source_holds_no_hostname_spawn_any_more() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let text = fs::read_to_string(manifest.join("src/inventory.rs")).expect("inventory.rs");
-    assert_eq!(text.matches("Command::new").count(), 1);
-    assert_eq!(text.matches(".output(").count(), 1);
-    for form in [".spawn(", ".exec(", "CommandExt", "process::{"] {
-        assert!(!text.contains(form), "the exemption does not cover {form}");
-    }
+    assert_eq!(text.matches("Command::new").count(), 0);
+    assert_eq!(text.matches(".output(").count(), 0);
 }
 
 // ---- the observation invariant covers installer state ----
