@@ -23,11 +23,11 @@ development order must not shape the product description),
 than by its objective).
 
 Sources swept: `_kos/ideas/usher.md`, `repos.yaml`, `CLAUDE.md`,
-`vision.md`, `marquee/data/ecosystem.yaml`, the listed findings, ideas,
+`vision.md`, `org-diagram-repo/data/ecosystem.yaml`, the listed findings, ideas,
 research, design and runbook files, `session-log.md` (usher entries),
-director, marvel, sideshow, stagekeeper, critic and wardrobe markdown, and
+director, marvel, sideshow, the fleet watcher, critic and wardrobe markdown, and
 bd (`bd sql` reachable; 15 issues matched). `charter.md` has no usher
-mention. sideshow, stagekeeper, critic and wardrobe markdown has no usher
+mention. sideshow, the fleet watcher, critic and wardrobe markdown has no usher
 mention. One marvel hit (`marvel/_kos/probes/probe-fleet-throughput-prior-art.md:434`)
 is a false positive: "Packet Pushers" in a reference link.
 
@@ -52,7 +52,7 @@ is a false positive: "Packet Pushers" in a reference link.
 | 15 | bd aae-orc-9fwcr module 1 | "Reuse peu's doctor logic for backend detection rather than rewriting it" | function | **missing.** P records the backend only for observed effects (FR-27). Which backend and auth route a seat uses (subscription, API key, a cloud provider) is not part of an environment map. | P §3 Environment, FR-1 |
 | 16 | `_kos/ideas/usher.md:24`, `:13`; bd aae-orc-9va5 | "updates" / "usher ... is the project that owns install and update posture" | function | **shrunk.** P FR-9 reports a tool as behind its source; FR-11 installs a missing tool. No FR updates an installed tool. aq/ax defers its own updater to usher on this basis. | P §4.2 (an update FR beside FR-11) |
 | 17 | bd aae-orc-1vgfk item 4; PA §3 "Unsigned packs" | "Signature and integrity verification on the client: cosign and Rekor verification" | posture | **shrunk.** P Q8 covers signing of profiles and the harness knowledge file. Verifying what usher installs (signature, attestation) before it lands is not stated, though PA §3 lists unsigned packs as a failure mode. | P §5 or FR-11 consequences |
-| 18 | `_kos/ideas/usher.md:17-19`, `:28-30` | "which harnesses, on what projects, making what tool calls, with what configuration, what token spend, what errors" / "errors experienced" | function | **shrunk.** P keeps settings, versions, processes and cache reuse. Activity by project, tool-call outcomes and errors experienced appear only as permitted session-record fields (P §5), with no feature that reports them. Needs the objective test: errors that bear on a seat's setup look like usher's; fault detection is stagekeeper's. | P §4.7 or §4.3, after the objective test (Q16) |
+| 18 | `_kos/ideas/usher.md:17-19`, `:28-30` | "which harnesses, on what projects, making what tool calls, with what configuration, what token spend, what errors" / "errors experienced" | function | **shrunk.** P keeps settings, versions, processes and cache reuse. Activity by project, tool-call outcomes and errors experienced appear only as permitted session-record fields (P §5), with no feature that reports them. Needs the objective test: errors that bear on a seat's setup look like usher's; fault detection is the fleet watcher's. | P §4.7 or §4.3, after the objective test (Q16) |
 | 19 | `_kos/ideas/usher.md:47-48`; `repos.yaml:67-68` | "wakatime + enterprise configuration management" | positioning | **shrunk.** The wakatime half (passive per-project usage reporting) has no feature; P's "usage" is cache reuse per session. The configuration-management half is reframed (see ruled out). | P §1 positioning; §4.7 |
 | 20 | `_kos/ideas/usher.md:28`; bd aae-orc-0mmn notes (F3) | "optionally send telemetry (metrics-only or OTEL)" | deployment form | **shrunk.** P's only egress is the light collector with reported fields; OTEL as a transport, and usher helping a person point a harness's own OTEL export at a self-hosted collector (SOUL §6), are absent. | P §4.8 or §4.10; Q9 |
 | 21 | `_kos/ideas/usher.md:32-38`; `repos.yaml:63-65`; `CLAUDE.md:149-152` | "Both feed a cloud service that lives in the same repo" / "template-based compliance for different setups to produce recommendations" | deployment form | **phase-narrowed.** The central service (templates, recommendations, distribution) is a co-equal half of the product in every orc source, but P §1 to §6 describe only the light collector; the central service lives only in P §7.2 and PA §2. | P §1 and a §4 section, phased in §7 |
@@ -66,12 +66,12 @@ is a false positive: "Packet Pushers" in a reference link.
 | 29 | bd aae-orc-z6y7 workstream 1 | "the shim shape (shell wrapper / launchd job / usher-managed) that gets the secret into the harness without landing on disk" | function | **missing**, possibly **contradicted**. B and P say usher holds no credential and reports presence only. A usher-managed shim that brokers a vault-minted value into a harness at launch is brokering, which ADR-009 permits; the baseline neither includes nor rules it out. | P §5 credentials; P §9 as a new question |
 | 30 | bd aae-orc-z6y7 workstream 2 | "define exactly what leaves the machine (a boolean-plus-shape finding, not the secret)" | function | **shrunk.** PA §5 keeps the scan off by default with location and type. P FR-38's reported fields do not list credential findings, so whether a shape finding may be reported is unstated. The ticket's scan locations (shell rc files, .env files, other harness configs) are not carried. | P FR-38; PA §5 |
 | 31 | bd aae-orc-1vgfk items 3, 7 | "corporate Claude Enterprise users on managed Windows laptops are the likely case" / "WSL2 only ... versus native" | audience, deployment form | **shrunk.** P Q14 keeps Windows open. The likely audience (managed corporate Windows laptops), the WSL2-first option and the client-only split (the service side stays macOS and Linux) are not carried. | P Q14 |
-| 32 | `docs/design/2026-10-31-i78-native-signed-tap.md:58`, `:68` | "curtain and usher are private repos, so the tap job's token cannot read their releases" | deployment form | **missing.** Usher is planned as a formula in the fleet's homebrew tap. P §5 says signed builds; the distribution channel and its private-repo blocker are not stated. `usher/CLAUDE.md` defers gitflow until a distribution channel exists. | P §5 signed builds or Q11 |
-| 33 | `marquee/data/ecosystem.yaml:58` | "Onboards people / and machines" | audience | **shrunk.** "Machines" as onboarded subjects (a host provisioned to a seat) is close to B's new-machine success criterion but is not named in P §2.1. The "marvel to usher: Onboards" edge is P Q15. | P §2.1 |
-| 34 | B "Boundaries with sibling components"; BA §C | "stagekeeper (session watching), ... critic (fleet aggregation)" | boundary | **medium-boundary.** The brief's parenthetical labels describe media, not objectives; usher also watches (FR-13) and aggregates (FR-41). P §5 and PA §6 were corrected to objectives; B and BA §C still carry the medium labels. | B Scope and BA §C, reworded by objective |
+| 32 | `docs/design/2026-10-31-i78-native-signed-tap.md:58`, `:68` | "the agent sandbox and usher are private repos, so the tap job's token cannot read their releases" | deployment form | **missing.** Usher is planned as a formula in the fleet's homebrew tap. P §5 says signed builds; the distribution channel and its private-repo blocker are not stated. `usher/CLAUDE.md` defers gitflow until a distribution channel exists. | P §5 signed builds or Q11 |
+| 33 | `org-diagram-repo/data/ecosystem.yaml:58` | "Onboards people / and machines" | audience | **shrunk.** "Machines" as onboarded subjects (a host provisioned to a seat) is close to B's new-machine success criterion but is not named in P §2.1. The "marvel to usher: Onboards" edge is P Q15. | P §2.1 |
+| 34 | B "Boundaries with sibling components"; BA §C | "the fleet watcher (session watching), ... critic (fleet aggregation)" | boundary | **medium-boundary.** The brief's parenthetical labels describe media, not objectives; usher also watches (FR-13) and aggregates (FR-41). P §5 and PA §6 were corrected to objectives; B and BA §C still carry the medium labels. | B Scope and BA §C, reworded by objective |
 | 35 | bd aae-orc-0mmn notes (F3) | "trace-shaped telemetry and token accounting likely belong to a sibling tool per composition" | boundary | **medium-boundary** and **contradicted.** P FR-26 puts per-session token and cache accounting in usher. The older line assigns token accounting by medium; the objective rule should settle it. | PA §6 table; Q16 |
 | 36 | `_kos/ideas/usher.md:80-82` | "configuration reporting (usher) vs configuration management (marvel control plane). Usher observes and recommends; who enforces?" | boundary | **medium-boundary**, partly superseded. The objective ruling makes maintaining settings usher's; B's memlog still records "seat writes are marvel's", a boundary drawn on the write. P Q2 holds the seam. | P Q2, stated by objective |
-| 37 | bd aae-orc-lp2pg | "usher (fleet reporting and catch-up, the front-of-house)" / "usher presents the fleet report to the operator" | integration | **missing.** P's cross-host queries serve the expert on settings. An operator-facing fleet report that presents results critic and stagekeeper produce is not addressed. The ticket's split is partly by medium; the objective test may move it. | P Q16 and §9 |
+| 37 | bd aae-orc-lp2pg | "usher (fleet reporting and catch-up, the front-of-house)" / "usher presents the fleet report to the operator" | integration | **missing.** P's cross-host queries serve the expert on settings. An operator-facing fleet report that presents results critic and the fleet watcher produce is not addressed. The ticket's split is partly by medium; the objective test may move it. | P Q16 and §9 |
 
 ## Ruled out, for the record
 
@@ -99,7 +99,7 @@ reason in the baseline or its memlogs.
 - **"Never read" secrets.** Changed to presence, never value (BA §F).
 - **Session tiles as primary UI; workflow-stage telemetry as-is.** BA §E.
 - **Clamp, proxy or gateway; dashboards as the product.** B; P §6.
-- **Recovering a running session.** P §6: stagekeeper's objective.
+- **Recovering a running session.** P §6: the fleet watcher's objective.
 - **Answering folder-trust or consent prompts on anyone's behalf.** B; P §6.
 - **Chat conversations.** P §2.2; sequenced, not dropped (P §7.2).
 - **Two July success criteria.** Dropped at PRD gate 5 (PRD memlog); only
@@ -110,10 +110,10 @@ reason in the baseline or its memlogs.
 | Component | Expectation | Source | Carried? |
 |---|---|---|---|
 | aq/ax | Usher owns install and update posture; ax must not grow its own updater | bd aae-orc-9va5 | B cites it; P has no update FR (gap 16) |
-| marvel | Marvel "Onboards" usher (edge direction and meaning unratified) | `marquee/data/ecosystem.yaml:80` | P Q15 |
+| marvel | Marvel "Onboards" usher (edge direction and meaning unratified) | `org-diagram-repo/data/ecosystem.yaml:80` | P Q15 |
 | marvel | Adapter signals should flow through "OTEL, usher's telemetry, critic downstream" | `_kos/ideas/marvel-service-provider-architecture.md:76-78`; `marvel/docs/design/service-provider/03-probes-and-roadmap.md:39-42` | missing (gap 20) |
 | marvel | Settings management for agent seats is a marvel projection primitive | `_kos/ideas/marvel-service-provider-architecture.md:61-64` | P Q2 |
-| stagekeeper, critic, director | A split where stagekeeper detects, critic aggregates and usher presents the fleet report | bd aae-orc-lp2pg | missing (gap 37) |
+| the fleet watcher, critic, director | A split where the fleet watcher detects, critic aggregates and usher presents the fleet report | bd aae-orc-lp2pg | missing (gap 37) |
 | legion review loop | "usher tells a reviewer how to sit down at any variant" (agent-grown run repos) | bd aae-orc-yyqp3 item 5 | missing: seating a person at an arbitrary repo is not a stated function |
 | key-handling work | Plaintext key detection lives in usher; a usher-managed shim is one option for key delivery | bd aae-orc-z6y7 workstreams 1, 2 | detection carried; shim missing (gap 29) |
 | sideshow | Usher drives sideshow for bootstrap rather than replacing it; packs reach the seat via sideshow | `_kos/ideas/usher.md:77-79`; bd aae-orc-9fwcr | install carried; pack bootstrap shrunk (gap 3) |
@@ -122,4 +122,4 @@ reason in the baseline or its memlogs.
 | homebrew-tap | Usher publishes a formula through the fleet tap | `docs/design/2026-10-31-i78-native-signed-tap.md:58` | missing (gap 32) |
 | beadle | "beadle tends issues, usher tends humans and harnesses" | `repos.yaml:69-70`; `_kos/ideas/usher.md:65-68` | P Q10 names the overlap but not this proposed line |
 | operator ask via director | "distribute and manage permission and auto-mode settings" | `director/sim/notes/relay-log.md:9678` | carried (B lead problem; distribution in P §7.2) |
-| wardrobe, critic, stagekeeper repos | No markdown in those repos mentions usher | grep, 2026-11-04 | n/a |
+| wardrobe, critic, the fleet watcher repos | No markdown in those repos mentions usher | grep, 2026-11-04 | n/a |
