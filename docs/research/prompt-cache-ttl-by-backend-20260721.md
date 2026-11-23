@@ -238,7 +238,7 @@ design can express backend-conditional rules rather than flat assertions.
 
 - Installed binary 2.1.217 (see *Provenance*) — decision function, provider
   chain, source classifier, query-source literals, gate default.
-- `peu/14_Claude_Code_Deep_Dive/claude-caching-and-limits.md` in the infra orchestrator — the
+- `peu/14_Claude_Code_Deep_Dive/claude-caching-and-limits.md` in the infra orchestrator: the
   2x/1.25x write-premium figures and the Bedrock model/region caveat.
-- `peu/doctor.just` in the infra orchestrator — existing checks, and the Mantle pairing comment
+- `peu/doctor.just` in the infra orchestrator: existing checks, and the Mantle pairing comment
   confirming both configurations are in use.
