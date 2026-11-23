@@ -13,6 +13,7 @@ usher-adapter-claude-code.workspace = true
 usher-store.workspace = true
 nix.workspace = true
 serde_json.workspace = true
+toml_edit.workspace = true
 
 [dev-dependencies]
 rusqlite.workspace = true

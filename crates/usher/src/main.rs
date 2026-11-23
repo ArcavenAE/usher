@@ -1,6 +1,6 @@
 //! The usher binary. Mode selection only.
 //!
-//! Knows `--version` and hands `inventory` to the `usher-cli` crate, which holds the
+//! Knows `--version` and hands `inventory` and `tools` to the `usher-cli` crate, which holds the
 //! verb. Every other argument, or none, is an unknown mode and exits nonzero with a next
 //! action. The real modes (`mcp`, `daemon`, `collector`) arrive with the stories that
 //! build them.
@@ -18,7 +18,7 @@ fn main() -> ExitCode {
         .skip(1)
         .map(|a| a.to_string_lossy().into_owned())
         .collect();
-    let result = if matches!(args.first().map(String::as_str), Some("inventory" | "map")) {
+    let result = if hands_to_cli(args.first().map(String::as_str)) {
         usher_cli::run_process(&args)
     } else {
         run(args.into_iter())
@@ -35,6 +35,11 @@ fn main() -> ExitCode {
     }
 }
 
+/// Whether the first argument names a verb the `usher-cli` crate holds.
+fn hands_to_cli(first: Option<&str>) -> bool {
+    matches!(first, Some("inventory" | "map" | "tools"))
+}
+
 /// Picks a mode from the arguments and returns the text to print.
 fn run(mut args: impl Iterator<Item = String>) -> Result<String, UsherError> {
     match args.next().as_deref() {
@@ -43,13 +48,13 @@ fn run(mut args: impl Iterator<Item = String>) -> Result<String, UsherError> {
             STEP,
             format!("mode `{}` is one this build supports", other.escape_debug()),
             "unknown mode",
-            "run `usher inventory`, `usher map <directory>` or `usher --version`",
+            "run `usher inventory`, `usher map <directory>`, `usher tools` or `usher --version`",
         )),
         None => Err(UsherError::new(
             STEP,
             "a mode was given",
             "no mode",
-            "run `usher inventory`, `usher map <directory>` or `usher --version`",
+            "run `usher inventory`, `usher map <directory>`, `usher tools` or `usher --version`",
         )),
     }
 }
@@ -83,11 +88,29 @@ mod tests {
     /// A mistyped or missing mode is told every mode there is, including the map verb.
     #[test]
     fn a_mistyped_or_missing_mode_is_told_the_next_action_names_every_verb() {
-        let expected = "run `usher inventory`, `usher map <directory>` or `usher --version`";
+        let expected =
+            "run `usher inventory`, `usher map <directory>`, `usher tools` or `usher --version`";
         let err = run(args(&["mpa"])).expect_err("mpa is not a mode");
         assert_eq!(err.next_action(), expected);
         let err = run(args(&[])).expect_err("a mode is required");
         assert_eq!(err.next_action(), expected);
+    }
+
+    #[test]
+    fn the_tools_verb_is_handed_to_the_cli_crate_beside_inventory() {
+        assert!(hands_to_cli(Some("inventory")));
+        assert!(hands_to_cli(Some("tools")));
+        assert!(hands_to_cli(Some("map")));
+        assert!(!hands_to_cli(Some("--version")));
+        assert!(!hands_to_cli(None));
+    }
+
+    #[test]
+    fn the_unknown_and_missing_mode_next_actions_name_the_tools_verb() {
+        let unknown = run(args(&["frobnicate"])).expect_err("not a mode");
+        assert!(unknown.next_action().contains("usher tools"), "{unknown}");
+        let missing = run(args(&[])).expect_err("a mode is required");
+        assert!(missing.next_action().contains("usher tools"), "{missing}");
     }
 
     #[test]

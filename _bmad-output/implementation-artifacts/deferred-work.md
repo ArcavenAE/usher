@@ -90,3 +90,12 @@
 - source_spec: `_bmad-output/planning-artifacts/epics.md`
   summary: two unreadable files in one layer, such as the repository root's local file and the launch directory's local file, would each add a clause, so the note would name that layer twice.
   evidence: the note builds one clause per unreadable source, and sources of one layer are not merged first; the not-read items name each file by path, so the note could name each layer once.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the first change that copies a real codex home with the copy in `usher-probes` must create the copy root with mode 0700 and delete it on drop, and pin both with tests, because the copy holds whatever tokens `config.toml` carries for its lifetime.
+  evidence: the probe crate's copy function makes a directory under the scratch root with the default mode; probes never copy a real home, so nothing exercises it yet. The first caller is the codex map story.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the same change must close the gap between checking a file and opening it. It should take the entry's metadata without following a link and require a regular file, open it, take the open file's metadata and require the same device and inode, then copy from the open file. A swap between the check and the open then fails. This needs only the standard library.
+  evidence: `CodexCopy::create` checks the entry type and then copies by path, so a file replaced by a link between the two would be followed. No probe copies a real home, so the window is not reachable from probes.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the launcher's one timeout covers both a sandboxed start that has not yet reached the harness and a harness that runs too long, so both read "not run: timed out after <n> s". Telling them apart needs to see the moment the harness is exec'd, through kqueue NOTE_EXEC or proc_pidpath: either the event feature on the existing `nix` pin, or a one-module exception to `forbid(unsafe_code)`. Neither is needed today; a later story takes it up if a report needs the two told apart.
+  evidence: `Launcher::run` sets the deadline after `spawn` returns, and the stall seen on a heavily loaded host is `sandbox-exec` and `sh` doing their own work before the harness starts, so the timeout test files carry a note that such a host can fail them as a timeout.

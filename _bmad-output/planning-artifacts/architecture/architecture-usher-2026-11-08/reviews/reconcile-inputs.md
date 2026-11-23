@@ -289,7 +289,7 @@ Each item gives: source and location; what it says; why the spine needs it; sugg
 
 ### B12. Independence from siblings
 
-- **Source:** §5 "Independence" (sideshow, marvel, wardrobe, stagekeeper, critic, beadle work
+- **Source:** §5 "Independence" (sideshow, marvel, wardrobe, the fleet watcher, critic, beadle work
   without usher and usher without them); FR-47 (drives sideshow or eos, does not
   re-implement).
 - **Why the spine needs it:** without a stated rule, a sideshow or eos adapter may become a

@@ -415,8 +415,8 @@ fn a_duplicate_list_entry_in_a_lower_layer_stays_in_effect_and_says_it_is_also_s
     assert!(note_has(user, "also set in local"), "{user:?}");
 }
 
-/// Provisional: the rule text is shown verbatim in local output, because the rule is the
-/// setting. The default may change when the product choice is made.
+/// The rule text is shown verbatim in local output, because the rule is the setting. Any
+/// report path keeps it out until the reporting stories decide.
 #[test]
 fn a_permission_rule_is_shown_verbatim() {
     let rig = Rig::new();

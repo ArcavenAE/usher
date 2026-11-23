@@ -264,9 +264,9 @@ with the same problem, not named here.
 
 **Boundaries with sibling components** (each must work without usher, and
 usher without them; boundaries are drawn by objective, not medium: usher
-sets up and maintains settings, critic measures and judges, stagekeeper
+sets up and maintains settings, critic measures and judges, the fleet watcher
 detects and recovers from faults): sideshow (pack install and doctor),
-marvel (seat settings), wardrobe (role permission rendering), stagekeeper
+marvel (seat settings), wardrobe (role permission rendering), the fleet watcher
 (detects and recovers from faults), beadle (name and persona overlap),
 critic (measures and judges). Addendum, section C.
 

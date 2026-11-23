@@ -492,7 +492,7 @@ fn run_refuses_an_argument_to_inventory_and_an_unknown_command() {
     );
     assert_eq!(
         err.next_action(),
-        "run `usher inventory`, `usher map <directory>` or `usher --version`"
+        "run `usher inventory`, `usher map <directory>`, `usher tools` or `usher --version`"
     );
 }
 
