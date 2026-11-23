@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+mod map;
 mod paths;
 mod seat;
 pub mod version;
@@ -18,8 +19,8 @@ use std::time::UNIX_EPOCH;
 use std::{fs, io};
 
 use usher_core::{
-    AbsentLayer, CheckedPath, KeyNames, LaunchContext, ListedSource, NotCheckedLayer, SourceLister,
-    SourceListing, SourceStatus, SystemRoot, UsherError,
+    AbsentLayer, CheckedPath, KeyNames, LaunchContext, ListedSource, NotCheckedLayer, SettingsMap,
+    SettingsMapper, SourceLister, SourceListing, SourceStatus, SystemRoot, UsherError,
 };
 use usher_knowledge::{Item, KnowledgeFile, Platform, ReadRule, SourceFact, SourceLayer, Version};
 
@@ -102,6 +103,16 @@ impl ClaudeCodeAdapter {
             .filter(|item| version.is_none_or(|v| item.versions().contains(v)))
             .flat_map(|item| item.keys().iter().cloned())
             .collect()
+    }
+}
+
+impl SettingsMapper for ClaudeCodeAdapter {
+    fn map_settings(
+        &self,
+        listing: &SourceListing,
+        context: &LaunchContext,
+    ) -> Result<SettingsMap, UsherError> {
+        Ok(map::map_settings(&self.knowledge, listing, context))
     }
 }
 

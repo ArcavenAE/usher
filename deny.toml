@@ -23,6 +23,13 @@ allow = [
     "MPL-2.0",
 ]
 
+# One crate is licensed CDLA-Permissive-2.0 rather than the licenses above: it is the
+# Mozilla root certificates, shipped as data, pulled in by the platform verifier of the
+# HTTP and TLS stack. It was approved with that stack, for this crate only.
+[[licenses.exceptions]]
+crate = "webpki-root-certs"
+allow = ["CDLA-Permissive-2.0"]
+
 # usher's own crates are private (publish = false) and carry no license field;
 # the license is the operator's choice. Skip them so only dependencies are checked.
 [licenses.private]
@@ -31,6 +38,24 @@ ignore = true
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# The one http client is ureq, and only usher-egress may depend on it. The others are
+# named so a second client cannot arrive by accident.
+deny = [
+    { crate = "ureq", wrappers = ["usher-egress"] },
+    { crate = "reqwest" },
+    { crate = "hyper" },
+    { crate = "hyper-util" },
+    { crate = "isahc" },
+    { crate = "surf" },
+    { crate = "attohttpc" },
+    { crate = "curl" },
+    { crate = "curl-sys" },
+    { crate = "minreq" },
+    { crate = "http-req" },
+    { crate = "native-tls" },
+    { crate = "openssl" },
+    { crate = "openssl-sys" },
+]
 
 [sources]
 unknown-registry = "deny"

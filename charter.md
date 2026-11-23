@@ -108,7 +108,7 @@ instance/team. Open questions: what is the minimal bare-org artifact
 (a repo template? an org-level config? a signed manifest)? How does
 an individual's usher find its team instance? How does team
 customization layer over shipped defaults (echoes sideshow's
-user-install + orc-declared split, and bmad-extras' scope-classified
+user-install + orc-declared split, and the BMAD add-on repo's scope-classified
 learning — same shape, third instance)? How does this reframe F2's
 onboarding boundary and F4's cloud side (the "cloud service" may be
 per-team, not central)?
