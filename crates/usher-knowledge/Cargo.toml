@@ -15,6 +15,7 @@ minisign-verify.workspace = true
 minisign-verify.workspace = true
 
 [dev-dependencies]
+usher-core = { workspace = true, features = ["test-seam"] }
 usher-testkit.workspace = true
 
 [features]

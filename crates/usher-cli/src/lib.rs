@@ -1,11 +1,14 @@
-//! The usher command line (Story 1.5): the `inventory` verb. A driving adapter over
+//! The usher command line: the `inventory` verb (Story 1.5), the `map` verb (Story 1.6) and the `tools` verb
+//! (Story 2.1). A driving adapter over
 //! the ports in `usher-core`; `crates/usher` hands `usher <command>` to it and holds no
 //! logic of its own.
 
 #![forbid(unsafe_code)]
 
 mod inventory;
+mod map;
 mod time;
+mod tools;
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -14,6 +17,9 @@ use std::path::PathBuf;
 use usher_core::{SystemRoot, UsherError};
 
 pub use inventory::{inventory, inventory_with};
+pub use map::{map, map_with};
+use tools::check_tools_args;
+pub use tools::{ToolsContext, read_brew, read_mise, read_tools, run_tools};
 
 /// The launch variables the verb asked for, as a name-to-value lookup. In production
 /// [`LaunchEnvironment::from_process`] fills it with the variables knowledge names and
@@ -129,12 +135,23 @@ pub fn inventory_platform() -> usher_knowledge::Platform {
 
 const NO_ARGUMENTS: &str = "usher inventory takes no arguments";
 const INVENTORY_NEXT: &str = "run `usher inventory`";
+const MAP_USAGE: &str = "run `usher map <directory>`";
+const COMMANDS_NEXT: &str =
+    "run `usher inventory`, `usher map <directory>`, `usher tools` or `usher --version`";
+
+/// A command the arguments name, once they are checked.
+enum Command {
+    Inventory,
+    Map(PathBuf),
+    Tools,
+}
 
 /// Checks the arguments of a command before anything is read, and says which verb they
 /// name.
-fn parse_command(args: &[String]) -> Result<(), UsherError> {
+fn parse_command(args: &[String]) -> Result<Command, UsherError> {
     match args.first().map(String::as_str) {
-        Some("inventory") if args.len() == 1 => Ok(()),
+        Some("inventory") if args.len() == 1 => Ok(Command::Inventory),
+        Some("tools") => check_tools_args(args).map(|()| Command::Tools),
         Some("inventory") => Err(UsherError::new(
             "run inventory",
             "the verb takes no arguments",
@@ -144,25 +161,92 @@ fn parse_command(args: &[String]) -> Result<(), UsherError> {
             ),
             INVENTORY_NEXT,
         )),
+        Some("map") if args.len() == 2 => Ok(Command::Map(PathBuf::from(&args[1]))),
+        Some("map") => Err(UsherError::new(
+            "run map",
+            "the verb takes one directory",
+            if args.len() == 1 {
+                "usher map takes one directory; got none".to_string()
+            } else {
+                format!(
+                    "usher map takes one directory; got `{}`",
+                    args[1..].join(" ").escape_debug()
+                )
+            },
+            MAP_USAGE,
+        )),
         Some(other) => Err(UsherError::new(
             "select command",
             "the command is one this build has",
             format!("`{}` is not a usher command", other.escape_debug()),
-            "run `usher inventory` or `usher --version`",
+            COMMANDS_NEXT,
         )),
         None => Err(UsherError::new(
             "select command",
             "a command was given",
             "no command",
-            "run `usher inventory` or `usher --version`",
+            COMMANDS_NEXT,
         )),
     }
 }
 
 /// Hands one command and its arguments to its verb.
 pub fn run(args: &[String], env: &InventoryEnv) -> Result<String, UsherError> {
+    match parse_command(args)? {
+        Command::Inventory => inventory(env, inventory_system_root()),
+        Command::Map(dir) => map(env, &dir, inventory_system_root()),
+        Command::Tools => run_with_installers(args, env, &installer_paths(env)),
+    }
+}
+
+/// As [`run`] for the `tools` command, over installer paths the caller gives, so a test
+/// reads scratch state and not the host's.
+pub fn run_with_installers(
+    args: &[String],
+    env: &InventoryEnv,
+    paths: &usher_core::InstallerPaths,
+) -> Result<String, UsherError> {
+    let _ = env;
     parse_command(args)?;
-    inventory(env, inventory_system_root())
+    run_tools(
+        args,
+        &ToolsContext {
+            specs: usher_core::tool_specs(),
+            paths: paths.clone(),
+        },
+    )
+}
+
+/// The installer variables the `tools` verb reads from the process, and nothing else.
+const INSTALLER_VARIABLES: [&str; 9] = [
+    "HOMEBREW_REPOSITORY",
+    "HOMEBREW_PREFIX",
+    "HOMEBREW_CACHE",
+    "MISE_DATA_DIR",
+    "MISE_CACHE_DIR",
+    "MISE_STATE_DIR",
+    "XDG_DATA_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_STATE_HOME",
+];
+
+/// Where the installers keep their state on this host, found from the account home and
+/// the installer variables.
+fn installer_paths(env: &InventoryEnv) -> usher_core::InstallerPaths {
+    let get = |name: &str| {
+        if name == "HOME" {
+            Some(env.home.to_string_lossy().into_owned())
+        } else if INSTALLER_VARIABLES.contains(&name) {
+            std::env::var(name).ok()
+        } else {
+            None
+        }
+    };
+    usher_core::InstallerPaths::resolve(
+        get,
+        |path| path.exists(),
+        env.platform == usher_knowledge::Platform::Macos,
+    )
 }
 
 /// As [`run`], reading the environment from this process after the arguments check out,

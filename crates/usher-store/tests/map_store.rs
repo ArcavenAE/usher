@@ -184,7 +184,7 @@ fn a_fresh_store_is_made_at_version_three_with_the_map_table_and_the_verb_column
 }
 
 #[test]
-fn the_map_table_has_the_columns_a_reading_needs_and_no_content_column() {
+fn the_map_table_has_the_columns_a_reading_needs() {
     let scratch = ScratchHome::new().expect("scratch");
     let dir = state_dir(&scratch);
     drop(Store::open(&dir).expect("a fresh store"));

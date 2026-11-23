@@ -78,3 +78,27 @@
 - source_spec: `_bmad-output/planning-artifacts/epics.md`
   summary: the profile walk lists every name in a directory and sorts them before it checks the 64-file cap, and it does not count directories, so a directory that holds a very large number of names, or a very wide tree, costs time and memory before any cap applies. For a directory a person names on their own disk that costs only time.
   evidence: before a git source lands, the walk counts every entry it lists, directories and files, and stops reading a directory once the count passes the cap. The number is set with the provisional file and profile limits when that source is built.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the map reader names two not-observed items from names written in the reader: the organization default model, keyed to the listed key `model`, and the built-in classifier rules, keyed to the `autoMode.` key prefix. A knowledge field on the settings key would move both names out of code.
+  evidence: the reader reads no such field today, and the knowledge schema has none; a knowledge field, which would be a schema change, would let the two checks move to it, and the red that pins each item stays as it is.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the harness can raise a settings error for a whole file when one value fails its schema; the reader does not run the schema, so the other keys in that file keep their rows and the file reads as readable.
+  evidence: the vendor's settings page says a value the schema rejects can raise a settings error for the file; a later story that models it needs a probe that shows which values are rejected, and a status for a file the harness refuses.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the map verb parses the reader's printed key path back into segments to store the JSON array of segments. A `segments` field on the reading in the port would drop the round trip.
+  evidence: the printed path quotes every segment that holds a dot, a quote or whitespace, so the split is unambiguous and two reds pin it; a field on the port types is a change to the reader's interface, which the reader's review round had already closed.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: in the map reader, a sensitive list entry returns before the broken-layer note is added, so a sensitive list key under an unreadable layer carries no "more entries may apply". No seeded list key is sensitive today, so no reading is affected yet.
+  evidence: the review of the reader PR read the sensitive-entry branch of the list merge, which pushes its row before the note is joined; a later seed that marks a list key sensitive needs the note added there, with its own red.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: two unreadable files in one layer, such as the repository root's local file and the launch directory's local file, would each add a clause, so the note would name that layer twice.
+  evidence: the note builds one clause per unreadable source, and sources of one layer are not merged first; the not-read items name each file by path, so the note could name each layer once.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the first change that copies a real codex home with the copy in `usher-probes` must create the copy root with mode 0700 and delete it on drop, and pin both with tests, because the copy holds whatever tokens `config.toml` carries for its lifetime.
+  evidence: the probe crate's copy function makes a directory under the scratch root with the default mode; probes never copy a real home, so nothing exercises it yet. The first caller is the codex map story.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the same change must close the gap between checking a file and opening it. It should take the entry's metadata without following a link and require a regular file, open it, take the open file's metadata and require the same device and inode, then copy from the open file. A swap between the check and the open then fails. This needs only the standard library.
+  evidence: `CodexCopy::create` checks the entry type and then copies by path, so a file replaced by a link between the two would be followed. No probe copies a real home, so the window is not reachable from probes.
+- source_spec: `_bmad-output/planning-artifacts/epics.md`
+  summary: the launcher's one timeout covers both a sandboxed start that has not yet reached the harness and a harness that runs too long, so both read "not run: timed out after <n> s". Telling them apart needs to see the moment the harness is exec'd, through kqueue NOTE_EXEC or proc_pidpath: either the event feature on the existing `nix` pin, or a one-module exception to `forbid(unsafe_code)`. Neither is needed today; a later story takes it up if a report needs the two told apart.
+  evidence: `Launcher::run` sets the deadline after `spawn` returns, and the stall seen on a heavily loaded host is `sandbox-exec` and `sh` doing their own work before the harness starts, so the timeout test files carry a note that such a host can fail them as a timeout.

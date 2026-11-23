@@ -9,7 +9,7 @@
 
 Yes, as a narrow tool. Usher can own a declared, versioned **fleet profile**: trusted orgs and domains, auto mode allow entries, codex approval and sandbox choices, and folder-trust intent. It renders the profile into each host's layers on the operator's command, and it reports drift between the profile and what each harness actually resolves. It proposes and checks. It never adds an entry the operator did not write, and it never answers a prompt.
 
-One fact from the docs changes the shape of the problem. Auto mode reads `autoMode` from user settings, managed settings, **and the `--settings` flag**. marvel already gives every Claude seat a per-session `--settings` file. So the per-host edit in aae-orc#705 is not the only route for seats: a profile rendered into marvel's policy projection would reach them with no hand edit on any host. Interactive human sessions still need the user or managed layer.
+One fact from the docs changes the shape of the problem. Auto mode reads `autoMode` from user settings, managed settings, **and the `--settings` flag**. marvel already gives every Claude seat a per-session `--settings` file. So the per-host edit in an orchestrator issue is not the only route for seats: a profile rendered into marvel's policy projection would reach them with no hand edit on any host. Interactive human sessions still need the user or managed layer.
 
 ## The friction, by layer
 
@@ -17,7 +17,7 @@ All observed 2026-10-26 unless marked.
 
 | friction | lives in | why it is friction |
 |---|---|---|
-| auto mode trusted orgs and allow entries must be edited per host (aae-orc#705) | Claude Code user settings, `~/.claude/settings.json` | the classifier does not read project settings, so the repo cannot carry them |
+| auto mode trusted orgs and allow entries must be edited per host (an orchestrator issue) | Claude Code user settings, `~/.claude/settings.json` | the classifier does not read project settings, so the repo cannot carry them |
 | [External System Writes] on reviews in our own orgs | auto mode `environment` (missing trust slot) | by default the classifier "trusts only the working directory and the current repo's configured remotes" |
 | [Create Public Surface] on a PR to a private org, cleared once the org was declared trusted | the same | the same |
 | [Self-Modification] refused once, passed later on the operator's explicit request | the classifier's soft-deny tier | explicit user intent clears a soft deny; a relayed grant does not (finding-192) |
