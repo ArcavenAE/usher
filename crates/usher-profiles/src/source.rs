@@ -8,11 +8,13 @@
 //! with one invalid profile is invalid as a whole, and nothing is returned
 //! from it.
 
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::Read;
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Component, Path, PathBuf};
 
+use nix::errno::Errno;
+use nix::fcntl::OFlag;
 use usher_core::UsherError;
 
 use crate::Manifest;
@@ -630,6 +632,13 @@ fn walk(ctx: &Ctx, dir: &Path) -> Result<Vec<Walked>, UsherError> {
             names.push(entry.file_name());
         }
         names.sort();
+        if depth > DEPTH_CAP && names.is_empty() {
+            return Err(ctx.refuse(
+                format!("a profile nests at most {DEPTH_CAP} directory levels"),
+                format!("{} is deeper than {DEPTH_CAP} levels", display_name(&rel)),
+                "flatten the profile directory",
+            ));
+        }
         for name in names {
             let text = name.to_string_lossy();
             let child_rel = if rel.is_empty() {
@@ -703,7 +712,13 @@ fn read_text(
     if walked.len() > FILE_CAP {
         return Err(over_file());
     }
-    let file = File::open(path).map_err(|err| ctx.io("file", path, &err))?;
+    let file = open_without_following(path).map_err(|err| {
+        if err.raw_os_error() == Some(Errno::ELOOP as i32) {
+            symlink_refusal(ctx, path)
+        } else {
+            ctx.io("file", path, &err)
+        }
+    })?;
     let opened = file.metadata().map_err(|err| ctx.io("file", path, &err))?;
     if !same_file(walked, &opened) {
         return Err(symlink_refusal(ctx, path));
@@ -732,6 +747,20 @@ fn read_text(
     })
 }
 
+/// Opens a file for reading without following a symlink at its last component
+/// and without waiting on one that is a FIFO. `O_NOFOLLOW` makes a symlink
+/// swapped in after the walk fail the open with `ELOOP`, and `O_NONBLOCK` makes
+/// the open of a FIFO return at once, where it would wait for a writer. A
+/// regular file ignores `O_NONBLOCK` on both open and read, so the flag stays
+/// set. `O_NOFOLLOW` covers only the last component, so `same_file` still
+/// catches a swapped parent directory.
+fn open_without_following(path: &Path) -> std::io::Result<File> {
+    OpenOptions::new()
+        .read(true)
+        .custom_flags((OFlag::O_NOFOLLOW | OFlag::O_NONBLOCK).bits())
+        .open(path)
+}
+
 /// Whether the file that was opened is the one the walk checked. The walk
 /// refuses a symlink with `symlink_metadata` and the open follows one, so a
 /// file, or a parent directory, swapped for a symlink after the walk listed it
@@ -744,7 +773,7 @@ fn same_file(checked: &fs::Metadata, opened: &fs::Metadata) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{fs, os::unix::fs::symlink, process::Command, sync::mpsc, thread, time::Duration};
 
     use super::{Ctx, read_text, same_file};
 
@@ -760,7 +789,7 @@ mod tests {
         let meta_b = fs::symlink_metadata(&b).expect("metadata b");
         let same = same_file(&meta_a, &meta_a);
         let different = same_file(&meta_a, &meta_b);
-        let _ = fs::remove_dir_all(&dir);
+        fs::remove_dir_all(&dir).expect("remove scratch");
         assert!(same, "a file is the same file as itself");
         assert!(!different, "two files with the same size are not one file");
     }
@@ -779,11 +808,57 @@ mod tests {
         let mut total = 0;
         let own = read_text(&ctx, &a, "a", &meta_a, &mut total);
         let other = read_text(&ctx, &a, "a", &meta_b, &mut total);
-        let _ = fs::remove_dir_all(&dir);
+        fs::remove_dir_all(&dir).expect("remove scratch");
         assert!(own.is_ok(), "the file the walk listed is read");
         assert!(
             other.is_err(),
             "a file whose identity differs from the walk's is refused"
+        );
+    }
+
+    /// A file the walk listed as a regular file and that is then replaced by a
+    /// symlink to a FIFO must be refused as a symlink, and the read must not
+    /// wait for a writer that never comes.
+    #[test]
+    fn a_file_swapped_for_a_symlink_to_a_fifo_is_refused_without_blocking() {
+        let dir = std::env::temp_dir().join(format!("usher-fifo-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("create scratch");
+        let a = dir.join("a");
+        let fifo = dir.join("fifo");
+        fs::write(&a, "x").expect("write a");
+        let made = Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .expect("run mkfifo");
+        assert!(made.success(), "mkfifo made the fifo");
+        let walked = fs::symlink_metadata(&a).expect("metadata a");
+        fs::remove_file(&a).expect("remove a");
+        symlink(&fifo, &a).expect("swap a for a symlink to the fifo");
+
+        let (send, receive) = mpsc::channel();
+        let reader = {
+            let a = a.clone();
+            let dir = dir.clone();
+            thread::spawn(move || {
+                let ctx = Ctx::new(&dir);
+                let mut total = 0;
+                let _ = send.send(read_text(&ctx, &a, "a", &walked, &mut total));
+            })
+        };
+        let outcome = receive.recv_timeout(Duration::from_secs(3));
+        if outcome.is_err() {
+            // Release the blocked open so the reader thread can end.
+            drop(fs::OpenOptions::new().write(true).open(&fifo));
+        }
+        reader.join().expect("the reader thread ends");
+        fs::remove_dir_all(&dir).expect("remove scratch");
+        let outcome = outcome.expect("the read of a symlink to a fifo blocked on the open");
+        let err = outcome.expect_err("a symlink to a fifo is refused");
+        assert!(
+            err.check().contains("symlink") || err.status().contains("symlink"),
+            "the refusal is not the symlink refusal: {} / {}",
+            err.check(),
+            err.status()
         );
     }
 }
