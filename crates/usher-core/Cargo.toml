@@ -6,6 +6,9 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[dependencies]
+serde_json.workspace = true
+
 [features]
 # Lets tests send with a descriptor they build. Only usher-core's own
 # dev-dependency enables it; no shipping build may (scripts/guard-signer-crates.sh).

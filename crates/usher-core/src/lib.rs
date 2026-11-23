@@ -10,6 +10,7 @@ use std::{error::Error, fmt};
 mod egress;
 mod environment;
 mod listing;
+mod map;
 mod tools;
 
 pub use egress::{
@@ -23,6 +24,10 @@ pub use environment::{EnvironmentKey, environment_key, key_variables};
 pub use listing::{
     AbsentLayer, CheckedPath, KeyNames, LaunchContext, ListedSource, NotCheckedLayer, SeatLine,
     SourceLister, SourceListing, SourceStatus, SystemRoot,
+};
+pub use map::{
+    NotObserved, ReadingMethod, ReadingStatus, SettingReading, SettingsMap, SettingsMapper,
+    SkippedLayer,
 };
 pub use tools::{
     BrewPaths, Hint, HintKind, InstallState, Installer, InstallerPaths, Reading, Recorded, ToolRow,

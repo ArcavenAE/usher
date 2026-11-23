@@ -854,6 +854,7 @@ dependencies = [
 name = "usher-core"
 version = "0.0.0"
 dependencies = [
+ "serde_json",
  "usher-core",
  "usher-testkit",
 ]
