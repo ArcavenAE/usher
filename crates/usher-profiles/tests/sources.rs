@@ -1166,3 +1166,54 @@ fn a_fragment_over_one_mebibyte_is_refused_from_its_size_before_it_is_opened() {
     fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).expect("chmod back");
     names(&err, "over 1 MiB");
 }
+
+// Names a refusal echoes (a repeated key, a directory name) are shown through
+// the same escape as the manifest's, so no control character and no direction
+// control, U+061C included, reaches an error raw.
+
+fn no_raw_escaped(err: &UsherError) {
+    for value in [err.step(), err.check(), err.status(), err.next_action()] {
+        assert!(
+            !value.chars().any(|c| c.is_control()
+                || matches!(
+                    u32::from(c),
+                    0x061C | 0x200E | 0x200F | 0x202A..=0x202E | 0x2066..=0x2069
+                )),
+            "a raw escaped character in {value:?}"
+        );
+    }
+}
+
+#[test]
+fn a_repeated_key_holding_an_escaped_character_is_shown_escaped_in_every_format() {
+    let s = Scratch::new();
+    let dir = json_profile(&s, "{\"a\u{061c}b\": 1, \"a\u{061c}b\": 2}");
+    let err = refusal(&dir);
+    no_raw_escaped(&err);
+    names(&err, "a\\u061Cb");
+
+    let s = Scratch::new();
+    let dir = yaml_profile(&s, "a\u{061c}b: 1\na\u{061c}b: 2\n");
+    let err = refusal(&dir);
+    no_raw_escaped(&err);
+    names(&err, "a\\u061Cb");
+
+    let s = Scratch::new();
+    let dir = toml_profile(&s, "\"a\u{061c}b\" = 1\n\"a\u{061c}b\" = 2\n");
+    let err = refusal(&dir);
+    no_raw_escaped(&err);
+    names(&err, "a\\u061Cb");
+}
+
+#[test]
+fn a_directory_name_holding_an_escaped_character_is_shown_escaped() {
+    let s = Scratch::new();
+    s.write("repo/profiles/team\u{061c}x/profile.toml", MANIFEST);
+    s.write(
+        "repo/profiles/team\u{061c}x/claude-code/settings.json",
+        CLAUDE,
+    );
+    let err = refusal(&s.path().join("repo"));
+    no_raw_escaped(&err);
+    names(&err, "team\\u061Cx");
+}
