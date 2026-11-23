@@ -104,7 +104,7 @@ NFR9: Every check stamps the harness version it assumes.
 NFR10: Every coded check is deterministic and tested; AI use follows progressive codification under about 10 USD per user per month.
 NFR11: Builds are signed and notarized; outbound traffic is explicit; a behavioral profile is published.
 NFR12: Independence: every sibling works without usher and usher without them.
-NFR13: Boundaries by objective: setup and maintain settings; critic judges, stagekeeper recovers.
+NFR13: Boundaries by objective: setup and maintain settings; critic judges, the fleet watcher recovers.
 NFR14: Platforms: macOS first, Linux likely, Windows open (Q14).
 NFR15: Attention budget: usher asks only for a confirmation, a consent, or a choice with no default; at most one unprompted notice a day, batched.
 NFR16: Footprint, tested on a laptop on battery: daemon at most 10 MB resident idle, no timer wakeups and under 0.1% CPU averaged over an hour, at most 200 ms CPU per changed file, 256 watched directories by default with dropped paths named, 100 MB of state before asking to prune; usher reports its own use.
@@ -598,7 +598,7 @@ So that I know when a session is running an older binary than the one now instal
 **Given** a session that started before its binary on disk last changed, including a harness that self-updated under a running seat (addendum §3)
 **When** the table is produced
 **Then** that session is flagged as running an older binary, with both versions where known
-**And** usher never signals, restarts or attaches to a process (restarting is stagekeeper's objective)
+**And** usher never signals, restarts or attaches to a process (restarting is the fleet watcher's objective)
 
 ### Story 2.5: Device-management overlap
 

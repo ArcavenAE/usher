@@ -57,7 +57,7 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           cache-on-failure: true
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
@@ -78,10 +78,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master 2026-08-04
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           cache-on-failure: true
       - run: cargo test --locked --workspace --all-targets
+      - name: Run the doctests, which --all-targets skips
+        # The compile_fail doctests are what stop a WireRequest or a Policy from being
+        # built or implemented outside usher-core.
+        run: cargo test --locked --workspace --doc
       - name: Test the signing-crate guard
         run: scripts/test-guard-signer-crates.sh
       - name: Keep test-only signing crates out of shipping crates
@@ -107,7 +111,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master 2026-08-04
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-deny@0.20.2
       - run: cargo deny check advisories licenses bans sources

@@ -1288,12 +1288,12 @@ A person can rely on a change touching only what its dry run listed.
   AI follows progressive codification (§7.2).
 - **Signed builds.** Builds are signed and notarized, outbound traffic is
   explicit, and a behavioral profile is published.
-- **Independence.** Each sibling (sideshow, marvel, wardrobe, stagekeeper,
+- **Independence.** Each sibling (sideshow, marvel, wardrobe, the fleet watcher,
   critic, beadle) works without usher and usher without them.
 - **Boundaries by objective, not medium** (operator 2026-11-03). A
   requirement belongs to usher when its purpose is setting up a person's
   harnesses or maintaining their settings. Critic measures, compares and
-  judges; stagekeeper detects faults and recovers from them (addendum §6).
+  judges; the fleet watcher detects faults and recovers from them (addendum §6).
 - **Platforms.** macOS first. Linux likely. Windows unknown (open question
   14).
 - **Attention budget.** Usher asks only for a confirmation, a consent, or a
@@ -1315,10 +1315,10 @@ A person can rely on a change touching only what its dry run listed.
 - Answering prompts (folder trust, consent) on anyone's behalf.
 - Judging which environment is better; ranking people or configurations
   (critic's objective).
-- Presenting critic's or stagekeeper's results. In a fleet report, usher
+- Presenting critic's or the fleet watcher's results. In a fleet report, usher
   supplies the setup and settings side (operator 2026-11-05,
   aae-orc-lp2pg).
-- Recovering a running session from a fault (stagekeeper's objective).
+- Recovering a running session from a fault (the fleet watcher's objective).
   Usher reports an install-side cause, such as a self-update under a
   running seat, so the person can re-find their seat.
 - Reading or optimizing the content of prompts, sessions, or instruction,
@@ -1459,10 +1459,10 @@ motivation (UJ-2), not a counted metric.
     comparison model in the brief and its addendum (Mary, after Finalize).
 14. Windows: the charter names usherd as a mac and windows service; the
     brief says unknown (aae-orc-1vgfk).
-15. Usher's absence from the independence matrix, and marquee's unratified
+15. Usher's absence from the independence matrix, and org-diagram-repo's unratified
     "marvel to usher: Onboards" edge.
 16. The objective test (§5) applied to FR-10, FR-13 and FR-26, which share
-    a medium with stagekeeper and critic (addendum §6).
+    a medium with the fleet watcher and critic (addendum §6).
 17. The support level of each supported harness, set once the FR-7 probe
     and the disputed claims (Q4) are tested.
 18. Associating directories and resources with an organization, for

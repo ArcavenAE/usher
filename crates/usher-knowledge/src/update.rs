@@ -12,8 +12,9 @@ use usher_core::UsherError;
 use crate::schema::{KnowledgeFile, KnowledgeVersion};
 use crate::trust::{TrustedKeys, key_id_of_signature};
 
-const STEP: &str = "update harness knowledge";
-const KEEP_SIGNING: &str = "usher keeps using the knowledge it has; obtain the update again, signed with minisign's default mode by a trusted key";
+pub(crate) const STEP: &str = "update harness knowledge";
+pub(crate) const SIGNATURE_UTF8_CHECK: &str = "read the signature as UTF-8 text";
+pub(crate) const KEEP_SIGNING: &str = "usher keeps using the knowledge it has; obtain the update again, signed with minisign's default mode by a trusted key";
 const KEEP_FILE: &str = "usher keeps using the knowledge it has; publish a corrected knowledge file with a higher sequence number and sign it again";
 
 fn fail(

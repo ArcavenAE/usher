@@ -1,0 +1,17 @@
+# Only usher-egress may open a connection. It allows these lints at its crate root.
+disallowed-types = [
+    { path = "ureq::Agent", reason = "only usher-egress builds the http client" },
+    { path = "ureq::RequestBuilder", reason = "only usher-egress builds requests" },
+    { path = "std::net::TcpStream", reason = "only usher-egress opens a connection" },
+    { path = "std::net::UdpSocket", reason = "only usher-egress opens a connection" },
+]
+disallowed-methods = [
+    { path = "ureq::get", reason = "send through the egress port" },
+    { path = "ureq::post", reason = "send through the egress port" },
+    { path = "ureq::put", reason = "send through the egress port" },
+    { path = "ureq::delete", reason = "send through the egress port" },
+    { path = "ureq::head", reason = "send through the egress port" },
+    { path = "ureq::patch", reason = "send through the egress port" },
+    { path = "ureq::options", reason = "send through the egress port" },
+    { path = "ureq::trace", reason = "send through the egress port" },
+]

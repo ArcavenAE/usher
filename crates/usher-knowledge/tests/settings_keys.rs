@@ -4,8 +4,8 @@
 //! item carries the vendor's cross-layer order, highest first, so precedence is data and
 //! never a constant in code. Public API only.
 //!
-//! The default readable-key list and the handling of permission rule text are provisional
-//! until they are decided. The mechanism tested here does not depend on either.
+//! The default readable-key list and the handling of permission rule text are decided.
+//! The mechanism tested here does not depend on either.
 
 use usher_knowledge::{Class, KnowledgeFile, Layer, MergeKind, ReferenceKind, Scopes, SourceLayer};
 
@@ -502,8 +502,9 @@ fn the_seed_marks_env_sensitive() {
     assert!(env.sensitive());
 }
 
-/// The default readable-key list, exactly. It stays provisional until the operator rules
-/// on which values a person sees first.
+/// The default readable-key list, exactly. The permissions keys, `autoMode`, `model`, the
+/// managed control keys and `env` (by name only). The model-selection keys
+/// `availableModels`, `fallbackModel`, `modelPicker` and `modelSettings` belong to `model`.
 const SEEDED_KEYS: [&str; 18] = [
     "autoMode.allow",
     "autoMode.classifyAllShell",

@@ -88,7 +88,7 @@ Release for each capability, and the spine decisions that govern it, are in `cap
 - Precedence is the harness's. Facts about a harness live in signed, referenced harness knowledge that updates without a client release (FR-1, FR-30, FR-31, AD-6, AD-12).
 - Local observation runs from install, limited to harness-knowledge locations until the person confirms directories; no home-wide sweep (PRD §5, AD-10).
 - The footprint, attention and token budgets ratified for PRD Q25 (spine, Budgets) are tests on a laptop on battery; the background service is idle between OS file-change notices.
-- Boundary by objective: usher's is setup and maintain settings; critic measures and judges, stagekeeper detects and recovers (PRD §5, addendum §6).
+- Boundary by objective: usher's is setup and maintain settings; critic measures and judges, the fleet watcher detects and recovers (PRD §5, addendum §6).
 - Every sibling works without usher and usher without them. Usher holds no bearer authority at a third party (ADR-009). Per-person data never enters git; client names stay out.
 - Coded checks are deterministic and tested; any AI use follows progressive codification under about 10 USD per user per month (PRD §7.2).
 - macOS first; Linux likely; Windows open (Q14). Builds are signed and notarized.
@@ -97,8 +97,8 @@ Release for each capability, and the spine decisions that govern it, are in `cap
 
 - Enforcing organization policy or clamping a difference (device management's objective).
 - Answering prompts such as folder trust or consent on anyone's behalf.
-- Judging which environment is better, or ranking people or configurations (critic's objective); presenting critic's or stagekeeper's results.
-- Recovering a running session from a fault (stagekeeper's objective).
+- Judging which environment is better, or ranking people or configurations (critic's objective); presenting critic's or the fleet watcher's results.
+- Recovering a running session from a fault (the fleet watcher's objective).
 - Reading or optimizing the content of prompts, sessions, or instruction, skill or agent files.
 - Dashboards as the product; a spend clamp; a proxy or gateway.
 - Re-implementing mise, brew, sideshow or vendor installers; managing dotfiles.
@@ -128,7 +128,7 @@ Release for each capability, and the spine decisions that govern it, are in `cap
 - Q11: going public (timing, license, disclosure sweep, README, the public homebrew tap and a default update feed). Self-update through the owning installer does not wait on it.
 - Q13: replace "divergence from the baseline" with the comparison model in the brief.
 - Q14: Windows.
-- Q15: usher's place in the independence matrix, and marquee's "marvel to usher: Onboards" edge.
+- Q15: usher's place in the independence matrix, and org-diagram-repo's "marvel to usher: Onboards" edge.
 - Q16: the objective test applied to FR-10, FR-13 and FR-26.
 - Q17: the support level of each supported harness.
 - Q19: the reporting wire shape beyond the MVP report schema (metrics, OTEL, or levels).

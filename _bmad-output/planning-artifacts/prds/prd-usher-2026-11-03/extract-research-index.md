@@ -1,6 +1,6 @@
 # Extract: harness settings research and the aae-orc index
 
-Source material for the usher PRD. Research = `_bmad-output/planning-artifacts/research/technical-harness-settings-observability-map-2026-11-02/research.md` (sections and [n] citations as in its appendix; "probe" = its `imports/` files). Index = `docs/research/orc-index.md`; orc paths are relative to `/Users/michael.pursifull/work/aae-orc/`. Extracted 2026-11-03.
+Source material for the usher PRD. Research = `_bmad-output/planning-artifacts/research/technical-harness-settings-observability-map-2026-11-02/research.md` (sections and [n] citations as in its appendix; "probe" = its `imports/` files). Index = `docs/research/orc-index.md`; orc paths are relative to the orchestrator checkout root. Extracted 2026-11-03.
 
 ## 1. Per harness
 
