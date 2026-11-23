@@ -1,4 +1,4 @@
-//! Harness versions and the ranges that key knowledge items to them.
+//! Harness versions and the ranges that key knowledge items and profiles to them.
 
 use std::fmt;
 

@@ -12,6 +12,7 @@ mod environment;
 mod listing;
 mod map;
 mod tools;
+mod version;
 
 pub use egress::{
     ALL, Class, DELEGATED_INSTALLERS, DELEGATED_NOTE, DelegatedInstaller, Descriptor, Egress,
@@ -34,6 +35,7 @@ pub use tools::{
     ToolSpec, Verdict, allowed_invocations, command_text, join_versions, never_call, no_update_env,
     render_rows, tool_specs,
 };
+pub use version::{Version, VersionRange};
 
 /// The one error type every usher surface reports through.
 ///
