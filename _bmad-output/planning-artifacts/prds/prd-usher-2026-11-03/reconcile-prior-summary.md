@@ -17,12 +17,12 @@ Merged from three sweeps, 121 rows with heavy overlap:
 | I | Surfaces: in-LLM (MCP) onboarding, usherd, CLI or app | prior-art 472-476; charter F1 | MCP only in Q9 and a token-budget line | PRD feature or §9 |
 | J | Team instance enrollment and layering | charter F6 95-114; July 469-473; prior-art 505-508 (a personal layer usher always respects) | Missing | PRD §4.5 or §9 |
 | K | Honest-security posture | July 379-407; prior-art 484-487 (person sees own data first; drill-down a recorded team decision; DO_NOT_TRACK; record whether an enable was member-chosen or organization-required); charter B1 (org may enable through its own MDM channel) | Shrunk; FR-37 reads narrower than B1 | PRD §5, FR-37, FR-39 |
-| L | Expectations from other components | aae-orc-lp2pg (usher presents a fleet report from critic and stagekeeper output); aae-orc-yyqp3 (seat a reviewer at any run variant); aae-orc-z6y7 (usher-managed key shim, brokering under ADR-009); tap design doc 58, 68 (homebrew formula) | Missing | Needs rulings; see below |
+| L | Expectations from other components | aae-orc-lp2pg (usher presents a fleet report from critic and the fleet watcher output); aae-orc-yyqp3 (seat a reviewer at any run variant); aae-orc-z6y7 (usher-managed key shim, brokering under ADR-009); tap design doc 58, 68 (homebrew formula) | Missing | Needs rulings; see below |
 | M | Cleanups | charter F7 (stale against the Q7 ruling); brief addendum §C (medium-based boundaries); "spend outliers" against no-ranking; an older note placing token accounting in a sibling | Inconsistent | Brief addendum; charter (operator) |
 
 ## Theme L needs rulings
 
-- Fleet report presenting critic and stagekeeper output: by objective, presenting another
+- Fleet report presenting critic and the fleet watcher output: by objective, presenting another
   component's judgment is not setting up or maintaining settings. Usher's part may be only
   the settings side of the report.
 - Seating a reviewer at any run variant: fits "setup" if a variant is an environment.

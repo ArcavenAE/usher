@@ -52,7 +52,7 @@ Carried from the July brief (lines 252-312):
 - One daemon, N affiliations; scope resolution assigns each observation.
 - Two artifacts split by visibility: a claim marker at a scope root
   (committable, scope names only) and a private binding (local only).
-  bmad-extras' per-person `~/.config/aae/scopes.toml` (aae-orc-4b0c) is a
+  The BMAD add-on repo's per-person `~/.config/aae/scopes.toml` (aae-orc-4b0c) is a
   candidate instance of the same pattern.
 - Affiliations isolated with a stated mechanism, not only an intent.
 - Nested claims need resolution rules.
@@ -73,13 +73,13 @@ answered per setting class.
 | sideshow | install and five-layer doctor; signed packs overlap the ripple substrate | orc charter F24; ADR-008; aae-orc-9fwcr, aae-orc-70os |
 | marvel | seat settings via per-session `--settings`; measurement fabric | fleet-settings-profile idea; marvel/docs/design/service-provider/03-probes-and-roadmap.md:42 |
 | wardrobe | `constraints.permissions` and `policy.sh` render | aae-orc-079r8 (closed 2026-10-28) |
-| stagekeeper | detects faults in running sessions and recovers from them; usher reports the install-side cause | stagekeeper/charter.md B1; aae-orc-lp2pg |
+| the fleet watcher | detects faults in running sessions and recovers from them; usher reports the install-side cause | fleet-watcher-repo/charter.md B1; aae-orc-lp2pg |
 | critic | measures, compares and judges what runs produce; usher shows differences and leaves judgment to people | aae-orc-lp2pg |
 | beadle | name and persona overlap | repos.yaml:70; usher charter |
 | aq/ax | install and update posture belongs to usher, not a self-updater | aae-orc-9va5 |
 
 Usher is absent from the independence matrix (CLAUDE.md, ADR-005), and
-`marquee/data/ecosystem.yaml:80` draws an unratified "marvel to usher:
+`org-diagram-repo/data/ecosystem.yaml:80` draws an unratified "marvel to usher:
 Onboards" edge. Both need a decision.
 
 ## D. Evidence pointers (orc)
