@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 11-09-2026 14:21
-last_updated: 11-15-2026 13:40
+last_updated: 11-23-2026 04:35
 project: usher
 project_key: NOKEY
 tracking_system: file-system
@@ -40,8 +40,8 @@ development_status:
   1-2-scratch-homes-and-the-observation-invariant: done
   1-3-referenced-harness-knowledge-embedded-in-the-binary: done
   1-4-signed-harness-knowledge-updates-without-a-client-release: done
-  1-5-claude-code-settings-inventory: ready-for-dev
-  1-6-claude-code-settings-in-effect-with-provenance: backlog
+  1-5-claude-code-settings-inventory: done  # usher#27 #28 #29 #31 #32 #35
+  1-6-claude-code-settings-in-effect-with-provenance: done  # usher#36 #37 #38 #39
   1-7-declared-but-not-in-effect-and-folder-trust-for-claude-code: backlog
   1-8-instruction-skill-and-agent-files-as-metadata: backlog
   1-9-every-launch-directory-with-consent-for-discovery: backlog
@@ -101,8 +101,8 @@ development_status:
   6-16-the-public-tap-and-a-default-feed: backlog
   epic-6-retrospective: optional
 
-  epic-7: backlog
-  7-1-profile-format-and-profile-sources: backlog
+  epic-7: in-progress
+  7-1-profile-format-and-profile-sources: done  # usher#57 #60 #62
   7-2-capture-an-environment-into-a-draft-profile: backlog
   7-3-filter-annotate-and-save-a-profile: backlog
   7-4-load-a-profile-and-see-it-against-my-environments: backlog
