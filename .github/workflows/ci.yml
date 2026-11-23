@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
           # macOS runner background traffic, not usher code. The mesu, swdist and
@@ -55,7 +55,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
           # macOS runner background traffic, not usher code. The mesu, swdist and
@@ -86,7 +86,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
           # macOS runner background traffic, not usher code. The mesu, swdist and
@@ -128,7 +128,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
           # macOS runner background traffic, not usher code. The mesu, swdist and
