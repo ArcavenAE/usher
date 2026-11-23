@@ -59,6 +59,16 @@ stub member clean
 workspace usher-testkit clean
 expect pass "usher-testkit may carry a signing crate"
 
+# usher-probes is the second test-only member: it takes the testkit as a normal
+# dependency, so it reaches the signing crates through it.
+stub member usher-probes usher-testkit:member
+workspace usher-testkit usher-probes clean
+expect pass "usher-probes may reach a signing crate through the testkit"
+
+stub member shipper usher-probes:member
+workspace usher-testkit usher-probes clean shipper
+expect fail "a normal dependency on usher-probes still fails" "shipper reaches"
+
 stub member bad blake2:vendor
 workspace usher-testkit clean bad
 expect fail "a member with a signing crate as a normal dependency fails" "bad reaches"

@@ -298,18 +298,21 @@ fn a_non_success_status_is_an_error_that_names_the_status() {
 }
 
 #[test]
-fn a_transport_error_comes_back_unchanged() {
+fn a_transport_error_keeps_its_check_status_and_next_action_under_the_calls_step() {
     let failure = UsherError::new(
-        "send",
+        "send request",
         "the host answers",
         "connection refused",
         "try later",
     );
-    let transport = RecordingTransport::new().answering(Err(failure.clone()));
+    let transport = RecordingTransport::new().answering(Err(failure));
     let err = port(&transport)
         .call(knowledge_request())
         .expect_err("a transport error must fail");
-    assert_eq!(err, failure);
+    assert_eq!(err.step(), "send knowledge-update");
+    assert_eq!(err.check(), "the host answers");
+    assert_eq!(err.status(), "connection refused");
+    assert_eq!(err.next_action(), "try later");
 }
 
 // ---- redirects ----

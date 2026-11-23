@@ -255,6 +255,8 @@ pub struct WireRequest {
     headers: Vec<(String, String)>,
     /// The body fields, in descriptor order.
     body: Vec<(String, String)>,
+    /// The most bytes of answer body the descriptor allows; a transport reads one more.
+    max_response_bytes: u64,
 }
 
 impl WireRequest {
@@ -281,6 +283,11 @@ impl WireRequest {
     /// The headers, lowercase names, `user-agent` first.
     pub fn headers(&self) -> &[(String, String)] {
         &self.headers
+    }
+
+    /// The most bytes of answer body the descriptor allows.
+    pub fn max_response_bytes(&self) -> u64 {
+        self.max_response_bytes
     }
 
     /// The body fields, in descriptor order.
@@ -430,7 +437,10 @@ impl<T: Transport, P: Policy> Port<T, P> {
             ));
         }
         let wire = build_wire(descriptor, &request)?;
-        let first = self.transport.send(&wire)?;
+        let first = self
+            .transport
+            .send(&wire)
+            .map_err(|err| under_call(descriptor, &err))?;
         if !is_redirect(first.status) {
             return finish(descriptor, first);
         }
@@ -453,8 +463,12 @@ impl<T: Transport, P: Policy> Port<T, P> {
             query: Vec::new(),
             headers: vec![(USER_AGENT.to_string(), USER_AGENT_VALUE.to_string())],
             body: Vec::new(),
+            max_response_bytes: descriptor.max_body_bytes,
         };
-        let second = self.transport.send(&follow)?;
+        let second = self
+            .transport
+            .send(&follow)
+            .map_err(|err| under_call(descriptor, &err))?;
         if is_redirect(second.status) {
             return Err(refuse(
                 descriptor,
@@ -479,6 +493,12 @@ fn refuse(
     next: &str,
 ) -> UsherError {
     UsherError::new(format!("send {}", descriptor.name), check, status, next)
+}
+
+/// A transport's error under the call's own step; the check, status and next action are
+/// the transport's, unchanged.
+fn under_call(descriptor: &Descriptor, err: &UsherError) -> UsherError {
+    refuse(descriptor, err.check(), err.status(), err.next_action())
 }
 
 fn is_redirect(status: u16) -> bool {
@@ -669,6 +689,7 @@ fn build_wire(descriptor: &Descriptor, request: &Request) -> Result<WireRequest,
         query: pairs(Place::Query),
         headers,
         body: pairs(Place::Body),
+        max_response_bytes: descriptor.max_body_bytes,
     })
 }
 
