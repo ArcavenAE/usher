@@ -30,6 +30,15 @@ jobs:
         uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
+          # macOS runner background traffic, not usher code. The mesu, swdist and
+          # configuration hosts are Apple OS update checks, ocsp.edge.digicert.com is
+          # a certificate revocation check, apple-relay.cloudflare.com is an Apple relay.
+          allowed-endpoints: >
+            mesu-cdn.origin-apple.com.akadns.net:443
+            ocsp.edge.digicert.com:443
+            apple-relay.cloudflare.com:443
+            configuration.g.aaplimg.com:443
+            swdist.g.aaplimg.com:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -49,6 +58,15 @@ jobs:
         uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
+          # macOS runner background traffic, not usher code. The mesu, swdist and
+          # configuration hosts are Apple OS update checks, ocsp.edge.digicert.com is
+          # a certificate revocation check, apple-relay.cloudflare.com is an Apple relay.
+          allowed-endpoints: >
+            mesu-cdn.origin-apple.com.akadns.net:443
+            ocsp.edge.digicert.com:443
+            apple-relay.cloudflare.com:443
+            configuration.g.aaplimg.com:443
+            swdist.g.aaplimg.com:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -71,6 +89,15 @@ jobs:
         uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
+          # macOS runner background traffic, not usher code. The mesu, swdist and
+          # configuration hosts are Apple OS update checks, ocsp.edge.digicert.com is
+          # a certificate revocation check, apple-relay.cloudflare.com is an Apple relay.
+          allowed-endpoints: >
+            mesu-cdn.origin-apple.com.akadns.net:443
+            ocsp.edge.digicert.com:443
+            apple-relay.cloudflare.com:443
+            configuration.g.aaplimg.com:443
+            swdist.g.aaplimg.com:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -104,6 +131,15 @@ jobs:
         uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
+          # macOS runner background traffic, not usher code. The mesu, swdist and
+          # configuration hosts are Apple OS update checks, ocsp.edge.digicert.com is
+          # a certificate revocation check, apple-relay.cloudflare.com is an Apple relay.
+          allowed-endpoints: >
+            mesu-cdn.origin-apple.com.akadns.net:443
+            ocsp.edge.digicert.com:443
+            apple-relay.cloudflare.com:443
+            configuration.g.aaplimg.com:443
+            swdist.g.aaplimg.com:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
