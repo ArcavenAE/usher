@@ -663,6 +663,20 @@ fn a_directory_nested_deeper_than_eight_levels_makes_the_profile_invalid() {
     names(&refusal(&dir), "deep.txt");
 }
 
+#[test]
+fn an_empty_directory_nested_deeper_than_eight_levels_makes_the_profile_invalid() {
+    let s = Scratch::new();
+    let dir = s.profile("p");
+    fs::create_dir_all(dir.join("a/b/c/d/e/f/g/h")).expect("create the eighth level");
+    assert_eq!(
+        must_load(&dir).len(),
+        1,
+        "an empty directory at depth eight is read"
+    );
+    fs::create_dir_all(dir.join("a/b/c/d/e/f/g/h/i")).expect("create the ninth level");
+    names(&refusal(&dir), "a/b/c/d/e/f/g/h/i");
+}
+
 // A collection: profiles/<name>/.
 
 fn collection(s: &Scratch, count: usize) -> PathBuf {
