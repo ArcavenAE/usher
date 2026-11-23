@@ -8,11 +8,13 @@
 //! with one invalid profile is invalid as a whole, and nothing is returned
 //! from it.
 
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::Read;
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Component, Path, PathBuf};
 
+use nix::errno::Errno;
+use nix::fcntl::OFlag;
 use usher_core::UsherError;
 
 use crate::Manifest;
@@ -703,7 +705,13 @@ fn read_text(
     if walked.len() > FILE_CAP {
         return Err(over_file());
     }
-    let file = File::open(path).map_err(|err| ctx.io("file", path, &err))?;
+    let file = open_without_following(path).map_err(|err| {
+        if err.raw_os_error() == Some(Errno::ELOOP as i32) {
+            symlink_refusal(ctx, path)
+        } else {
+            ctx.io("file", path, &err)
+        }
+    })?;
     let opened = file.metadata().map_err(|err| ctx.io("file", path, &err))?;
     if !same_file(walked, &opened) {
         return Err(symlink_refusal(ctx, path));
@@ -730,6 +738,20 @@ fn read_text(
             "save the file as UTF-8",
         )
     })
+}
+
+/// Opens a file for reading without following a symlink at its last component
+/// and without waiting on one that is a FIFO. `O_NOFOLLOW` makes a symlink
+/// swapped in after the walk fail the open with `ELOOP`, and `O_NONBLOCK` makes
+/// the open of a FIFO return at once, where it would wait for a writer. A
+/// regular file ignores `O_NONBLOCK` on both open and read, so the flag stays
+/// set. `O_NOFOLLOW` covers only the last component, so `same_file` still
+/// catches a swapped parent directory.
+fn open_without_following(path: &Path) -> std::io::Result<File> {
+    OpenOptions::new()
+        .read(true)
+        .custom_flags((OFlag::O_NOFOLLOW | OFlag::O_NONBLOCK).bits())
+        .open(path)
 }
 
 /// Whether the file that was opened is the one the walk checked. The walk

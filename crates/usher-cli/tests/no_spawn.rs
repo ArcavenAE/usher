@@ -55,10 +55,11 @@ fn the_cli_and_the_adapter_name_no_process_spawn_api() {
 }
 
 /// The one way a spawn could arrive without a token in the source is a Cargo change that
-/// turns on a process feature of `nix`, so the feature list is pinned: exactly `user` and
-/// `hostname`, set once in the workspace and inherited by the CLI without an override.
+/// turns on a process feature of `nix`, so the feature list is pinned: exactly `user`,
+/// `hostname` and `fs`, set once in the workspace and inherited by the CLI without an
+/// override. `fs` holds the open flags and no process API.
 #[test]
-fn the_nix_features_are_exactly_user_and_hostname() {
+fn the_nix_features_are_exactly_user_hostname_and_fs() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let workspace = fs::read_to_string(root.join("Cargo.toml")).expect("the workspace manifest");
     let line = workspace
@@ -73,7 +74,7 @@ fn the_nix_features_are_exactly_user_and_hostname() {
         .filter(|f| !f.is_empty())
         .collect();
     features.sort_unstable();
-    assert_eq!(features, ["hostname", "user"], "{line}");
+    assert_eq!(features, ["fs", "hostname", "user"], "{line}");
     let cli = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
         .expect("the CLI manifest");
     let nix: Vec<&str> = cli
