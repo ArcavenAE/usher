@@ -174,7 +174,7 @@ fn a_refusal_holds_no_raw_escape_when_a_version_range_holds_one() {
     assert!(tool.check().contains("tools.node"));
 }
 
-// Ruling 7.1 PR A, Q7: the escape set is exactly char::is_control(), which
+// The escape set is exactly char::is_control(), which
 // takes in the C1 controls U+0080 to U+009F as well as C0 and DEL.
 #[test]
 fn a_c1_control_character_is_written_as_an_uppercase_u_escape() {
@@ -202,7 +202,7 @@ fn a_refusal_shows_a_c1_control_in_a_tool_name_as_text_and_holds_no_raw_one() {
     );
 }
 
-// Ruling 7.1 PR A, Q7 and its correction: the bidi format controls are
+// The bidi format controls are
 // escaped too. Every literal below is written as an escape in the source.
 #[test]
 fn a_bidi_format_control_is_written_as_an_uppercase_u_escape() {
@@ -239,7 +239,7 @@ fn a_refusal_holds_no_raw_bidi_control_in_any_field() {
     );
 }
 
-// F149: four sites echo text the person wrote, and each shows it escaped.
+// Four sites echo text the person wrote, and each shows it escaped.
 #[test]
 fn a_refusal_shows_an_escape_in_the_profile_path_in_the_step() {
     let origin = "team\u{1b}[31m/setup";
@@ -292,7 +292,7 @@ fn a_refusal_shows_an_escape_in_a_note_keys_harness_prefix_as_text() {
     );
 }
 
-// F150, ruling 7.1 PR A, Q8: the version and every key-path segment refuse the
+// The version and every key-path segment refuse the
 // bidi format controls, and the error shows the value through the helper.
 // Every literal is an escape in the source.
 fn no_raw_bidi(err: &usher_core::UsherError) {
@@ -366,7 +366,7 @@ fn a_note_key_segment_holding_a_bidi_control_is_refused_quoted_or_not() {
     }
 }
 
-// F151: a quoted segment that needs its quotes (it holds a space) and holds a
+// A quoted segment that needs its quotes (it holds a space) and holds a
 // bidi control is refused for the bidi reason, not for a needless quote.
 #[test]
 fn a_quoted_segment_that_needs_its_quotes_and_holds_a_bidi_control_is_refused_for_that_reason() {

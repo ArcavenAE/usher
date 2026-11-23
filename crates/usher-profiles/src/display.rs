@@ -14,8 +14,8 @@ pub(crate) fn is_escaped(c: char) -> bool {
         )
 }
 
-/// A name as an error shows it: each character in the escape set (ruling 7.1
-/// PR A, Q7: C0, DEL, C1 and the bidi format controls, see `is_escaped`) is
+/// A name as an error shows it: each character in the escape set (C0, DEL, C1 and the bidi
+/// format controls, see `is_escaped`) is
 /// written as `\u` and four uppercase hex digits, and everything else stays
 /// as written. An error built from it never carries a raw control character,
 /// an escape sequence included.
