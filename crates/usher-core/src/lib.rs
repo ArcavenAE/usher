@@ -11,6 +11,7 @@ mod egress;
 mod environment;
 mod listing;
 mod map;
+mod tools;
 
 pub use egress::{
     ALL, Class, DELEGATED_INSTALLERS, DELEGATED_NOTE, DelegatedInstaller, Descriptor, Egress,
@@ -27,6 +28,11 @@ pub use listing::{
 pub use map::{
     NotObserved, ReadingMethod, ReadingStatus, SettingReading, SettingsMap, SettingsMapper,
     SkippedLayer,
+};
+pub use tools::{
+    BrewPaths, Hint, HintKind, InstallState, Installer, InstallerPaths, Reading, Recorded, ToolRow,
+    ToolSpec, Verdict, allowed_invocations, command_text, join_versions, never_call, no_update_env,
+    render_rows, tool_specs,
 };
 
 /// The one error type every usher surface reports through.

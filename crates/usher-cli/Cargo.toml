@@ -11,6 +11,8 @@ usher-core.workspace = true
 usher-knowledge.workspace = true
 usher-adapter-claude-code.workspace = true
 usher-store.workspace = true
+serde_json.workspace = true
+toml_edit.workspace = true
 
 [dev-dependencies]
 usher-testkit.workspace = true
