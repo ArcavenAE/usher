@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-21
 - **Status:** captured research, not yet a kos finding (no probe brief was
-  filed; this arrived from live debugging in i-orc). Promote via the normal
+  filed; this arrived from live debugging in the infra orchestrator). Promote via the normal
   question → probe → finding loop if it earns a charter position.
 - **Confidence:** high for the observed build, low for durability — see
   *Staleness risks* at the end. One value in this document is
@@ -238,7 +238,7 @@ design can express backend-conditional rules rather than flat assertions.
 
 - Installed binary 2.1.217 (see *Provenance*) — decision function, provider
   chain, source classifier, query-source literals, gate default.
-- `i-orc/peu/14_Claude_Code_Deep_Dive/claude-caching-and-limits.md` — the
+- `peu/14_Claude_Code_Deep_Dive/claude-caching-and-limits.md` in the infra orchestrator — the
   2x/1.25x write-premium figures and the Bedrock model/region caveat.
-- `i-orc/peu/doctor.just` — existing checks, and the Mantle pairing comment
+- `peu/doctor.just` in the infra orchestrator — existing checks, and the Mantle pairing comment
   confirming both configurations are in use.
