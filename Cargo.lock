@@ -841,6 +841,8 @@ dependencies = [
 name = "usher-cli"
 version = "0.0.0"
 dependencies = [
+ "nix",
+ "rusqlite",
  "serde_json",
  "toml_edit",
  "usher-adapter-claude-code",

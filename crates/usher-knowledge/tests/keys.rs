@@ -42,11 +42,11 @@ fn a_keys_item_parses_with_its_key_names_in_file_order() {
 }
 
 #[test]
-fn schema_two_is_refused_and_schema_three_is_read() {
+fn schema_two_is_refused_and_schema_five_is_read() {
     let two = FILE.replace("schema_version = 5", "schema_version = 2");
     rejects(&two, &["schema 2 is not supported", "reads schema 5"]);
     KnowledgeFile::parse("schema_version = 5\nsequence = 1\n")
-        .expect("schema 4 with no items is valid");
+        .expect("schema 5 with no items is valid");
 }
 
 #[test]

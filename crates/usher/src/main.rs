@@ -37,7 +37,7 @@ fn main() -> ExitCode {
 
 /// Whether the first argument names a verb the `usher-cli` crate holds.
 fn hands_to_cli(first: Option<&str>) -> bool {
-    matches!(first, Some("inventory" | "tools"))
+    matches!(first, Some("inventory" | "map" | "tools"))
 }
 
 /// Picks a mode from the arguments and returns the text to print.
@@ -48,13 +48,13 @@ fn run(mut args: impl Iterator<Item = String>) -> Result<String, UsherError> {
             STEP,
             format!("mode `{}` is one this build supports", other.escape_debug()),
             "unknown mode",
-            "run `usher inventory`, `usher tools` or `usher --version`",
+            "run `usher inventory`, `usher map <directory>`, `usher tools` or `usher --version`",
         )),
         None => Err(UsherError::new(
             STEP,
             "a mode was given",
             "no mode",
-            "run `usher inventory`, `usher tools` or `usher --version`",
+            "run `usher inventory`, `usher map <directory>`, `usher tools` or `usher --version`",
         )),
     }
 }
@@ -85,10 +85,22 @@ mod tests {
         assert!(err.next_action().contains("usher --version"));
     }
 
+    /// A mistyped or missing mode is told every mode there is, including the map verb.
+    #[test]
+    fn a_mistyped_or_missing_mode_is_told_the_next_action_names_every_verb() {
+        let expected =
+            "run `usher inventory`, `usher map <directory>`, `usher tools` or `usher --version`";
+        let err = run(args(&["mpa"])).expect_err("mpa is not a mode");
+        assert_eq!(err.next_action(), expected);
+        let err = run(args(&[])).expect_err("a mode is required");
+        assert_eq!(err.next_action(), expected);
+    }
+
     #[test]
     fn the_tools_verb_is_handed_to_the_cli_crate_beside_inventory() {
         assert!(hands_to_cli(Some("inventory")));
         assert!(hands_to_cli(Some("tools")));
+        assert!(hands_to_cli(Some("map")));
         assert!(!hands_to_cli(Some("--version")));
         assert!(!hands_to_cli(None));
     }
