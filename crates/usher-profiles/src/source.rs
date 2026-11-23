@@ -632,6 +632,13 @@ fn walk(ctx: &Ctx, dir: &Path) -> Result<Vec<Walked>, UsherError> {
             names.push(entry.file_name());
         }
         names.sort();
+        if depth > DEPTH_CAP && names.is_empty() {
+            return Err(ctx.refuse(
+                format!("a profile nests at most {DEPTH_CAP} directory levels"),
+                format!("{} is deeper than {DEPTH_CAP} levels", display_name(&rel)),
+                "flatten the profile directory",
+            ));
+        }
         for name in names {
             let text = name.to_string_lossy();
             let child_rel = if rel.is_empty() {
@@ -782,7 +789,7 @@ mod tests {
         let meta_b = fs::symlink_metadata(&b).expect("metadata b");
         let same = same_file(&meta_a, &meta_a);
         let different = same_file(&meta_a, &meta_b);
-        let _ = fs::remove_dir_all(&dir);
+        fs::remove_dir_all(&dir).expect("remove scratch");
         assert!(same, "a file is the same file as itself");
         assert!(!different, "two files with the same size are not one file");
     }
@@ -801,7 +808,7 @@ mod tests {
         let mut total = 0;
         let own = read_text(&ctx, &a, "a", &meta_a, &mut total);
         let other = read_text(&ctx, &a, "a", &meta_b, &mut total);
-        let _ = fs::remove_dir_all(&dir);
+        fs::remove_dir_all(&dir).expect("remove scratch");
         assert!(own.is_ok(), "the file the walk listed is read");
         assert!(
             other.is_err(),
