@@ -27,6 +27,7 @@ usher-store = { path = "crates/usher-store", version = "0.0.0" }
 usher-adapter-claude-code = { path = "crates/usher-adapter-claude-code", version = "0.0.0" }
 serde_json = "=1.0.154"
 toml_edit = "=0.25.19"
+yaml-rust2 = { version = "=0.13.0", default-features = false }
 minisign-verify = "=0.3.0"
 ed25519-dalek = "=3.0.0"
 blake2 = "=0.11.0"

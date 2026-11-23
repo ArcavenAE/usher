@@ -302,7 +302,7 @@ fn no_raw_bidi(err: &usher_core::UsherError) {
         assert!(
             !value.chars().any(|c| matches!(
                 u32::from(c),
-                0x200E | 0x200F | 0x202A..=0x202E | 0x2066..=0x2069
+                0x061C | 0x200E | 0x200F | 0x202A..=0x202E | 0x2066..=0x2069
             )),
             "a raw direction control in {value:?}"
         );
