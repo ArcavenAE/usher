@@ -19,19 +19,23 @@ versions = ">=2.1.317, <3.0.0"
 command = "shared-mcp"
 url = "https://example.test/mcp?token=canary-shared-url"
 authorization = "Bearer canary-shared-header"
+args = ["--api-key", "canary-shared-arg"]
 
 [mcp_servers.shared.env]
 SHARED_TOKEN = "canary-shared-env"
 "#;
 
-const FRAGMENT: &str = r#"{"mcpServers": {"own": {"command": "own-mcp", "url": "https://example.test/own?token=canary-own-url", "authorization": "Bearer canary-own-header", "env": {"OWN_TOKEN": "canary-own-env"}}}}"#;
+const FRAGMENT: &str = r#"{"mcpServers": {"own": {"command": "own-mcp", "url": "https://example.test/own?token=canary-own-url", "authorization": "Bearer canary-own-header", "args": ["--api-key", "canary-own-arg"], "env": {"OWN_TOKEN": "canary-own-env"}}}}"#;
 
-const CANARIES: [&str; 5] = [
+const CANARIES: [&str; 8] = [
     "canary-shared-url",
     "canary-shared-header",
     "canary-shared-env",
+    "canary-shared-arg",
     "canary-own-url",
     "canary-own-header",
+    "canary-own-env",
+    "canary-own-arg",
 ];
 
 static NEXT: AtomicU32 = AtomicU32::new(0);
