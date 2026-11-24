@@ -85,6 +85,12 @@ impl HarnessRule {
         self.mcp_path = Some(path.to_string());
         self
     }
+
+    /// The key paths (printed form) a profile may own entries in for this harness. Red stub:
+    /// the keys are ignored, so no fragment is refused.
+    pub fn with_owned_keys(self, _keys: &[&str]) -> HarnessRule {
+        self
+    }
 }
 
 /// The caller's table: harness rules and the credential-key names.
