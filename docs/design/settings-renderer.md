@@ -1,6 +1,6 @@
 # Applying a profile to Claude Code's user settings: what the spine does not yet say
 
-- **Status:** design for review, 2026-11-21. Nothing here is built. A build waits until this design and its plan are reviewed and the operator says go.
+- **Status:** design for review, 2026-11-21. Nothing here is built. A build waits until this design and its plan are reviewed and the operator says go. The operator ruled R-A to R-E on 2026-11-24 (section 6).
 - **Author:** the arcaven-ent team's architect seat, from a six-seat design review.
 - **Checked at:** usher `origin/main` 4147ad6; Claude Code 2.1.329 (binary strings, read only); Claude Code docs read 2026-11-21: [settings](https://code.claude.com/docs/en/settings#settings-precedence), [settings reference](https://code.claude.com/docs/en/settings-reference), [managed settings](https://code.claude.com/docs/en/managed-settings).
 - **Builds on:** the architecture spine (`_bmad-output/planning-artifacts/architecture/architecture-usher-2026-11-08/ARCHITECTURE-SPINE.md`, cited as AD-n), the stories in `_bmad-output/planning-artifacts/epics.md` (cited as story n.m), and the PRD addendum's change-safety table (`_bmad-output/planning-artifacts/prds/prd-usher-2026-11-03/addendum.md` section 7). This design adds deltas to them. It adds no second write path, lock, journal or backup store.
@@ -61,7 +61,7 @@ The Claude Code fragment is native JSON, as AD-11 requires. A profile may own en
 | `apiKeyHelper` | mints credentials | cc-switch (`floor.rs:61`) |
 | `model`, `advisorModel` | owned by `/model` and by provider switchers | Claude Code (2.1.329), cc-switch (`floor.rs:68`, `:75`) |
 | `permissions.defaultMode`, `permissions.blockReadsOutsideWorkingDirectories` | single values Claude Code writes | Claude Code (2.1.329) |
-| `hooks`, `statusLine` | run shell commands; out unless ruling R-C rules them in | none seen |
+| `hooks`, `statusLine` | run shell commands; out, ruled R-C (section 6) | none seen |
 
 **Ownership comes from the journal.** An entry is usher's when an AD-3 outcome row records usher adding that value to that key and no later outcome records its removal. Matching on the value alone is not enough, because the same value added by hand would be claimed too. The journal row exists for every write. Story 8.4's adoption record does not: 8.4 writes it only for an entry verified in effect, so an entry left overridden (D5) or inert (D4) would never be usher's. The adoption record keeps provenance and drift only. An entry with no journal row is never removed, and an entry another writer moved or reordered is still found by its value.
 
@@ -85,7 +85,7 @@ The Claude Code fragment is native JSON, as AD-11 requires. A profile may own en
 - **The remote layer:** usher never fetches it, because fetching needs the person's claude.ai credential (AD-8). Knowledge lists its local cache (item `claude-code.source-server-managed-cache`). If the cache exists, usher reads its key paths only and the dry run shows `managed: from cache, <mtime>`, since the settings reference describes startup waiting until the settings are "freshly fetched", so the cache can lag. If it does not exist, the dry run says `managed: unknown` rather than claim a key is free.
 - **Managed sources:** read for key paths only, never `env` values, never written.
 
-A codex target needs its own rule for codex's admin layer, `requirements.toml`, before it ships (ruling R-B).
+A codex target needs its own rule for codex's admin layer, `requirements.toml`, before it ships (R-B, section 6).
 
 **D6. Two typed outcomes, and no retry (AD-3, AD-18, story 6.15).** AD-3 and story 6.3 already stop a write when the target changed since the proposal. Two things are new.
 
@@ -98,7 +98,7 @@ A codex target needs its own rule for codex's admin layer, `requirements.toml`, 
 - cc-switch is detected by a `stat` of `~/.cc-switch/` only. usher never opens a file inside it, since its database stores provider keys.
 - Present: the report says the tool is present and that keys outside the profile are not usher's.
 - Not present: the report says "not found at its default path", never "absent", because cc-switch's data directory can be moved by a stored override (cc-switch `config.rs:314-316`).
-- usher never installs, starts or configures it. Whether the report names the tool at all waits on ruling R-E.
+- usher never installs, starts or configures it. R-E (section 6) adopted no text on vendor terms, so nothing on them is added here.
 - marvel's per-seat `--settings` layer sits above the user layer for marvel seats, and seats still load the user layer, so a value another tool writes into user `env` can reach a seat. That is a marvel property, tracked as ArcavenAE/marvel#1555, outside this design.
 
 ## 4. What it never does
@@ -148,13 +148,25 @@ Every fixture is synthetic: scratch homes and made-up canary tokens. A test that
 
 The read-deny profile is `sandbox-exec` on macOS. Its Linux equivalent is unverified, and U5 names it before it lands.
 
-## 6. Rulings this design needs
+## 6. Rulings
 
-- **R-A, the go:** whether to build this, after review.
-- **R-B, codex:** whether a first slice also applies to `~/.codex/config.toml` for human sessions. The party split 3 to 3. For: marvel's codex seats use a private `CODEX_HOME`, so it reaches human sessions only. Against: the named codex pain is seats stopping at approval prompts, and `requirements.toml` has no managed rule yet. The plan holds the codex ticket until this is ruled.
-- **R-C, `hooks` and `statusLine`:** whether a profile may ever own them. The party voted 6 to 0 to keep them out unless ruled in.
-- **R-E, vendor terms:** the rule on subscription use outside a vendor's official client. It may decide whether D7's report names cc-switch at all, so U5's wording waits on it.
-- **For usher's owners, not a ruling of this plan:** D1's reading of AD-8 ("never extracted"), and D4's one-name exception to `env`'s `sensitive` mark (D1, D4).
+The operator ruled on 2026-11-24 through the Desk cards named below; director relayed the rulings, and the words in quotation marks are the ruling text as relayed, verbatim; R-D and R-E are recorded as outcomes only. The design's own R-D has no row in this file (the multi-user text was proposed elsewhere); its ruling is recorded here for completeness.
+
+| ruling | card | question | ruling |
+|---|---|---|---|
+| R-A, the go | i673-ra-go | whether to build this, after review | "Yes to both, usher first." |
+| R-B, codex | i673-rb-codex | whether a first slice also applies to `~/.codex/config.toml` for human sessions (the party split 3 to 3; for: marvel's codex seats use a private `CODEX_HOME`, so it reaches human sessions only; against: the named codex pain is seats stopping at approval prompts, and `requirements.toml` has no managed rule yet) | "Render codex config for human sessions now." |
+| R-C, `hooks` and `statusLine` | i673-rc-hooks | whether a profile may ever own them (the party voted 6 to 0 to keep them out unless ruled in) | "Out: a profile never owns hooks or statusLine." |
+| R-D, multi-user text | i673-rd-multiuser | the proposed multi-user text | Revise: the proposed multi-user text is dropped and nothing is added. |
+| R-E, vendor terms | i673-re-vendor-terms | the rule on subscription use outside a vendor's official client | No option chosen: none of the proposed texts A, B or C is adopted. |
+
+What follows from them:
+
+- R-A: the build is a go, after review. U1 and U2 are buildable now; U3 to U5 wait on the usher stories named in the plan check.
+- R-B: a codex target for human sessions is in scope. It still needs U3 and U4, and the `requirements.toml` rule that D5 says a codex target needs.
+- R-C: D2's bar on `hooks` and `statusLine` stands as written, and no ruling adds them to what a profile may own.
+- R-D and R-E: no text is added to usher on either. U5's wording no longer waits on R-E.
+- For usher's owners, not a ruling of this plan: D1's reading of AD-8 ("never extracted"), and D4's one-name exception to `env`'s `sensitive` mark (D1, D4).
 
 ## 7. Prior art and license basis
 
@@ -173,16 +185,16 @@ Flat tickets with dependency edges and no umbrella. "Story n.m" edges are usher'
 
 | ticket | does | depends on | red tests it turns green |
 |---|---|---|---|
-| U1 | knowledge items for D1, D2, D3 and D4, including the D4 child item that overrides `env`'s `sensitive` mark for one path, and the `claude-code.key-env` summary that names it | R-A | `settings_keys.rs`: 4 more |
-| U2 | fragment refusal for D2 | R-A, U1; story 7.1 | `profile_fragment.rs`: 2 |
+| U1 | knowledge items for D1, D2, D3 and D4, including the D4 child item that overrides `env`'s `sensitive` mark for one path, and the `claude-code.key-env` summary that names it | R-A (ruled) | `settings_keys.rs`: 4 more |
+| U2 | fragment refusal for D2 | R-A (ruled), U1; story 7.1 | `profile_fragment.rs`: 2 |
 | U3 | Claude Code apply deltas: D1, D2's journal ownership, D3, D6, and the addendum row | U1, U2; stories 6.3, 6.4, 6.13, 8.3, 8.4 | `apply.rs`: 13 |
 | U4 | D5, the managed rule | U3; story 8.1 | `managed.rs`: 4 more |
-| U5 | D4 and D7, the reports | U3; R-E for D7's wording | `apply_report.rs`: 3 |
-| U6 | a codex user target, with a `requirements.toml` rule | R-B, U3, U4 | named when R-B is ruled; **waiting** |
+| U5 | D4 and D7, the reports | U3 | `apply_report.rs`: 3 |
+| U6 | a codex user target, with a `requirements.toml` rule | U3, U4 (R-B ruled) | named when U3 and U4 land; **waiting** |
 
 Plan check:
 
 - Every ticket but U6 names its tests, and each test sits in the crate the ticket changes: knowledge in `usher-knowledge`, fragment loading in `usher-profiles`, the write path in `usher-adapter-claude-code`, the report in `usher-cli`.
 - U2 cannot start before story 7.1 creates `usher-profiles`. U3 cannot start before stories 6.3, 6.4 and 8.3 land, since it changes their write path rather than building one, and its failpoint test needs story 6.3's transaction.
 - D6's window becomes a row in addendum section 7 naming its test, so story 6.15's trace check passes. U3 carries that row.
-- U6 names no tests, because its scope waits on R-B. It is marked waiting, not hidden.
+- U6 names no tests, because its scope waits on U3 and U4 and on the `requirements.toml` rule. It is marked waiting, not hidden.
