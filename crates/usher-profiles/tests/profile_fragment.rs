@@ -205,12 +205,12 @@ fn debug_of_a_loaded_profile_holds_no_fragment_value() {
     );
     assert!(
         !text.contains("canary-entry"),
-        "a fragment value is printed: {text}"
+        "a fragment value is printed in Debug"
     );
     let fragment = profiles[0].fragment("claude-code").expect("the fragment");
     let text = format!("{fragment:?}");
     assert!(
         !text.contains("canary-entry"),
-        "a fragment value is printed: {text}"
+        "a fragment value is printed in Debug"
     );
 }
