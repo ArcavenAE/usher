@@ -1,4 +1,4 @@
-//! Story 1.6, PR A: schema 5, the `settings-keys` class and the cross-layer stack.
+//! Story 1.6, PR A: schema 6, the `settings-keys` class and the cross-layer stack.
 //! A settings-key item names one key a harness reads, how it merges across layers, whether
 //! its value is never read, and the environment variable that overrides it. A `layers`
 //! item carries the vendor's cross-layer order, highest first, so precedence is data and
@@ -10,7 +10,7 @@
 use usher_knowledge::{Class, KnowledgeFile, Layer, MergeKind, ReferenceKind, Scopes, SourceLayer};
 
 const FILE: &str = r#"
-schema_version = 5
+schema_version = 6
 sequence = 12
 
 [[item]]
@@ -106,9 +106,9 @@ fn accepts(text: &str) {
 }
 
 #[test]
-fn a_schema_5_file_carries_settings_keys_with_merge_kind_sensitivity_and_override() {
-    let file = KnowledgeFile::parse(FILE).expect("a valid schema 5 file");
-    assert_eq!(file.version().schema_version(), 5);
+fn a_schema_6_file_carries_settings_keys_with_merge_kind_sensitivity_and_override() {
+    let file = KnowledgeFile::parse(FILE).expect("a valid schema 6 file");
+    assert_eq!(file.version().schema_version(), 6);
     let items = file.items();
     assert_eq!(items.len(), 6);
     let model = &items[1];
@@ -143,7 +143,7 @@ fn a_schema_5_file_carries_settings_keys_with_merge_kind_sensitivity_and_overrid
 
 #[test]
 fn a_layers_item_carries_the_cross_layer_stack_highest_first() {
-    let file = KnowledgeFile::parse(FILE).expect("a valid schema 5 file");
+    let file = KnowledgeFile::parse(FILE).expect("a valid schema 6 file");
     let stack = &file.items()[0];
     assert_eq!(stack.class(), Class::Layers);
     assert_eq!(
@@ -156,14 +156,14 @@ fn a_layers_item_carries_the_cross_layer_stack_highest_first() {
 #[test]
 fn a_schema_4_file_is_refused_naming_both_schemas() {
     rejects(
-        &with("schema_version = 5", "schema_version = 4"),
-        &["schema 4", "schema 5"],
+        &with("schema_version = 6", "schema_version = 4"),
+        &["schema 4", "schema 6"],
     );
 }
 
 #[test]
 fn the_embedded_file_parses_with_literal_key_paths_only() {
-    let file = KnowledgeFile::embedded().expect("the seed parses under schema 5");
+    let file = KnowledgeFile::embedded().expect("the seed parses under schema 6");
     for item in file.items() {
         if let Some(fact) = item.settings_key() {
             assert!(!fact.key().contains('*'), "{}", item.id());
@@ -180,11 +180,11 @@ fn the_embedded_file_parses_with_literal_key_paths_only() {
 #[test]
 fn the_embedded_file_is_schema_5() {
     let file = KnowledgeFile::embedded().expect("the embedded file");
-    assert_eq!(file.version().schema_version(), 5);
+    assert_eq!(file.version().schema_version(), 6);
 }
 
 /// A control, not a red for new code: the class-to-layer mapping is the existing layer
-/// check, so once schema 5 is accepted this passes against the stub too.
+/// check, so once schema 6 is accepted this passes against the stub too.
 #[test]
 fn a_settings_key_item_of_the_slow_layer_is_refused_control() {
     let text = with(
@@ -260,7 +260,7 @@ fn key_merge_and_sensitive_must_be_named_and_known() {
 }
 
 /// A settings key is a literal path: a name, or names joined by single dots. No `*`
-/// appears anywhere in schema 5, so a child the seed does not list is never matched by
+/// appears anywhere in schema 6, so a child the seed does not list is never matched by
 /// a pattern. The seat key-path wildcard rule is separate.
 #[test]
 fn a_key_path_is_names_joined_by_dots_and_no_star_appears() {
@@ -503,9 +503,11 @@ fn the_seed_marks_env_sensitive() {
 }
 
 /// The default readable-key list, exactly. The permissions keys, `autoMode`, `model`, the
-/// managed control keys and `env` (by name only). The model-selection keys
+/// managed control keys, `env` (by name only), `apiKeyHelper` (sensitive) and the one env child
+/// read by value (I-673 U1). The model-selection keys
 /// `availableModels`, `fallbackModel`, `modelPicker` and `modelSettings` belong to `model`.
-const SEEDED_KEYS: [&str; 18] = [
+const SEEDED_KEYS: [&str; 20] = [
+    "apiKeyHelper",
     "autoMode.allow",
     "autoMode.classifyAllShell",
     "autoMode.environment",
@@ -513,6 +515,7 @@ const SEEDED_KEYS: [&str; 18] = [
     "autoMode.soft_deny",
     "availableModels",
     "env",
+    "env.CLAUDE_CODE_AUTO_MODE_SERVER",
     "fallbackModel",
     "managedSourcesBehavior",
     "model",
@@ -654,6 +657,8 @@ fn the_seed_gives_every_key_the_scope_the_settings_reference_states() {
         "permissions.defaultMode",
         "model",
         "env",
+        "env.CLAUDE_CODE_AUTO_MODE_SERVER",
+        "apiKeyHelper",
         "fallbackModel",
         "availableModels",
         "modelSettings",
@@ -857,9 +862,7 @@ fn auto_mode_items_carry_the_defaults_rule() {
 // ---- I-673 U1: schema 6 and the invariants of the three marks ----
 
 fn schema6(old: &str, new: &str) -> String {
-    let base = FILE.replace("schema_version = 5", "schema_version = 6");
-    assert_eq!(base.matches(old).count(), 1, "`{old}` must occur once");
-    base.replace(old, new)
+    with(old, new)
 }
 
 #[test]
@@ -870,7 +873,10 @@ fn the_embedded_file_is_schema_6() {
 
 #[test]
 fn a_schema_5_file_is_refused_naming_both_schemas() {
-    rejects(&FILE.to_string(), &["schema 5", "schema 6"]);
+    rejects(
+        &with("schema_version = 6", "schema_version = 5"),
+        &["schema 5", "schema 6"],
+    );
 }
 
 #[test]
@@ -948,7 +954,7 @@ fn readable_reason_on_a_sensitive_key_is_refused() {
             ALLOW,
             r#"settings_key = { key = "env.DEMO_FLAG", merge = "scalar", sensitive = true, scopes = ["any"], readable_reason = "why" }"#,
         ),
-        &["readable_reason", "sensitive"],
+        &["readable_reason", "needs `sensitive = false`"],
     );
 }
 

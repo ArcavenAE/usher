@@ -5,7 +5,7 @@
 
 use usher_knowledge::KnowledgeFile;
 
-const HEADER: &str = "schema_version = 5\nsequence = 11\n";
+const HEADER: &str = "schema_version = 6\nsequence = 11\n";
 
 fn names(versions: &str, platforms: &str) -> String {
     ITEM_NAMES

@@ -627,7 +627,7 @@ fn a_layer_that_took_no_part_prints_its_whole_reason() {
     let knowledge = signed(&format!(
         "{}{}",
         r#"
-schema_version = 5
+schema_version = 6
 sequence = 40
 "#,
         r#"

@@ -21,7 +21,7 @@ const VERSION: &str = "2.1.317";
 /// A small knowledge file: the three always-read layers, a stack, one plain key and one
 /// sensitive key that only the user layer may set.
 const FIXTURE: &str = r#"
-schema_version = 5
+schema_version = 6
 sequence = 30
 
 [[item]]
