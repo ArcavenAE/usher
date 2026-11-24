@@ -755,3 +755,87 @@ fn the_seed_gives_default_mode_its_own_rule_with_the_vendors_sentence() {
         item.summary()
     );
 }
+
+// ---- I-673 U1: the marks the settings renderer design needs (docs/design/settings-renderer.md D1 to D4) ----
+
+fn seed_fact(file: &KnowledgeFile, key: &str) -> usher_knowledge::SettingsKeyFact {
+    file.items()
+        .iter()
+        .filter(|item| item.harness() == "claude-code")
+        .filter_map(|item| item.settings_key())
+        .find(|fact| fact.key() == key)
+        .unwrap_or_else(|| panic!("the seed has no claude-code settings key `{key}`"))
+        .clone()
+}
+
+#[test]
+fn api_key_helper_is_sensitive() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    assert!(seed_fact(&file, "apiKeyHelper").sensitive());
+}
+
+#[test]
+fn auto_mode_server_is_readable_by_value_with_reason() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    let fact = seed_fact(&file, "env.CLAUDE_CODE_AUTO_MODE_SERVER");
+    assert!(
+        !fact.sensitive(),
+        "the one named exception is not sensitive"
+    );
+    let reason = fact
+        .readable_reason()
+        .expect("a readable key carries its reason");
+    assert!(!reason.trim().is_empty());
+    // Every other child of env stays sensitive: the exception is one name.
+    for item in file.items().iter().filter(|i| i.harness() == "claude-code") {
+        if let Some(f) = item.settings_key() {
+            if f.key().starts_with("env.") && f.key() != "env.CLAUDE_CODE_AUTO_MODE_SERVER" {
+                assert!(f.sensitive(), "{}", f.key());
+            }
+        }
+    }
+    // The parent summary names the exception (U1).
+    let parent = file
+        .items()
+        .iter()
+        .find(|i| i.id() == "claude-code.key-env")
+        .expect("the env item");
+    assert!(parent.summary().contains("CLAUDE_CODE_AUTO_MODE_SERVER"));
+}
+
+#[test]
+fn profile_ownable_keys_are_marked() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    let ownable = [
+        "permissions.allow",
+        "permissions.ask",
+        "permissions.deny",
+        "autoMode.environment",
+        "autoMode.allow",
+        "autoMode.soft_deny",
+        "autoMode.hard_deny",
+    ];
+    for key in ownable {
+        assert!(seed_fact(&file, key).profile_ownable(), "{key}");
+    }
+    // Positive control for the negative: the bar is a mark, not the absence of items.
+    for key in ["model", "env", "permissions.defaultMode"] {
+        assert!(!seed_fact(&file, key).profile_ownable(), "{key}");
+    }
+}
+
+#[test]
+fn auto_mode_items_carry_the_defaults_rule() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    for key in [
+        "autoMode.environment",
+        "autoMode.allow",
+        "autoMode.soft_deny",
+        "autoMode.hard_deny",
+    ] {
+        assert!(seed_fact(&file, key).defaults_rule(), "{key}");
+    }
+    for key in ["permissions.allow", "autoMode.classifyAllShell"] {
+        assert!(!seed_fact(&file, key).defaults_rule(), "{key}");
+    }
+}

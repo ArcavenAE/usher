@@ -502,6 +502,22 @@ impl SettingsKeyFact {
     pub fn overrides(&self) -> Option<&EnvOverride> {
         self.overrides.as_ref()
     }
+
+    /// Whether a profile may own entries under this key. Red stub: always false.
+    pub fn profile_ownable(&self) -> bool {
+        false
+    }
+
+    /// Whether the array must hold the literal `"$defaults"`. Red stub: always false.
+    pub fn defaults_rule(&self) -> bool {
+        false
+    }
+
+    /// The reason this one key is readable by value although its parent is sensitive.
+    /// Red stub: always none.
+    pub fn readable_reason(&self) -> Option<&str> {
+        None
+    }
 }
 
 /// One fact about a harness, with its source and the date it was last verified.
