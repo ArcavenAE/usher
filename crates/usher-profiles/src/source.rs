@@ -67,6 +67,7 @@ pub struct HarnessRule {
     file_name: String,
     format: FragmentFormat,
     mcp_path: Option<String>,
+    owned_keys: Option<Vec<String>>,
 }
 
 impl HarnessRule {
@@ -77,6 +78,7 @@ impl HarnessRule {
             file_name: file_name.to_string(),
             format,
             mcp_path: None,
+            owned_keys: None,
         }
     }
 
@@ -86,9 +88,11 @@ impl HarnessRule {
         self
     }
 
-    /// The key paths (printed form) a profile may own entries in for this harness. Red stub:
-    /// the keys are ignored, so no fragment is refused.
-    pub fn with_owned_keys(self, _keys: &[&str]) -> HarnessRule {
+    /// The key paths (printed form) a profile may own entries in for this harness. A fragment
+    /// with any other leaf is refused, and a leaf must equal one of these paths exactly. A rule
+    /// that names none loads every fragment.
+    pub fn with_owned_keys(mut self, keys: &[&str]) -> HarnessRule {
+        self.owned_keys = Some(keys.iter().map(|k| (*k).to_string()).collect());
         self
     }
 }
@@ -119,11 +123,21 @@ impl LoadRules {
 type McpServers = Vec<(String, Vec<(String, String)>)>;
 
 /// One fragment, parsed.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Fragment {
     leaves: Vec<String>,
     tree: Node,
     mcp: McpServers,
+}
+
+/// Prints the leaf paths only: the values a fragment holds (an `env` entry can carry a
+/// credential) never reach a log or an error through `{:?}`.
+impl std::fmt::Debug for Fragment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Fragment")
+            .field("leaves", &self.leaves)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Fragment {
@@ -497,6 +511,22 @@ fn load_profile(dir: &Path, rules: &LoadRules) -> Result<Profile, UsherError> {
         })?;
         let mcp = mcp_servers(&ctx, rule, &tree, &rel)?;
         let paths = tree.leaf_paths();
+        if let Some(owned) = &rule.owned_keys {
+            for path in &paths {
+                let printed = fragment::print_path(path);
+                if !owned.contains(&printed) {
+                    return Err(ctx.refuse(
+                        format!("{}: only keys a profile may own", display_name(&rel)),
+                        format!(
+                            "`{}` is not a key a profile may own for `{}`",
+                            display_name(&printed),
+                            display_name(id)
+                        ),
+                        "keep only entries under the keys a profile may own",
+                    ));
+                }
+            }
+        }
         let leaves = paths.iter().map(|p| fragment::print_path(p)).collect();
         for path in &paths {
             let hit = path.iter().any(|segment| {
