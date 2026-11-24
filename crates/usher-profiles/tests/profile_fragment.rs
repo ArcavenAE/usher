@@ -213,4 +213,16 @@ fn debug_of_a_loaded_profile_holds_no_fragment_value() {
         !text.contains("canary-entry"),
         "a fragment value is printed in Debug"
     );
+    // A rule with no owned keys loads any fragment, so an env value can sit in a Profile.
+    let profiles = load(r#"{"env": {"ANTHROPIC_API_KEY": "canary-env"}}"#, false)
+        .unwrap_or_else(|e| panic!("the control was refused: {}", shown(&e)));
+    let fragment = profiles[0].fragment("claude-code").expect("the fragment");
+    assert!(
+        !format!("{profiles:?}").contains("canary-env"),
+        "an env value is printed in a Profile's Debug"
+    );
+    assert!(
+        !format!("{fragment:?}").contains("canary-env"),
+        "an env value is printed in a Fragment's Debug"
+    );
 }
