@@ -134,8 +134,10 @@ fn fragment_refuses_every_barred_path() {
     load(r#"{"permissions": {"allow": ["Bash(ls)"]}}"#, true)
         .unwrap_or_else(|e| panic!("the control was refused: {}", shown(&e)));
     for (fragment, path) in BARRED {
-        let err = load(fragment, true).expect_err(&format!("`{path}` must be refused"));
-        let text = shown(&err);
+        let text = match load(fragment, true) {
+            Ok(_) => panic!("`{path}` must be refused, and it loaded"),
+            Err(err) => shown(&err),
+        };
         assert!(
             text.contains(path),
             "the refusal does not name `{path}`: {text}"
@@ -153,8 +155,10 @@ fn fragment_refuses_every_barred_path() {
 
 #[test]
 fn a_key_nobody_listed_is_refused_too() {
-    let err = load(r#"{"somethingNew": ["x"]}"#, true).expect_err("an unlisted key is refused");
-    assert!(shown(&err).contains("somethingNew"), "{}", shown(&err));
+    match load(r#"{"somethingNew": ["x"]}"#, true) {
+        Ok(_) => panic!("an unlisted key must be refused, and it loaded"),
+        Err(err) => assert!(shown(&err).contains("somethingNew"), "{}", shown(&err)),
+    }
 }
 
 /// Control, not a red for new code: a harness rule that names no owned keys keeps loading
@@ -163,4 +167,50 @@ fn a_key_nobody_listed_is_refused_too() {
 fn a_rule_without_owned_keys_loads_any_fragment_control() {
     load(r#"{"model": "sonnet", "env": {"A": "b"}}"#, false)
         .unwrap_or_else(|e| panic!("refused: {}", shown(&e)));
+}
+
+/// Exact leaf match: a key that only starts with an owned key, and an object under an owned
+/// key, are not the owned key.
+#[test]
+fn a_key_that_merely_starts_with_an_owned_key_is_refused() {
+    load(r#"{"permissions": {"allow": ["x"]}}"#, true)
+        .unwrap_or_else(|e| panic!("the control was refused: {}", shown(&e)));
+    for (fragment, path) in [
+        (
+            r#"{"permissions": {"allowAll": ["x"]}}"#,
+            "permissions.allowAll",
+        ),
+        (
+            r#"{"permissions": {"allow": {"x": 1}}}"#,
+            "permissions.allow.x",
+        ),
+    ] {
+        match load(fragment, true) {
+            Ok(_) => panic!("`{path}` must be refused, and it loaded"),
+            Err(err) => assert!(shown(&err).contains(path), "{}", shown(&err)),
+        }
+    }
+}
+
+/// A profile never prints a fixture value through `Debug`, so a log or an error that
+/// formats one cannot carry a value read from a fragment (D1: never extracted).
+#[test]
+fn debug_of_a_loaded_profile_holds_no_fragment_value() {
+    let profiles = load(r#"{"permissions": {"allow": "canary-entry"}}"#, true)
+        .unwrap_or_else(|e| panic!("the control was refused: {}", shown(&e)));
+    let text = format!("{profiles:?}");
+    assert!(
+        text.contains("permissions.allow"),
+        "the leaf path is printed: {text}"
+    );
+    assert!(
+        !text.contains("canary-entry"),
+        "a fragment value is printed: {text}"
+    );
+    let fragment = profiles[0].fragment("claude-code").expect("the fragment");
+    let text = format!("{fragment:?}");
+    assert!(
+        !text.contains("canary-entry"),
+        "a fragment value is printed: {text}"
+    );
 }
