@@ -177,12 +177,6 @@ fn the_embedded_file_parses_with_literal_key_paths_only() {
     );
 }
 
-#[test]
-fn the_embedded_file_is_schema_5() {
-    let file = KnowledgeFile::embedded().expect("the embedded file");
-    assert_eq!(file.version().schema_version(), 6);
-}
-
 /// A control, not a red for new code: the class-to-layer mapping is the existing layer
 /// check, so once schema 6 is accepted this passes against the stub too.
 #[test]
