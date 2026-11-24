@@ -894,7 +894,9 @@ fn the_three_marks_load_on_a_list_key_and_read_back() {
         .filter_map(|i| i.settings_key())
         .find(|f| f.key() == "model")
         .expect("the model key");
-    assert!(!plain.profile_ownable() && !plain.defaults_rule() && plain.readable_reason().is_none());
+    assert!(
+        !plain.profile_ownable() && !plain.defaults_rule() && plain.readable_reason().is_none()
+    );
     accepts(&schema6(
         ALLOW,
         r#"settings_key = { key = "env.DEMO_TOKEN", merge = "scalar", sensitive = true, scopes = ["any"] }"#,
