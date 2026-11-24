@@ -31,10 +31,21 @@ pub struct Tool {
 }
 
 /// A shared MCP server entry, kept as written.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct McpServer {
     name: String,
     table: toml_edit::Table,
+}
+
+/// Prints the server name and its field names. The values (an `env` or header entry can
+/// carry a token) never reach a log or an error through `{:?}`.
+impl std::fmt::Debug for McpServer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("McpServer")
+            .field("name", &self.name)
+            .field("fields", &self.field_names())
+            .finish_non_exhaustive()
+    }
 }
 
 /// A note on one entry.
