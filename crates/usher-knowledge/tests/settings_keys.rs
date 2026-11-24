@@ -786,14 +786,28 @@ fn auto_mode_server_is_readable_by_value_with_reason() {
         .readable_reason()
         .expect("a readable key carries its reason");
     assert!(!reason.trim().is_empty());
-    // Every other child of env stays sensitive: the exception is one name.
-    for item in file.items().iter().filter(|i| i.harness() == "claude-code") {
-        if let Some(f) = item.settings_key() {
-            if f.key().starts_with("env.") && f.key() != "env.CLAUDE_CODE_AUTO_MODE_SERVER" {
-                assert!(f.sensitive(), "{}", f.key());
-            }
-        }
-    }
+    // The exception is one name: `env` itself stays sensitive and no other env.* child exists.
+    assert!(seed_fact(&file, "env").sensitive());
+    let children: Vec<String> = file
+        .items()
+        .iter()
+        .filter(|i| i.harness() == "claude-code")
+        .filter_map(|i| i.settings_key())
+        .map(|f| f.key().to_string())
+        .filter(|k| k.starts_with("env."))
+        .collect();
+    assert_eq!(children, ["env.CLAUDE_CODE_AUTO_MODE_SERVER"]);
+    // Its versions are no wider than the parent's.
+    let by_key = |key: &str| {
+        file.items()
+            .iter()
+            .find(|i| i.settings_key().is_some_and(|f| f.key() == key))
+            .unwrap_or_else(|| panic!("no item for `{key}`"))
+    };
+    assert_eq!(
+        by_key("env.CLAUDE_CODE_AUTO_MODE_SERVER").versions(),
+        by_key("env").versions()
+    );
     // The parent summary names the exception (U1).
     let parent = file
         .items()
@@ -838,4 +852,111 @@ fn auto_mode_items_carry_the_defaults_rule() {
     for key in ["permissions.allow", "autoMode.classifyAllShell"] {
         assert!(!seed_fact(&file, key).defaults_rule(), "{key}");
     }
+}
+
+// ---- I-673 U1: schema 6 and the invariants of the three marks ----
+
+fn schema6(old: &str, new: &str) -> String {
+    let base = FILE.replace("schema_version = 5", "schema_version = 6");
+    assert_eq!(base.matches(old).count(), 1, "`{old}` must occur once");
+    base.replace(old, new)
+}
+
+#[test]
+fn the_embedded_file_is_schema_6() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    assert_eq!(file.version().schema_version(), 6);
+}
+
+#[test]
+fn a_schema_5_file_is_refused_naming_both_schemas() {
+    rejects(&FILE.to_string(), &["schema 5", "schema 6"]);
+}
+
+#[test]
+fn the_three_marks_load_on_a_list_key_and_read_back() {
+    let text = schema6(
+        ALLOW,
+        r#"settings_key = { key = "permissions.allow", merge = "list-merge", sensitive = false, scopes = ["any"], profile_ownable = true, defaults_rule = true }"#,
+    );
+    let file = KnowledgeFile::parse(&text).expect("a schema 6 file with the marks");
+    let fact = file
+        .items()
+        .iter()
+        .filter_map(|i| i.settings_key())
+        .find(|f| f.key() == "permissions.allow")
+        .expect("the allow key");
+    assert!(fact.profile_ownable() && fact.defaults_rule());
+    // Controls: a key without the marks reads false, and a sensitive env child is accepted.
+    let plain = file
+        .items()
+        .iter()
+        .filter_map(|i| i.settings_key())
+        .find(|f| f.key() == "model")
+        .expect("the model key");
+    assert!(!plain.profile_ownable() && !plain.defaults_rule() && plain.readable_reason().is_none());
+    accepts(&schema6(
+        ALLOW,
+        r#"settings_key = { key = "env.DEMO_TOKEN", merge = "scalar", sensitive = true, scopes = ["any"] }"#,
+    ));
+}
+
+#[test]
+fn a_readable_env_child_loads_with_its_reason() {
+    let text = schema6(
+        ALLOW,
+        r#"settings_key = { key = "env.DEMO_FLAG", merge = "scalar", sensitive = false, scopes = ["any"], readable_reason = "compared to 1, never stored" }"#,
+    );
+    let file = KnowledgeFile::parse(&text).expect("a readable env child");
+    let reason = file
+        .items()
+        .iter()
+        .filter_map(|i| i.settings_key())
+        .find(|f| f.key() == "env.DEMO_FLAG")
+        .and_then(|f| f.readable_reason().map(str::to_string));
+    assert_eq!(reason.as_deref(), Some("compared to 1, never stored"));
+}
+
+#[test]
+fn defaults_rule_on_a_key_that_is_not_list_merge_is_refused() {
+    rejects(
+        &schema6(
+            MODEL,
+            r#"settings_key = { key = "model", merge = "scalar", sensitive = false, scopes = ["any"], defaults_rule = true }"#,
+        ),
+        &["demo.key-mode", "defaults_rule", "list-merge"],
+    );
+}
+
+#[test]
+fn profile_ownable_on_a_key_that_is_not_list_merge_is_refused() {
+    rejects(
+        &schema6(
+            MODEL,
+            r#"settings_key = { key = "model", merge = "scalar", sensitive = false, scopes = ["any"], profile_ownable = true }"#,
+        ),
+        &["demo.key-mode", "profile_ownable", "list-merge"],
+    );
+}
+
+#[test]
+fn readable_reason_on_a_sensitive_key_is_refused() {
+    rejects(
+        &schema6(
+            ALLOW,
+            r#"settings_key = { key = "env.DEMO_FLAG", merge = "scalar", sensitive = true, scopes = ["any"], readable_reason = "why" }"#,
+        ),
+        &["readable_reason", "sensitive"],
+    );
+}
+
+#[test]
+fn an_env_child_that_is_not_sensitive_needs_a_reason() {
+    rejects(
+        &schema6(
+            ALLOW,
+            r#"settings_key = { key = "env.DEMO_FLAG", merge = "scalar", sensitive = false, scopes = ["any"] }"#,
+        ),
+        &["env.DEMO_FLAG", "readable_reason"],
+    );
 }
