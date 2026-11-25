@@ -28,7 +28,7 @@ env:
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
   # The spine's Rust version. Keep in step with rust-toolchain.toml and mise.toml.
-  RUST_TOOLCHAIN: 1.99.1
+  RUST_TOOLCHAIN: 1.100.0
 
 jobs:
   fmt:
