@@ -1,11 +1,11 @@
 # Release Verification
-# Triggers: after release or CI workflows complete
+# Triggers: after the CI workflow completes
 # Verifies that the homebrew-tap CI passed after formula push
 name: Release Verify
 
 on:
   workflow_run:
-    workflows: ["Release", "CI"]
+    workflows: ["CI"]
     types: [completed]
 
 permissions:
