@@ -18,7 +18,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -303,7 +303,7 @@ jobs:
             --apple-id "$APPLE_NOTARIZATION_APPLE_ID" \
             --password "$APPLE_NOTARIZATION_PASSWORD" \
             --team-id "$APPLE_NOTARIZATION_TEAM_ID" \
-            --wait --timeout 14400
+            --wait --timeout 3000
       - name: Upload signed artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
