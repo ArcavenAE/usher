@@ -5,7 +5,7 @@
 # research map of 2026-11-02 and cite the sources it cites. Support entries are
 # usher's own statement: no adapter exists yet, so nothing is offered.
 
-schema_version = 5
+schema_version = 6
 sequence = 5
 
 [[item]]
@@ -224,7 +224,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "The permission allow rules; each layer adds its own entries."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings-reference#permissions-allow" }
 last_verified = 2026-11-20
-settings_key = { key = "permissions.allow", merge = "list-merge", sensitive = false, scopes = ["any"] }
+settings_key = { key = "permissions.allow", merge = "list-merge", sensitive = false, scopes = ["any"], profile_ownable = true }
 
 [[item]]
 id = "claude-code.key-permissions-ask"
@@ -235,7 +235,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "The permission ask rules; each layer adds its own entries."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings-reference#permissions-ask" }
 last_verified = 2026-11-20
-settings_key = { key = "permissions.ask", merge = "list-merge", sensitive = false, scopes = ["any"] }
+settings_key = { key = "permissions.ask", merge = "list-merge", sensitive = false, scopes = ["any"], profile_ownable = true }
 
 [[item]]
 id = "claude-code.key-permissions-deny"
@@ -246,7 +246,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "The permission deny rules; each layer adds its own entries."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings-reference#permissions-deny" }
 last_verified = 2026-11-20
-settings_key = { key = "permissions.deny", merge = "list-merge", sensitive = false, scopes = ["any"] }
+settings_key = { key = "permissions.deny", merge = "list-merge", sensitive = false, scopes = ["any"], profile_ownable = true }
 
 [[item]]
 id = "claude-code.key-permissions-defaultmode"
@@ -268,7 +268,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "The autoMode environment rules. The reference says user or managed files set autoMode, and that arrays set in more than one file are concatenated."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings-reference#automode" }
 last_verified = 2026-11-20
-settings_key = { key = "autoMode.environment", merge = "list-merge", sensitive = false, scopes = ["user", "managed"] }
+settings_key = { key = "autoMode.environment", merge = "list-merge", sensitive = false, scopes = ["user", "managed"], profile_ownable = true, defaults_rule = true }
 
 [[item]]
 id = "claude-code.key-automode-allow"
@@ -279,7 +279,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "The autoMode allow rules. The reference says user or managed files set autoMode, and that arrays set in more than one file are concatenated."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings-reference#automode" }
 last_verified = 2026-11-20
-settings_key = { key = "autoMode.allow", merge = "list-merge", sensitive = false, scopes = ["user", "managed"] }
+settings_key = { key = "autoMode.allow", merge = "list-merge", sensitive = false, scopes = ["user", "managed"], profile_ownable = true, defaults_rule = true }
 
 [[item]]
 id = "claude-code.key-automode-soft-deny"
@@ -290,7 +290,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "The autoMode soft deny rules. The reference says user or managed files set autoMode, and that arrays set in more than one file are concatenated."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings-reference#automode" }
 last_verified = 2026-11-20
-settings_key = { key = "autoMode.soft_deny", merge = "list-merge", sensitive = false, scopes = ["user", "managed"] }
+settings_key = { key = "autoMode.soft_deny", merge = "list-merge", sensitive = false, scopes = ["user", "managed"], profile_ownable = true, defaults_rule = true }
 
 [[item]]
 id = "claude-code.key-automode-hard-deny"
@@ -301,7 +301,7 @@ versions = ">=2.1.317, <3.0.0"
 summary = "The autoMode hard deny rules. The reference says user or managed files set autoMode, and that arrays set in more than one file are concatenated."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings-reference#automode" }
 last_verified = 2026-11-20
-settings_key = { key = "autoMode.hard_deny", merge = "list-merge", sensitive = false, scopes = ["user", "managed"] }
+settings_key = { key = "autoMode.hard_deny", merge = "list-merge", sensitive = false, scopes = ["user", "managed"], profile_ownable = true, defaults_rule = true }
 
 [[item]]
 id = "claude-code.key-automode-classifyallshell"
@@ -364,10 +364,32 @@ harness = "claude-code"
 layer = "fast"
 class = "settings-keys"
 versions = ">=2.1.317, <3.0.0"
-summary = "The environment table. Values are never read or stored; child names print by name only."
+summary = "The environment table. Values are never read or stored; child names print by name only. The one exception is the child env.CLAUDE_CODE_AUTO_MODE_SERVER, which is read by value (see claude-code.key-env-auto-mode-server)."
 reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings-reference#env" }
 last_verified = 2026-11-20
 settings_key = { key = "env", merge = "object-merge", sensitive = true, scopes = ["any"] }
+
+[[item]]
+id = "claude-code.key-apikeyhelper"
+harness = "claude-code"
+layer = "fast"
+class = "settings-keys"
+versions = ">=2.1.317, <3.0.0"
+summary = "The command Claude Code runs to get a credential. The value names a command that mints credentials, so it is never read or stored."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings-reference#apikeyhelper" }
+last_verified = 2026-11-24
+settings_key = { key = "apiKeyHelper", merge = "scalar", sensitive = true, scopes = ["any"] }
+
+[[item]]
+id = "claude-code.key-env-auto-mode-server"
+harness = "claude-code"
+layer = "fast"
+class = "settings-keys"
+versions = ">=2.1.317, <3.0.0"
+summary = "The one env child usher reads by value, to learn whether auto mode is off. Verified against Claude Code 2.1.329: a value other than 1 turns the auto mode check off. The value is compared to 1 and dropped; it is never stored, logged or shown."
+reference = { kind = "vendor-docs", locator = "https://code.claude.com/docs/en/settings-reference#env" }
+last_verified = 2026-11-24
+settings_key = { key = "env.CLAUDE_CODE_AUTO_MODE_SERVER", merge = "scalar", sensitive = false, scopes = ["any"], readable_reason = "usher reads whether auto mode is turned off; the value is compared to 1 and never stored, logged or shown" }
 
 [[item]]
 id = "claude-code.key-fallbackmodel"

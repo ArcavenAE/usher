@@ -1,4 +1,4 @@
-//! Story 1.6, PR A: schema 5, the `settings-keys` class and the cross-layer stack.
+//! Story 1.6, PR A: schema 6, the `settings-keys` class and the cross-layer stack.
 //! A settings-key item names one key a harness reads, how it merges across layers, whether
 //! its value is never read, and the environment variable that overrides it. A `layers`
 //! item carries the vendor's cross-layer order, highest first, so precedence is data and
@@ -10,7 +10,7 @@
 use usher_knowledge::{Class, KnowledgeFile, Layer, MergeKind, ReferenceKind, Scopes, SourceLayer};
 
 const FILE: &str = r#"
-schema_version = 5
+schema_version = 6
 sequence = 12
 
 [[item]]
@@ -106,9 +106,9 @@ fn accepts(text: &str) {
 }
 
 #[test]
-fn a_schema_5_file_carries_settings_keys_with_merge_kind_sensitivity_and_override() {
-    let file = KnowledgeFile::parse(FILE).expect("a valid schema 5 file");
-    assert_eq!(file.version().schema_version(), 5);
+fn a_schema_6_file_carries_settings_keys_with_merge_kind_sensitivity_and_override() {
+    let file = KnowledgeFile::parse(FILE).expect("a valid schema 6 file");
+    assert_eq!(file.version().schema_version(), 6);
     let items = file.items();
     assert_eq!(items.len(), 6);
     let model = &items[1];
@@ -143,7 +143,7 @@ fn a_schema_5_file_carries_settings_keys_with_merge_kind_sensitivity_and_overrid
 
 #[test]
 fn a_layers_item_carries_the_cross_layer_stack_highest_first() {
-    let file = KnowledgeFile::parse(FILE).expect("a valid schema 5 file");
+    let file = KnowledgeFile::parse(FILE).expect("a valid schema 6 file");
     let stack = &file.items()[0];
     assert_eq!(stack.class(), Class::Layers);
     assert_eq!(
@@ -156,14 +156,14 @@ fn a_layers_item_carries_the_cross_layer_stack_highest_first() {
 #[test]
 fn a_schema_4_file_is_refused_naming_both_schemas() {
     rejects(
-        &with("schema_version = 5", "schema_version = 4"),
-        &["schema 4", "schema 5"],
+        &with("schema_version = 6", "schema_version = 4"),
+        &["schema 4", "schema 6"],
     );
 }
 
 #[test]
 fn the_embedded_file_parses_with_literal_key_paths_only() {
-    let file = KnowledgeFile::embedded().expect("the seed parses under schema 5");
+    let file = KnowledgeFile::embedded().expect("the seed parses under schema 6");
     for item in file.items() {
         if let Some(fact) = item.settings_key() {
             assert!(!fact.key().contains('*'), "{}", item.id());
@@ -177,14 +177,8 @@ fn the_embedded_file_parses_with_literal_key_paths_only() {
     );
 }
 
-#[test]
-fn the_embedded_file_is_schema_5() {
-    let file = KnowledgeFile::embedded().expect("the embedded file");
-    assert_eq!(file.version().schema_version(), 5);
-}
-
 /// A control, not a red for new code: the class-to-layer mapping is the existing layer
-/// check, so once schema 5 is accepted this passes against the stub too.
+/// check, so once schema 6 is accepted this passes against the stub too.
 #[test]
 fn a_settings_key_item_of_the_slow_layer_is_refused_control() {
     let text = with(
@@ -260,7 +254,7 @@ fn key_merge_and_sensitive_must_be_named_and_known() {
 }
 
 /// A settings key is a literal path: a name, or names joined by single dots. No `*`
-/// appears anywhere in schema 5, so a child the seed does not list is never matched by
+/// appears anywhere in schema 6, so a child the seed does not list is never matched by
 /// a pattern. The seat key-path wildcard rule is separate.
 #[test]
 fn a_key_path_is_names_joined_by_dots_and_no_star_appears() {
@@ -503,9 +497,11 @@ fn the_seed_marks_env_sensitive() {
 }
 
 /// The default readable-key list, exactly. The permissions keys, `autoMode`, `model`, the
-/// managed control keys and `env` (by name only). The model-selection keys
+/// managed control keys, `env` (by name only), `apiKeyHelper` (sensitive) and the one env child
+/// read by value (I-673 U1). The model-selection keys
 /// `availableModels`, `fallbackModel`, `modelPicker` and `modelSettings` belong to `model`.
-const SEEDED_KEYS: [&str; 18] = [
+const SEEDED_KEYS: [&str; 20] = [
+    "apiKeyHelper",
     "autoMode.allow",
     "autoMode.classifyAllShell",
     "autoMode.environment",
@@ -513,6 +509,7 @@ const SEEDED_KEYS: [&str; 18] = [
     "autoMode.soft_deny",
     "availableModels",
     "env",
+    "env.CLAUDE_CODE_AUTO_MODE_SERVER",
     "fallbackModel",
     "managedSourcesBehavior",
     "model",
@@ -654,6 +651,8 @@ fn the_seed_gives_every_key_the_scope_the_settings_reference_states() {
         "permissions.defaultMode",
         "model",
         "env",
+        "env.CLAUDE_CODE_AUTO_MODE_SERVER",
+        "apiKeyHelper",
         "fallbackModel",
         "availableModels",
         "modelSettings",
@@ -753,5 +752,213 @@ fn the_seed_gives_default_mode_its_own_rule_with_the_vendors_sentence() {
             .contains("don't take effect from project or local settings"),
         "{}",
         item.summary()
+    );
+}
+
+// ---- I-673 U1: the marks the settings renderer design needs (docs/design/settings-renderer.md D1 to D4) ----
+
+fn seed_fact(file: &KnowledgeFile, key: &str) -> usher_knowledge::SettingsKeyFact {
+    file.items()
+        .iter()
+        .filter(|item| item.harness() == "claude-code")
+        .filter_map(|item| item.settings_key())
+        .find(|fact| fact.key() == key)
+        .unwrap_or_else(|| panic!("the seed has no claude-code settings key `{key}`"))
+        .clone()
+}
+
+#[test]
+fn api_key_helper_is_sensitive() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    assert!(seed_fact(&file, "apiKeyHelper").sensitive());
+}
+
+#[test]
+fn auto_mode_server_is_readable_by_value_with_reason() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    let fact = seed_fact(&file, "env.CLAUDE_CODE_AUTO_MODE_SERVER");
+    assert!(
+        !fact.sensitive(),
+        "the one named exception is not sensitive"
+    );
+    let reason = fact
+        .readable_reason()
+        .expect("a readable key carries its reason");
+    assert!(!reason.trim().is_empty());
+    // The exception is one name: `env` itself stays sensitive and no other env.* child exists.
+    assert!(seed_fact(&file, "env").sensitive());
+    let children: Vec<String> = file
+        .items()
+        .iter()
+        .filter(|i| i.harness() == "claude-code")
+        .filter_map(|i| i.settings_key())
+        .map(|f| f.key().to_string())
+        .filter(|k| k.starts_with("env."))
+        .collect();
+    assert_eq!(children, ["env.CLAUDE_CODE_AUTO_MODE_SERVER"]);
+    // Its versions are no wider than the parent's.
+    let by_key = |key: &str| {
+        file.items()
+            .iter()
+            .find(|i| i.settings_key().is_some_and(|f| f.key() == key))
+            .unwrap_or_else(|| panic!("no item for `{key}`"))
+    };
+    assert_eq!(
+        by_key("env.CLAUDE_CODE_AUTO_MODE_SERVER").versions(),
+        by_key("env").versions()
+    );
+    // The parent summary names the exception (U1).
+    let parent = file
+        .items()
+        .iter()
+        .find(|i| i.id() == "claude-code.key-env")
+        .expect("the env item");
+    assert!(parent.summary().contains("CLAUDE_CODE_AUTO_MODE_SERVER"));
+}
+
+#[test]
+fn profile_ownable_keys_are_marked() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    let ownable = [
+        "permissions.allow",
+        "permissions.ask",
+        "permissions.deny",
+        "autoMode.environment",
+        "autoMode.allow",
+        "autoMode.soft_deny",
+        "autoMode.hard_deny",
+    ];
+    for key in ownable {
+        assert!(seed_fact(&file, key).profile_ownable(), "{key}");
+    }
+    // Positive control for the negative: the bar is a mark, not the absence of items.
+    for key in ["model", "env", "permissions.defaultMode"] {
+        assert!(!seed_fact(&file, key).profile_ownable(), "{key}");
+    }
+}
+
+#[test]
+fn auto_mode_items_carry_the_defaults_rule() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    for key in [
+        "autoMode.environment",
+        "autoMode.allow",
+        "autoMode.soft_deny",
+        "autoMode.hard_deny",
+    ] {
+        assert!(seed_fact(&file, key).defaults_rule(), "{key}");
+    }
+    for key in ["permissions.allow", "autoMode.classifyAllShell"] {
+        assert!(!seed_fact(&file, key).defaults_rule(), "{key}");
+    }
+}
+
+// ---- I-673 U1: schema 6 and the invariants of the three marks ----
+
+fn schema6(old: &str, new: &str) -> String {
+    with(old, new)
+}
+
+#[test]
+fn the_embedded_file_is_schema_6() {
+    let file = KnowledgeFile::embedded().expect("the embedded file");
+    assert_eq!(file.version().schema_version(), 6);
+}
+
+#[test]
+fn a_schema_5_file_is_refused_naming_both_schemas() {
+    rejects(
+        &with("schema_version = 6", "schema_version = 5"),
+        &["schema 5", "schema 6"],
+    );
+}
+
+#[test]
+fn the_three_marks_load_on_a_list_key_and_read_back() {
+    let text = schema6(
+        ALLOW,
+        r#"settings_key = { key = "permissions.allow", merge = "list-merge", sensitive = false, scopes = ["any"], profile_ownable = true, defaults_rule = true }"#,
+    );
+    let file = KnowledgeFile::parse(&text).expect("a schema 6 file with the marks");
+    let fact = file
+        .items()
+        .iter()
+        .filter_map(|i| i.settings_key())
+        .find(|f| f.key() == "permissions.allow")
+        .expect("the allow key");
+    assert!(fact.profile_ownable() && fact.defaults_rule());
+    // Controls: a key without the marks reads false, and a sensitive env child is accepted.
+    let plain = file
+        .items()
+        .iter()
+        .filter_map(|i| i.settings_key())
+        .find(|f| f.key() == "model")
+        .expect("the model key");
+    assert!(
+        !plain.profile_ownable() && !plain.defaults_rule() && plain.readable_reason().is_none()
+    );
+    accepts(&schema6(
+        ALLOW,
+        r#"settings_key = { key = "env.DEMO_TOKEN", merge = "scalar", sensitive = true, scopes = ["any"] }"#,
+    ));
+}
+
+#[test]
+fn a_readable_env_child_loads_with_its_reason() {
+    let text = schema6(
+        ALLOW,
+        r#"settings_key = { key = "env.DEMO_FLAG", merge = "scalar", sensitive = false, scopes = ["any"], readable_reason = "compared to 1, never stored" }"#,
+    );
+    let file = KnowledgeFile::parse(&text).expect("a readable env child");
+    let reason = file
+        .items()
+        .iter()
+        .filter_map(|i| i.settings_key())
+        .find(|f| f.key() == "env.DEMO_FLAG")
+        .and_then(|f| f.readable_reason().map(str::to_string));
+    assert_eq!(reason.as_deref(), Some("compared to 1, never stored"));
+}
+
+#[test]
+fn defaults_rule_on_a_key_that_is_not_list_merge_is_refused() {
+    rejects(
+        &schema6(
+            MODEL,
+            r#"settings_key = { key = "model", merge = "scalar", sensitive = false, scopes = ["any"], defaults_rule = true }"#,
+        ),
+        &["demo.key-mode", "defaults_rule", "list-merge"],
+    );
+}
+
+#[test]
+fn profile_ownable_on_a_key_that_is_not_list_merge_is_refused() {
+    rejects(
+        &schema6(
+            MODEL,
+            r#"settings_key = { key = "model", merge = "scalar", sensitive = false, scopes = ["any"], profile_ownable = true }"#,
+        ),
+        &["demo.key-mode", "profile_ownable", "list-merge"],
+    );
+}
+
+#[test]
+fn readable_reason_on_a_sensitive_key_is_refused() {
+    rejects(
+        &schema6(
+            ALLOW,
+            r#"settings_key = { key = "env.DEMO_FLAG", merge = "scalar", sensitive = true, scopes = ["any"], readable_reason = "why" }"#,
+        ),
+        &["readable_reason", "needs `sensitive = false`"],
+    );
+}
+
+#[test]
+fn an_env_child_that_is_not_sensitive_needs_a_reason() {
+    rejects(
+        &schema6(
+            ALLOW,
+            r#"settings_key = { key = "env.DEMO_FLAG", merge = "scalar", sensitive = false, scopes = ["any"] }"#,
+        ),
+        &["env.DEMO_FLAG", "readable_reason"],
     );
 }

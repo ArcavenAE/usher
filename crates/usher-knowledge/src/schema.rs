@@ -19,7 +19,7 @@ use crate::{Version, VersionRange};
 const EMBEDDED: &str = include_str!("../knowledge/harness-knowledge.toml");
 
 /// The only schema version this build reads.
-const SUPPORTED_SCHEMA: u32 = 5;
+const SUPPORTED_SCHEMA: u32 = 6;
 
 const STEP: &str = "load harness knowledge";
 const NEXT: &str =
@@ -475,6 +475,9 @@ pub struct SettingsKeyFact {
     sensitive: bool,
     overrides: Option<EnvOverride>,
     scopes: Scopes,
+    profile_ownable: bool,
+    defaults_rule: bool,
+    readable_reason: Option<String>,
 }
 
 impl SettingsKeyFact {
@@ -501,6 +504,23 @@ impl SettingsKeyFact {
     /// The environment variable that overrides the key, if knowledge names one.
     pub fn overrides(&self) -> Option<&EnvOverride> {
         self.overrides.as_ref()
+    }
+
+    /// Whether a profile may own entries under this key. Only a list-merge key can be marked.
+    pub fn profile_ownable(&self) -> bool {
+        self.profile_ownable
+    }
+
+    /// Whether the array must hold the literal `"$defaults"`, or its entries replace the
+    /// harness's built-in rules. Only a list-merge key can be marked.
+    pub fn defaults_rule(&self) -> bool {
+        self.defaults_rule
+    }
+
+    /// The reason this one key is readable by value although its parent table is sensitive.
+    /// Present only on a key that is not sensitive.
+    pub fn readable_reason(&self) -> Option<&str> {
+        self.readable_reason.as_deref()
     }
 }
 
@@ -1495,7 +1515,16 @@ fn parse_settings_key(table: &dyn TableLike, owner: &str) -> Result<SettingsKeyF
     let owner = format!("{owner} settings_key");
     reject_unknown_keys(
         fact,
-        &["key", "merge", "sensitive", "scopes", "overrides"],
+        &[
+            "key",
+            "merge",
+            "sensitive",
+            "scopes",
+            "overrides",
+            "profile_ownable",
+            "defaults_rule",
+            "readable_reason",
+        ],
         &owner,
     )?;
     let key = text_field(fact, "key", &owner)?;
@@ -1542,13 +1571,73 @@ fn parse_settings_key(table: &dyn TableLike, owner: &str) -> Result<SettingsKeyF
             })
         }
     };
+    let profile_ownable = optional_true(fact, "profile_ownable", &owner)?;
+    let defaults_rule = optional_true(fact, "defaults_rule", &owner)?;
+    for (name, set) in [
+        ("profile_ownable", profile_ownable),
+        ("defaults_rule", defaults_rule),
+    ] {
+        if set && merge != MergeKind::ListMerge {
+            return Err(fail(
+                format!("{owner}: {name}"),
+                format!("`{name}` needs a list-merge key; `{key}` merges as `{merge_name}`"),
+            ));
+        }
+    }
+    let readable_reason = match fact.get("readable_reason") {
+        None => None,
+        Some(entry) => {
+            let reason = entry
+                .as_str()
+                .map(str::trim)
+                .filter(|reason| !reason.is_empty())
+                .ok_or_else(|| {
+                    fail(
+                        format!("{owner}: readable_reason"),
+                        "`readable_reason` must be a non-empty string",
+                    )
+                })?;
+            if sensitive {
+                return Err(fail(
+                    format!("{owner}: readable_reason"),
+                    format!("`readable_reason` needs `sensitive = false`; `{key}` is sensitive"),
+                ));
+            }
+            Some(reason.to_string())
+        }
+    };
+    if key.starts_with("env.") && !sensitive && readable_reason.is_none() {
+        return Err(fail(
+            format!("{owner}: sensitive"),
+            format!(
+                "`{key}` is a child of env and is not sensitive, so it needs a `readable_reason`"
+            ),
+        ));
+    }
     Ok(SettingsKeyFact {
         key: key.to_string(),
         merge,
         sensitive,
         overrides,
         scopes,
+        profile_ownable,
+        defaults_rule,
+        readable_reason,
     })
+}
+
+/// An optional flag that may only be written as `true`; absent reads false.
+fn optional_true(table: &dyn TableLike, name: &str, owner: &str) -> Result<bool, UsherError> {
+    match table.get(name) {
+        None => Ok(false),
+        Some(entry) => match entry.as_bool() {
+            Some(true) => Ok(true),
+            _ => Err(fail(
+                format!("{owner}: {name}"),
+                format!("`{name}` is either absent or `true`"),
+            )),
+        },
+    }
 }
 
 fn parse_stack(table: &dyn TableLike, owner: &str) -> Result<Vec<String>, UsherError> {
@@ -2078,7 +2167,7 @@ mod tests {
     use super::*;
 
     const VALID: &str = r#"
-schema_version = 5
+schema_version = 6
 sequence = 7
 
 [[item]]
@@ -2213,7 +2302,7 @@ capabilities = ["inventory", "map"]
             &VALID.replace("sequence = 7", "sequence = \"seven\""),
             "sequence",
         );
-        rejects(&VALID.replace("schema_version = 5\n", ""), "schema_version");
+        rejects(&VALID.replace("schema_version = 6\n", ""), "schema_version");
     }
 
     #[test]
@@ -2223,15 +2312,15 @@ capabilities = ["inventory", "map"]
 
     #[test]
     fn items_must_be_tables() {
-        rejects("schema_version = 5\nsequence = 1\nitem = 3\n", "[[item]]");
+        rejects("schema_version = 6\nsequence = 1\nitem = 3\n", "[[item]]");
     }
 
     #[test]
     fn the_file_reports_its_version() {
         let file = KnowledgeFile::parse(VALID).expect("valid");
         assert_eq!(file.version().sequence(), 7);
-        assert_eq!(file.version().schema_version(), 5);
-        assert_eq!(file.version().to_string(), "knowledge v7 (schema 5)");
+        assert_eq!(file.version().schema_version(), 6);
+        assert_eq!(file.version().to_string(), "knowledge v7 (schema 6)");
     }
 
     #[test]
@@ -2254,7 +2343,7 @@ capabilities = ["inventory", "map"]
         assert!(lines.contains(&"demo 1.5.0: apply unsupported".to_string()));
         assert_eq!(
             lines.last().map(String::as_str),
-            Some("knowledge v7 (schema 5)")
+            Some("knowledge v7 (schema 6)")
         );
     }
 

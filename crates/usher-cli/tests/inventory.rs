@@ -195,7 +195,7 @@ fn a_source_the_version_does_not_read_prints_unread_with_the_knowledge_item() {
     let knowledge = signed(&format!(
         "{}{LAUNCHER}",
         r#"
-schema_version = 5
+schema_version = 6
 sequence = 9
 
 [[item]]
@@ -256,7 +256,7 @@ source = {{ path = "{path}", layer = "managed", read = "first-wins", rank = {ran
         )
     };
     let knowledge = signed(&format!(
-        "schema_version = 5\nsequence = 9\n{}{}{LAUNCHER}",
+        "schema_version = 6\nsequence = 9\n{}{}{LAUNCHER}",
         managed("demo.high", "/etc/claude-code/high.json", 2),
         managed("demo.low", "/etc/claude-code/low.json", 3),
     ));
@@ -648,7 +648,7 @@ fn a_knowledge_update_naming_an_unset_variable_changes_no_key() {
     rig.run(&env);
     let knowledge = signed(
         r#"
-schema_version = 5
+schema_version = 6
 sequence = 99
 
 [[item]]
@@ -694,7 +694,7 @@ fn a_variable_named_only_by_another_range_enters_the_key_of_a_known_version_run(
     let knowledge = signed(&format!(
         "{}{LAUNCHER}",
         r#"
-schema_version = 5
+schema_version = 6
 sequence = 99
 
 [[item]]
@@ -841,7 +841,7 @@ source = {{ path = "${{CONFIG_DIR}}/settings.json", layer = "user", read = "read
         )
     };
     let knowledge = signed(&format!(
-        "schema_version = 5\nsequence = 9\n{}{}{}{LAUNCHER}",
+        "schema_version = 6\nsequence = 9\n{}{}{}{LAUNCHER}",
         range("claude-code.early", ">=2.1.317, <2.2.0", ".cfg-early"),
         range("claude-code.late", ">=2.2.0, <2.3.0", ".cfg-late"),
         range("claude-code.last", ">=2.3.0, <3.0.0", ".cfg-last"),

@@ -169,7 +169,7 @@ mod tests {
                 &trusting(&signer, None),
             )
             .expect("accepted");
-        assert_eq!(version.to_string(), "knowledge v2 (schema 5)");
+        assert_eq!(version.to_string(), "knowledge v2 (schema 6)");
         assert_eq!(sequence(&knowledge), 2);
     }
 
