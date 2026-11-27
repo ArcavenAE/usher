@@ -962,3 +962,51 @@ fn an_env_child_that_is_not_sensitive_needs_a_reason() {
         &["env.DEMO_FLAG", "readable_reason"],
     );
 }
+
+/// The allow item with one more field in its `settings_key` table.
+fn allow_with(extra: &str) -> String {
+    let body = ALLOW.strip_suffix(" }").expect("an inline table");
+    schema6(ALLOW, &format!("{body}, {extra} }}"))
+}
+
+#[test]
+fn a_blank_readable_reason_is_refused() {
+    for value in [r#""""#, r#""   ""#] {
+        rejects(
+            &allow_with(&format!("readable_reason = {value}")),
+            &["demo.key-allow", "readable_reason", "non-empty string"],
+        );
+    }
+}
+
+#[test]
+fn a_readable_reason_that_is_not_a_string_is_refused() {
+    for value in ["true", "1", r#"["why"]"#] {
+        rejects(
+            &allow_with(&format!("readable_reason = {value}")),
+            &["demo.key-allow", "readable_reason", "non-empty string"],
+        );
+    }
+}
+
+#[test]
+fn a_mark_written_false_is_refused() {
+    for mark in ["profile_ownable", "defaults_rule"] {
+        rejects(
+            &allow_with(&format!("{mark} = false")),
+            &["demo.key-allow", mark, "either absent or `true`"],
+        );
+    }
+}
+
+#[test]
+fn a_mark_that_is_not_a_boolean_is_refused() {
+    for mark in ["profile_ownable", "defaults_rule"] {
+        for value in [r#""true""#, "1", "[true]"] {
+            rejects(
+                &allow_with(&format!("{mark} = {value}")),
+                &["demo.key-allow", mark, "either absent or `true`"],
+            );
+        }
+    }
+}
