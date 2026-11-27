@@ -161,10 +161,22 @@ pub enum McpOrigin {
 }
 
 /// The MCP entry that applies to one harness.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct McpEntry {
     origin: McpOrigin,
     fields: Vec<(String, String)>,
+}
+
+/// Prints the origin and the field names. The values never reach a log or an error through
+/// `{:?}`: an MCP field can carry a token.
+impl std::fmt::Debug for McpEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let names: Vec<&str> = self.fields.iter().map(|(key, _)| key.as_str()).collect();
+        f.debug_struct("McpEntry")
+            .field("origin", &self.origin)
+            .field("fields", &names)
+            .finish_non_exhaustive()
+    }
 }
 
 impl McpEntry {
